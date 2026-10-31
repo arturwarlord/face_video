@@ -75,7 +75,7 @@ The release workflow reads the following repository Actions secrets from the pri
 
 Keep the keystore and passwords backed up privately. Never commit them or include them in an APK.
 
-To publish the first stable release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter `v0.4.0` in `release_tag`. The workflow creates the tag, tests the app, builds a release-signed APK, calculates its SHA-256 checksum and publishes both assets. For later updates, run the same workflow with `v0.4.1`, `v0.4.2`, and so on. Tag pushes also trigger the workflow automatically.
+To publish the first stable release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter `v0.4.0` in `release_tag`. The workflow creates the tag, tests the app, builds a release-signed APK, calculates its SHA-256 checksum and publishes both assets. For later updates, run the same workflow with the next tag, for example `v0.4.1`, `v0.4.2`, `v0.4.3`, and so on. Tag pushes also trigger the workflow automatically.
 
 The current GitHub Actions debug APK is for testing only. It is not the signed release channel used by the updater.
 
