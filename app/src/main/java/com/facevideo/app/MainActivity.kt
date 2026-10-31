@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                     onSurface = MainText
                 )
             ) {
-                FirebaseAuthGate { userEmail, onSignOut ->
+                SupabaseAuthGate { userEmail, onSignOut ->
                     FaceVideoApp(userEmail = userEmail, onSignOut = onSignOut)
                 }
             }

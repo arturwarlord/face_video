@@ -1,37 +1,41 @@
 # Face Video
 
-Android-first internet messenger built with Kotlin and Jetpack Compose.
+Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase.
 
-## Current milestone — 0.2.0
+## Current milestone — 0.3.0
 
 - Native Android interface: Chats, Calls, Contacts, Profile.
-- Chat search and local demo conversations.
-- Firebase Email/Password sign-in and registration screen (activated when Firebase config is supplied).
-- Firestore repository foundation for direct/group chats and live message listeners.
-- Firestore security rules for user profiles, chat membership, and message creation.
-- GitHub Actions unit tests and debug APK build.
+- Demo conversations and local message composition remain available before the backend is configured.
+- Supabase Auth email/password sign-up, sign-in, persistent session status and sign-out.
+- Supabase Kotlin SDK 3.8.0 with PostgREST and Realtime modules.
+- Database repository for listing chat summaries, loading/sending messages and observing realtime message changes.
+- PostgreSQL migration for profiles, direct/group chats, chat members, messages, indexes, triggers and Row Level Security policies.
+- GitHub Actions builds and tests the Android APK.
 
-## Honest implementation status
+## Current backend status
 
-The app still uses sample conversations in the main chat screen. Real registration becomes active after a Firebase Android app is configured. The Firestore repository is prepared but is not yet connected to the visible chat list and message composer. Audio/video calls are not connected yet.
+The Android code now targets Supabase. The migration is committed under `supabase/migrations`, but it has **not yet been applied to your Supabase project**. The real backend will work after the project URL and publishable key are added to GitHub and the migration is deployed.
 
-## Firebase setup (next integration step)
+The sample chat screen is still a UI preview; it has not yet been wired to the live repository. That is the next app-integration milestone.
 
-1. Create a Firebase project and add an Android app with package name `com.facevideo.app`.
-2. Enable **Authentication → Email/Password**.
-3. Create a **Cloud Firestore** database.
-4. Publish the repository's `firestore.rules` in Firebase Console.
-5. Download `google-services.json` for the Android app.
-6. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
-7. Add a secret named `FIREBASE_ANDROID_CONFIG` and paste the complete contents of `google-services.json` as its value.
-8. Run the **Android build** workflow again. It restores the config file only during the build; the JSON file is ignored by Git.
+## Connect your Supabase project
 
-Do not add Firebase Admin SDK service-account keys or private server credentials to the Android app or this repository. The Android Firebase config is not a replacement for Firestore security rules.
+1. Open the Supabase Dashboard and create/open the Face Video project.
+2. In **Project Settings → API Keys**, copy the Project URL and the **publishable key** (the key beginning with `sb_publishable_`, or the legacy anon key if your project still uses it).
+3. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
+4. Create:
+   - `SUPABASE_URL` — your project URL, e.g. `https://your-project-ref.supabase.co`
+   - `SUPABASE_PUBLISHABLE_KEY` — the project's publishable key.
+5. Apply the migration in `supabase/migrations/202610310001_initial_schema.sql` using Supabase migrations or the SQL Editor.
+6. In Supabase **Authentication → Providers**, leave Email enabled. Confirm whether email verification should be required before first login.
+7. Enable Realtime for the `public.messages` table if the migration did not automatically add it to the `supabase_realtime` publication.
 
-## Free-tier notes
+**Never put a Supabase secret/service_role key in the Android app, GitHub variables, or this repository.** The Android app uses only the publishable key and relies on database RLS for authorization.
 
-Firebase Spark includes no-cost Authentication methods (excluding phone/SMS verification), Cloud Messaging, and bounded Firestore quotas. Exceeding a Spark quota can suspend that service until the quota resets; monitor usage before inviting many users.
+## GitHub Actions
 
-## Build
+The workflow reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from repository Actions secrets and passes them into Gradle at build time. When these secrets are absent, the app builds in demo mode instead of failing.
 
-Open **Actions → Android build**. On success, download the `face-video-debug-apk` artifact. Minimum supported Android version: Android 8.0 (API 26).
+Open **Actions → Android build**. On success, download the `face-video-debug-apk` artifact.
+
+Minimum supported Android version: Android 8.0 (API 26).

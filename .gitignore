@@ -3,8 +3,12 @@
 **/build/
 local.properties
 
-# Firebase configuration (restore from GitHub Actions secret at build time)
-app/google-services.json
+# Local Supabase secrets/configuration
+.env
+.env.*
+!*.env.example
+supabase/.temp/
+supabase/.branches/
 
 # IDE
 .idea/

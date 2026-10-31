@@ -13,17 +13,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,55 +34,74 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
+import com.facevideo.app.data.SupabaseClientProvider
+import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.auth.status.SessionStatus
+import kotlinx.coroutines.launch
 
 private val AuthBackground = Color(0xFF0A1020)
 private val AuthMint = Color(0xFF65E6D2)
 private val AuthMuted = Color(0xFF91A0BA)
+private val AuthText = Color(0xFFF4F6FC)
 
 @Composable
-fun FirebaseAuthGate(
+fun SupabaseAuthGate(
     content: @Composable (userEmail: String?, onSignOut: () -> Unit) -> Unit
 ) {
-    val context = LocalContext.current
-    val firebaseApp = remember(context) {
-        FirebaseApp.getApps(context).firstOrNull()
-    }
+    val supabase = SupabaseClientProvider.client
 
-    // No Firebase configuration yet: keep the app usable as a local UI prototype.
-    if (firebaseApp == null) {
+    // Without project credentials, the app remains a clearly marked UI demo.
+    if (supabase == null) {
         content(null) {}
         return
     }
 
-    val auth = remember(firebaseApp) { FirebaseAuth.getInstance(firebaseApp) }
-    var currentUser by remember(auth) { mutableStateOf<FirebaseUser?>(auth.currentUser) }
+    val sessionStatus by supabase.auth.sessionStatus.collectAsState(
+        initial = SessionStatus.Initializing
+    )
+    val scope = rememberCoroutineScope()
 
-    DisposableEffect(auth) {
-        val listener = FirebaseAuth.AuthStateListener { state ->
-            currentUser = state.currentUser
+    when (val status = sessionStatus) {
+        SessionStatus.Initializing -> {
+            Box(
+                Modifier.fillMaxSize().background(AuthBackground),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = AuthMint)
+            }
         }
-        auth.addAuthStateListener(listener)
-        onDispose { auth.removeAuthStateListener(listener) }
-    }
-
-    if (currentUser == null) {
-        FirebaseSignInScreen(auth)
-    } else {
-        content(currentUser?.email, { auth.signOut() })
+        is SessionStatus.Authenticated -> {
+            val email = status.session.user?.email ?: "Пользователь"
+            content(email) {
+                scope.launch { supabase.auth.signOut() }
+            }
+        }
+        else -> {
+            SupabaseSignInScreen(
+                onSignIn = { email, password -> supabase.auth.signInWith(Email) {
+                    this.email = email
+                    this.password = password
+                } },
+                onSignUp = { email, password -> supabase.auth.signUpWith(Email) {
+                    this.email = email
+                    this.password = password
+                } }
+            )
+        }
     }
 }
 
 @Composable
-private fun FirebaseSignInScreen(auth: FirebaseAuth) {
+private fun SupabaseSignInScreen(
+    onSignIn: suspend (String, String) -> Unit,
+    onSignUp: suspend (String, String) -> Unit
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isRegistration by remember { mutableStateOf(false) }
     var isBusy by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     Box(
         Modifier.fillMaxSize().background(
@@ -105,21 +124,17 @@ private fun FirebaseSignInScreen(auth: FirebaseAuth) {
             Spacer(Modifier.height(12.dp))
             Text(
                 if (isRegistration) "Создать аккаунт" else "С возвращением",
-                color = Color(0xFFF4F6FC),
+                color = AuthText,
                 fontSize = 27.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(8.dp))
-            Text(
-                "Вход в интернет-мессенджер",
-                color = AuthMuted,
-                fontSize = 13.sp
-            )
+            Text("Вход в интернет-мессенджер", color = AuthMuted, fontSize = 13.sp)
             Spacer(Modifier.height(28.dp))
 
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it; errorMessage = null },
+                onValueChange = { email = it; message = null },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Электронная почта") },
@@ -129,7 +144,7 @@ private fun FirebaseSignInScreen(auth: FirebaseAuth) {
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it; errorMessage = null },
+                onValueChange = { password = it; message = null },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Пароль") },
@@ -138,9 +153,9 @@ private fun FirebaseSignInScreen(auth: FirebaseAuth) {
                 colors = authFieldColors()
             )
 
-            if (errorMessage != null) {
+            if (message != null) {
                 Spacer(Modifier.height(12.dp))
-                Text(errorMessage.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 12.sp)
+                Text(message.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 12.sp)
             }
 
             Spacer(Modifier.height(20.dp))
@@ -148,20 +163,22 @@ private fun FirebaseSignInScreen(auth: FirebaseAuth) {
                 onClick = {
                     val cleanEmail = email.trim()
                     if (!cleanEmail.contains("@") || password.length < 6) {
-                        errorMessage = "Проверь email и пароль (не менее 6 символов)."
+                        message = "Проверь email и пароль (не менее 6 символов)."
                     } else {
                         isBusy = true
-                        errorMessage = null
-                        val operation = if (isRegistration) {
-                            auth.createUserWithEmailAndPassword(cleanEmail, password)
-                        } else {
-                            auth.signInWithEmailAndPassword(cleanEmail, password)
-                        }
-                        operation.addOnCompleteListener { task ->
-                            isBusy = false
-                            if (!task.isSuccessful) {
-                                errorMessage = task.exception?.localizedMessage
-                                    ?: "Не удалось выполнить вход. Проверь данные и настройки Firebase."
+                        message = null
+                        scope.launch {
+                            try {
+                                if (isRegistration) {
+                                    onSignUp(cleanEmail, password)
+                                    message = "Аккаунт создан. Проверь почту, если включено подтверждение email."
+                                } else {
+                                    onSignIn(cleanEmail, password)
+                                }
+                            } catch (error: Exception) {
+                                message = error.message ?: "Не удалось выполнить операцию."
+                            } finally {
+                                isBusy = false
                             }
                         }
                     }
@@ -186,7 +203,7 @@ private fun FirebaseSignInScreen(auth: FirebaseAuth) {
 
             TextButton(onClick = {
                 isRegistration = !isRegistration
-                errorMessage = null
+                message = null
             }) {
                 Text(
                     if (isRegistration) "Уже есть аккаунт? Войти" else "Создать новый аккаунт",
@@ -209,7 +226,7 @@ private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
     unfocusedBorderColor = Color(0xFF35445E),
     focusedLabelColor = AuthMint,
     unfocusedLabelColor = AuthMuted,
-    focusedTextColor = Color(0xFFF4F6FC),
-    unfocusedTextColor = Color(0xFFF4F6FC),
+    focusedTextColor = AuthText,
+    unfocusedTextColor = AuthText,
     cursorColor = AuthMint
 )
