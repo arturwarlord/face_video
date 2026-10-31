@@ -3,6 +3,7 @@ package com.facevideo.app.calls
 import android.content.Context
 import android.media.AudioManager
 import android.util.Log
+import com.facevideo.app.BuildConfig
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -28,6 +30,9 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * A one-to-one audio call using WebRTC media and Supabase only for signaling.
@@ -60,7 +65,7 @@ class WebRtcAudioCallClient(
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
     private var previousSpeakerState: Boolean = false
 
-    fun startOutgoing() {
+    suspend fun startOutgoing() {
         if (!isCaller) {
             onError("Только инициатор может начать исходящий звонок.")
             return
@@ -75,7 +80,7 @@ class WebRtcAudioCallClient(
         }
     }
 
-    fun startIncoming() {
+    suspend fun startIncoming() {
         if (isCaller) {
             onError("Для этого звонка ожидался входящий вызов.")
             return
@@ -114,7 +119,70 @@ class WebRtcAudioCallClient(
         audioManager.mode = previousAudioMode
     }
 
-    private fun prepareConnection() {
+    /**
+     * Adds TURN relays when the user configures a free Metered/Open Relay
+     * credentials URL in the GitHub Actions secret. STUN remains available
+     * as a fallback if the service is not configured or temporarily unavailable.
+     */
+    private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
+        val fallback = listOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+        )
+        val credentialsUrl = BuildConfig.METERED_TURN_CREDENTIALS_URL.trim()
+        if (credentialsUrl.isBlank()) return fallback
+
+        return withContext(Dispatchers.IO) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(credentialsUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 6_000
+                    readTimeout = 6_000
+                    useCaches = false
+                }
+                val responseCode = connection.responseCode
+                check(responseCode in 200..299) {
+                    "TURN credentials endpoint returned HTTP $responseCode."
+                }
+                val response = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONArray(response)
+                val turnServers = buildList {
+                    for (index in 0 until json.length()) {
+                        val item = json.optJSONObject(index) ?: continue
+                        val urls = when (val rawUrls = item.opt("urls")) {
+                            is String -> listOf(rawUrls)
+                            is JSONArray -> (0 until rawUrls.length()).mapNotNull { urlIndex ->
+                                rawUrls.optString(urlIndex).takeIf { it.isNotBlank() && it != "null" }
+                            }
+                            else -> emptyList()
+                        }
+                        val username = item.optString("username").takeIf { it.isNotBlank() && it != "null" }
+                        val password = item.optString("credential").takeIf { it.isNotBlank() && it != "null" }
+                        urls.filter { it.startsWith("turn:", true) || it.startsWith("turns:", true) }
+                            .forEach { turnUrl ->
+                                val builder = PeerConnection.IceServer.builder(turnUrl)
+                                if (username != null) builder.setUsername(username)
+                                if (password != null) builder.setPassword(password)
+                                add(builder.createIceServer())
+                            }
+                    }
+                }
+                check(turnServers.isNotEmpty()) {
+                    "TURN credentials response did not contain a TURN server."
+                }
+                Log.i(TAG, "Loaded ${turnServers.size} TURN relay URLs.")
+                fallback + turnServers
+            } catch (error: Exception) {
+                Log.w(TAG, "Could not load TURN credentials; falling back to STUN.", error)
+                fallback
+            } finally {
+                connection?.disconnect()
+            }
+        }
+    }
+
+    private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
         initializeFactory(appContext)
         val factory = peerConnectionFactory ?: error("Не удалось инициализировать WebRTC.")
@@ -125,10 +193,7 @@ class WebRtcAudioCallClient(
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = true
 
-        val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-        )
+        val iceServers = loadIceServers()
         val configuration = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY

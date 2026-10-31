@@ -21,6 +21,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      METERED_TURN_CREDENTIALS_URL: ${{ secrets.METERED_TURN_CREDENTIALS_URL }}
       ARTURCHAT_KEYSTORE_BASE64: ${{ secrets.ARTURCHAT_KEYSTORE_BASE64 }}
       ARTURCHAT_KEYSTORE_PASSWORD: ${{ secrets.ARTURCHAT_KEYSTORE_PASSWORD }}
       ARTURCHAT_KEY_ALIAS: ${{ secrets.ARTURCHAT_KEY_ALIAS }}
@@ -106,6 +107,7 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          -PMETERED_TURN_CREDENTIALS_URL="$METERED_TURN_CREDENTIALS_URL"
           -PAPP_VERSION_NAME="${{ steps.version.outputs.name }}"
           -PAPP_VERSION_CODE="${{ steps.version.outputs.code }}"
 
