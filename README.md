@@ -50,13 +50,11 @@ The configured chat list and conversation screen use the live repository. The us
 
 ## TURN relay for difficult mobile networks
 
-The app fetches TURN relay credentials from the deployed, JWT-protected Supabase Edge Function `get-arturchat-turn-credentials`. The Metered API key is never compiled into the APK.
+The app fetches short-lived TURN credentials from the deployed, JWT-protected Supabase Edge Function `get-arturchat-turn-credentials`. The function uses Open Relay's documented Static Auth endpoint (`staticauth.openrelay.metered.ca`) and generates per-request TURN REST credentials server-side using the published shared authentication secret. No payment card, Metered dashboard account, or user-provided API key is required for this public relay mode.
 
-1. Create a free Metered Open Relay account and copy the TURN credentials API URL shown by its dashboard.
-2. In Supabase Dashboard → Edge Functions → Secrets, add `METERED_TURN_CREDENTIALS_URL` with that complete API URL, including its API key.
-3. The Android app requests the temporary `iceServers` list through the authenticated Supabase Edge Function during call setup. If the relay endpoint is not configured or unavailable, the app falls back to its two public STUN servers.
+The Android app requests the temporary `iceServers` list during call setup. Credentials expire after six hours and are never embedded in the APK. If the relay provider is unavailable, the app falls back to its public STUN servers. Open Relay is a shared community relay: availability, capacity and any usage limits are controlled by the provider and are not an SLA.
 
-Metered currently describes Open Relay as free up to 20 GB of relayed traffic per month; availability and limits are subject to the provider's terms. See the [Open Relay service documentation](https://www.metered.ca/tools/openrelay/).
+References: [Open Relay Static Auth](https://www.metered.ca/tools/openrelay/) · [TURN REST authentication format](https://github.com/coturn/coturn/wiki/turnserver).
 
 ## Push notifications (Firebase Cloud Messaging)
 
