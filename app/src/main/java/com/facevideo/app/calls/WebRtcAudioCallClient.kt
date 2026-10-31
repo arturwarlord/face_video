@@ -7,12 +7,10 @@ import com.facevideo.app.BuildConfig
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,10 +51,10 @@ class WebRtcAudioCallClient(
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
     private val closed = AtomicBoolean(false)
-    private val iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
     private val processingLock = Mutex()
     private val processedSignals = mutableSetOf<String>()
+    private val pendingCandidatesLock = Any()
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
 
     private var signalJob: Job? = null
@@ -145,8 +143,10 @@ class WebRtcAudioCallClient(
                     "/functions/v1/get-arturchat-turn-credentials"
                 connection = (URL(functionUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
-                    connectTimeout = 7_000
-                    readTimeout = 7_000
+                    // TURN is optional; fail fast and continue with public STUN
+                    // instead of making call setup wait on a slow/unavailable broker.
+                    connectTimeout = 2_500
+                    readTimeout = 2_500
                     doOutput = true
                     useCaches = false
                     setRequestProperty("Content-Type", "application/json")
@@ -212,7 +212,9 @@ class WebRtcAudioCallClient(
         val iceServers = loadIceServers()
         val configuration = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            // Pre-gather a small pool so the first ICE checks can start sooner.
+            iceCandidatePoolSize = 2
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
 
         peerConnection = factory.createPeerConnection(
@@ -235,9 +237,6 @@ class WebRtcAudioCallClient(
                 override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                     Log.i(TAG, "ICE gathering state=$state")
-                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
-                        iceGatheringCompleted.complete(Unit)
-                    }
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
@@ -325,12 +324,7 @@ class WebRtcAudioCallClient(
                 val lineIndex = signal.payload["sdpMLineIndex"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
                 val candidateText = signal.payload["candidate"]?.jsonPrimitive?.contentOrNull
                 if (mid != null && lineIndex != null && candidateText != null) {
-                    val candidate = IceCandidate(mid, lineIndex, candidateText)
-                    if (peerConnection?.remoteDescription == null) {
-                        pendingRemoteCandidates += candidate
-                    } else {
-                        peerConnection?.addIceCandidate(candidate)
-                    }
+                    acceptRemoteCandidate(IceCandidate(mid, lineIndex, candidateText))
                 }
             }
         }
@@ -383,29 +377,20 @@ class WebRtcAudioCallClient(
         signalType: String,
         fallbackDescription: SessionDescription
     ) {
+        // Send the offer/answer as soon as setLocalDescription completes.
+        // ICE candidates are sent independently by onIceCandidate (trickle ICE),
+        // so we do not hold the call for the full ICE gathering cycle.
         scope.launch {
-            setStatus("Собираем сетевые маршруты…")
-            val gatheringFinished = withTimeoutOrNull(12_000L) {
-                iceGatheringCompleted.await()
-                true
-            } ?: false
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
             Log.i(
                 TAG,
-                "Sending $signalType SDP: gatheringFinished=$gatheringFinished, " +
-                    "candidatesInSdp=$candidatesInSdp, candidateCallbacks=${gatheredCandidateCount.get()}"
+                "Sending $signalType SDP immediately: candidatesInSdp=$candidatesInSdp, " +
+                    "candidateCallbacks=${gatheredCandidateCount.get()}"
             )
-            if (candidatesInSdp == 0) {
-                reportError(
-                    "Телефон не обнаружил сетевые маршруты для звонка. " +
-                        "Проверь интернет и разрешение доступа к состоянию сети."
-                )
-            } else if (!gatheringFinished) {
-                reportError("Сбор сетевых маршрутов занял слишком много времени. Пробуем подключиться частично.")
-            }
+            setStatus("Отправляем параметры соединения…")
 
             runCatching {
                 repository.sendSignal(
@@ -416,9 +401,20 @@ class WebRtcAudioCallClient(
                     payload = buildJsonObject { put("description", localSdp) }
                 )
             }.onSuccess {
-                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
+                Log.i(TAG, "$signalType SDP sent; trickle ICE continues in background")
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
+            }
+        }
+    }
+
+    private fun acceptRemoteCandidate(candidate: IceCandidate) {
+        val connection = peerConnection ?: return
+        synchronized(pendingCandidatesLock) {
+            if (connection.remoteDescription == null) {
+                pendingRemoteCandidates += candidate
+            } else if (!connection.addIceCandidate(candidate)) {
+                Log.w(TAG, "WebRTC rejected a remote ICE candidate")
             }
         }
     }
@@ -442,9 +438,15 @@ class WebRtcAudioCallClient(
     }
 
     private fun flushRemoteCandidates() {
-        val candidates = pendingRemoteCandidates.toList()
-        pendingRemoteCandidates.clear()
-        candidates.forEach { peerConnection?.addIceCandidate(it) }
+        val connection = peerConnection ?: return
+        val candidates = synchronized(pendingCandidatesLock) {
+            pendingRemoteCandidates.toList().also { pendingRemoteCandidates.clear() }
+        }
+        candidates.forEach { candidate ->
+            if (!connection.addIceCandidate(candidate)) {
+                Log.w(TAG, "WebRTC rejected a queued remote ICE candidate")
+            }
+        }
     }
 
     private fun setStatus(message: String) {
