@@ -18,7 +18,7 @@ The legacy NASTOLKA database objects have been removed from the connected Supaba
 
 ## Current backend status
 
-The Android code now targets Supabase. The isolated ArturChat schema is already applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`), while NASTOLKA's tables and functions remain untouched. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
+The Android code now targets Supabase. The ArturChat schema is applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`). All NASTOLKA-specific tables, functions, policies, and Realtime publication entries have been removed. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
 
 The configured chat list and conversation screen now use the live repository. Real registration and message exchange still need a hands-on test with two separate email accounts; video calling is a later milestone and does not connect yet.
 
