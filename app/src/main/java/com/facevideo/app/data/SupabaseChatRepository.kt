@@ -1,6 +1,7 @@
 package com.facevideo.app.data
 
 import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.annotations.SupabaseExperimental
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.selectAsFlow
 import kotlinx.coroutines.flow.Flow
@@ -66,6 +67,7 @@ class SupabaseChatRepository(
      * Emits the initial visible message list and subsequent inserts/updates/deletes.
      * The messages table must be enabled in the supabase_realtime publication.
      */
+    @OptIn(SupabaseExperimental::class)
     fun observeMessages(chatId: String): Flow<List<ChatMessageRecord>> =
         client.from("messages").selectAsFlow(ChatMessageRecord::id) {
             eq("chat_id", chatId)
