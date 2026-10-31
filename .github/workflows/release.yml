@@ -64,15 +64,18 @@ jobs:
 
       - name: Read and validate release version
         id: version
+        env:
+          RELEASE_TAG_INPUT: ${{ github.event.inputs.release_tag || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.release_tag || github.ref_name }}"
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag must use semantic version format vMAJOR.MINOR.PATCH"
+          RAW_TAG="${RELEASE_TAG_INPUT}"
+          VERSION="${RAW_TAG#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release version must use MAJOR.MINOR.PATCH format, with or without a leading v (for example 0.4.4 or v0.4.4)"
             exit 1
           fi
-          VERSION="${TAG#v}"
+          TAG="v$VERSION"
           IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
           CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
