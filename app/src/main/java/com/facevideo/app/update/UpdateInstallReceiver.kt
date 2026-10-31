@@ -36,25 +36,17 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                     return
                 }
 
-                confirmationIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                try {
-                    preferences.edit()
-                        .putString(KEY_INSTALL_STATE, "awaiting_confirmation")
-                        .putString(KEY_INSTALL_MESSAGE, "Ожидается подтверждение установки Android.")
-                        .putLong(KEY_INSTALL_UPDATED_AT, System.currentTimeMillis())
-                        .apply()
-                    context.startActivity(confirmationIntent)
-                } catch (error: Exception) {
-                    Log.e(TAG, "Could not open Android package installer confirmation", error)
-                    reportFailure(
-                        context,
-                        preferences,
-                        "Не удалось открыть окно установки Android: ${error.message ?: "неизвестная ошибка"}"
-                    )
-                }
+                preferences.edit()
+                    .putString(KEY_INSTALL_STATE, "awaiting_confirmation")
+                    .putString(KEY_INSTALL_MESSAGE, "Android ждёт подтверждения. Нажми «Открыть установщик Android» в ArturChat.")
+                    .putLong(KEY_INSTALL_UPDATED_AT, System.currentTimeMillis())
+                    .apply()
+                UpdateInstallCoordinator.requireUserAction(confirmationIntent)
+                Log.i(TAG, "Installer confirmation is ready for foreground, user-initiated launch")
             }
 
             PackageInstaller.STATUS_SUCCESS -> {
+                UpdateInstallCoordinator.clearPendingAction()
                 preferences.edit()
                     .putString(KEY_INSTALL_STATE, "success")
                     .putString(KEY_INSTALL_MESSAGE, "ArturChat успешно обновлён.")
@@ -85,6 +77,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
         preferences: android.content.SharedPreferences,
         message: String
     ) {
+        UpdateInstallCoordinator.clearPendingAction()
         preferences.edit()
             .putString(KEY_INSTALL_STATE, "failure")
             .putString(KEY_INSTALL_MESSAGE, message)
