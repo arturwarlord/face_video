@@ -81,4 +81,6 @@ The current GitHub Actions debug APK is for testing only. It is not the signed r
 
 **Important:** the first release signed with the new permanent key cannot update an already-installed APK signed with a different temporary debug key. Install the first signed ArturChat release once; all later releases can update over it without manually downloading APK files. Supabase messages are stored online, so they remain on the server, but you may need to sign in again after that one-time change of signing key.
 
+The current published stable release is v0.4.2. The next development build adds one-to-one audio calling; publish it as v0.4.3 after the Android build and manual two-device call test are complete.
+
 The self-hosted updater is intended for direct APK distribution. If ArturChat is later published on Google Play, switch to the Play Core in-app update flow and remove the sideload-only install permission.
