@@ -76,6 +76,7 @@ import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import com.facevideo.app.notifications.AppNotificationManager
+import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import java.util.UUID
@@ -163,13 +164,20 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
         ActivityResultContracts.RequestPermission()
     ) { }
 
-    LaunchedEffect(userId) {
+    LaunchedEffect(userId, liveRepository) {
         if (
             userId != null &&
             Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val currentUserId = userId ?: return@LaunchedEffect
+        val repository = liveRepository ?: return@LaunchedEffect
+        runCatching {
+            PushTokenRegistrar.register(context, repository, currentUserId)
+        }.onFailure {
+            android.util.Log.w("ArturChatPush", "FCM token registration failed", it)
         }
     }
 
@@ -437,7 +445,20 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
                             ContactsScreen(onOpenChat = { openedChat = it })
                         }
                     }
-                    MainTab.PROFILE -> ProfileScreen(userEmail = userEmail, onSignOut = onSignOut)
+                    MainTab.PROFILE -> ProfileScreen(
+                        userEmail = userEmail,
+                        onSignOut = {
+                            val currentUserId = userId
+                            scope.launch {
+                                if (currentUserId != null && liveRepository != null) {
+                                    runCatching {
+                                        PushTokenRegistrar.unregister(context, liveRepository, currentUserId)
+                                    }
+                                }
+                                onSignOut()
+                            }
+                        }
+                    )
                 }
                 BottomNavigation(selectedTab = selectedTab, onSelect = { selectedTab = it })
             }
