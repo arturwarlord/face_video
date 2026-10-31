@@ -258,6 +258,9 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
         val repository = callRepository ?: return@LaunchedEffect
         repository.observeCall(call.id).collect { rows ->
             val latest = rows.firstOrNull() ?: return@collect
+            if (activeCall?.id == call.id && activeCall?.status != latest.status) {
+                activeCall = activeCall?.copy(status = latest.status)
+            }
             when (latest.status) {
                 "accepted" -> if (activeCallIsOutgoing && callStatus.startsWith("Вызов")) {
                     callStatus = "Собеседник ответил. Подключаем аудио…"
