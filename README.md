@@ -2,15 +2,16 @@
 
 Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase.
 
-## Current milestone — 0.4.0
+## Current development milestone — one-to-one audio calls
 
-- Native Android interface: Chats, Calls, Contacts, Profile.
-- Demo conversations remain available only when backend credentials are absent; configured users receive their live Supabase conversations.
-- Supabase Auth email/password sign-up, sign-in, persistent session status and sign-out.
-- Supabase Kotlin SDK 3.8.0 with PostgREST and Realtime modules.
-- Live chat list, username lookup, direct-chat creation, message loading/sending, and Realtime subscriptions.
-- Applied PostgreSQL migrations for isolated ArturChat profiles, direct/group chats, members, messages, triggers, indexes, Realtime and Row Level Security.
-- GitHub Actions builds and tests the Android APK.
+- Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog and active audio-call screen.
+- Supabase Auth email/password registration, sign-in, persistent session status and sign-out.
+- Live direct chats, username lookup, message loading/sending and Realtime message synchronization.
+- One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
+- Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
+- WebRTC Android SDK io.github.webrtc-sdk:android:150.7871.04.
+- GitHub Actions tests and builds the Android APK.
+- Video calls, group calls and incoming-call notifications while the app is closed/backgrounded are not implemented yet.
 
 ## Supabase project isolation
 
@@ -20,7 +21,17 @@ The legacy NASTOLKA database objects have been removed from the connected Supaba
 
 The Android code now targets Supabase. The ArturChat schema is applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`). All NASTOLKA-specific tables, functions, policies, and Realtime publication entries have been removed. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
 
-The configured chat list and conversation screen now use the live repository. Real registration and message exchange still need a hands-on test with two separate email accounts; video calling is a later milestone and does not connect yet.
+The configured chat list and conversation screen use the live repository. The user has confirmed successful two-account registration, live message exchange and synchronization. The call tables and signaling permissions are applied; audio calls are the active development milestone.
+
+## Audio call implementation notes
+
+- Calls are currently one-to-one and are started from the phone icon in a direct chat.
+- Android requests microphone permission when the user starts or accepts a call.
+- Incoming call prompts are delivered while ArturChat is open and subscribed to Supabase Realtime. Push notifications for calls while the app is closed or in the background are a later task.
+- The current WebRTC ICE configuration uses a public STUN server only. Some mobile networks, carrier-grade NATs and restrictive firewalls require a TURN relay. Those networks may fail to establish peer-to-peer media until a TURN service is configured.
+- The call tables are public.face_video_calls and public.face_video_call_signals. Only authenticated users receive access, call rows are visible to their two participants, and signaling events can be read only by their recipient.
+- The database guards call status transitions: only the callee can accept/decline, only the caller can cancel a ringing call, and either participant can end an accepted call.
+- Group calls and video tracks/renderers are not enabled yet.
 
 ## Connect your Supabase project
 
