@@ -52,45 +52,37 @@ jobs:
             process.exitCode = 1;
           });
           NODE
-      - name: Test Open Relay static-auth TURN
+      - name: Test Open Relay transports individually
         run: |
           node <<'NODE'
           const { chromium } = require("playwright");
           const { createHmac, randomUUID } = require("node:crypto");
 
-          (async () => {
+          const host = "staticauth.openrelay.metered.ca";
+          const urls = [
+            `turn:${host}:80?transport=udp`,
+            `turn:${host}:443?transport=udp`,
+            `turn:${host}:443?transport=tcp`,
+            `turns:${host}:443?transport=tcp`,
+          ];
+
+          async function testUrl(browser, url) {
             const expiresAt = Math.floor(Date.now() / 1000) + 6 * 60 * 60;
             const username = `${expiresAt}:arturchat-actions-${randomUUID()}`;
             const credential = createHmac("sha1", "openrelayprojectsecret")
               .update(username)
               .digest("base64");
 
-            const host = "staticauth.openrelay.metered.ca";
-            const urls = [
-              `turn:${host}:80?transport=udp`,
-              `turn:${host}:443?transport=udp`,
-              `turn:${host}:443?transport=tcp`,
-              `turns:${host}:443?transport=tcp`,
-            ];
-            const iceServers = urls.map((url) => ({
-              urls: url,
-              username,
-              credential,
-            }));
-
-            const browser = await chromium.launch({
-              headless: true,
-              args: ["--no-sandbox", "--disable-dev-shm-usage"],
-            });
-
+            const page = await browser.newPage();
             try {
-              const page = await browser.newPage();
               await page.setContent("<!doctype html><html><body>TURN test</body></html>");
-              const result = await page.evaluate(async (servers) => {
+              return await page.evaluate(async ({ url, username, credential }) => {
                 return await new Promise(async (resolve) => {
-                  const pc = new RTCPeerConnection({ iceServers: servers });
-                  const counts = { host: 0, srflx: 0, relay: 0, other: 0 };
-                  const protocols = {};
+                  const pc = new RTCPeerConnection({
+                    iceTransportPolicy: "relay",
+                    iceServers: [{ urls: url, username, credential }],
+                  });
+                  const candidates = [];
                   const errors = [];
                   let finished = false;
 
@@ -99,47 +91,57 @@ jobs:
                     finished = true;
                     clearTimeout(timer);
                     pc.close();
-                    resolve({ reason, counts, protocols, errors });
+                    resolve({ url, reason, candidates, errors });
                   };
 
-                  const timer = setTimeout(() => finish("timeout"), 25000);
-
+                  const timer = setTimeout(() => finish("timeout"), 12000);
                   pc.onicecandidate = (event) => {
-                    if (!event.candidate) {
-                      finish("gathering-complete");
-                      return;
-                    }
-                    const type = event.candidate.type || "other";
-                    counts[type] = (counts[type] || 0) + 1;
-                    const protocol = event.candidate.protocol || "unknown";
-                    protocols[type] = protocols[type] || {};
-                    protocols[type][protocol] = (protocols[type][protocol] || 0) + 1;
-                  };
-
-                  pc.onicecandidateerror = (event) => {
-                    errors.push({
-                      code: event.errorCode || null,
-                      url: event.url || null,
-                      text: event.errorText || null,
+                    if (!event.candidate) return finish("gathering-complete");
+                    candidates.push({
+                      type: event.candidate.type,
+                      protocol: event.candidate.protocol,
+                      address: event.candidate.address,
+                      port: event.candidate.port,
                     });
                   };
+                  pc.onicecandidateerror = (event) => errors.push({
+                    code: event.errorCode || null,
+                    url: event.url || null,
+                    text: event.errorText || null,
+                  });
 
                   try {
                     pc.createDataChannel("probe");
-                    const offer = await pc.createOffer();
-                    await pc.setLocalDescription(offer);
+                    await pc.setLocalDescription(await pc.createOffer());
                   } catch (error) {
                     finish("offer-error: " + String(error));
                   }
                 });
-              }, iceServers);
+              }, { url, username, credential });
+            } finally {
+              await page.close();
+            }
+          }
 
+          (async () => {
+            const browser = await chromium.launch({
+              headless: true,
+              args: ["--no-sandbox", "--disable-dev-shm-usage"],
+            });
+            try {
+              const results = [];
+              for (const url of urls) {
+                results.push(await testUrl(browser, url));
+              }
               console.log(JSON.stringify({
-                relayCandidateFound: result.counts.relay > 0,
-                result,
+                relayCandidateFound: results.some((r) =>
+                  r.candidates.some((candidate) => candidate.type === "relay")
+                ),
+                results,
               }, null, 2));
-
-              if (!result.counts.relay) process.exitCode = 1;
+              if (!results.some((r) =>
+                r.candidates.some((candidate) => candidate.type === "relay")
+              )) process.exitCode = 1;
             } finally {
               await browser.close();
             }
