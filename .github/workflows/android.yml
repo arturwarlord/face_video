@@ -17,7 +17,6 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-      METERED_TURN_CREDENTIALS_URL: ${{ secrets.METERED_TURN_CREDENTIALS_URL }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,7 +42,6 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PMETERED_TURN_CREDENTIALS_URL="$METERED_TURN_CREDENTIALS_URL"
 
       - name: Build debug APK
         run: >-
