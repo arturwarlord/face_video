@@ -63,6 +63,7 @@ import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.update.ArturChatUpdateHost
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import java.util.UUID
@@ -99,8 +100,10 @@ class MainActivity : ComponentActivity() {
                     onSurface = MainText
                 )
             ) {
-                SupabaseAuthGate { userEmail, userId, onSignOut ->
-                    FaceVideoApp(userEmail = userEmail, userId = userId, onSignOut = onSignOut)
+                ArturChatUpdateHost {
+                    SupabaseAuthGate { userEmail, userId, onSignOut ->
+                        FaceVideoApp(userEmail = userEmail, userId = userId, onSignOut = onSignOut)
+                    }
                 }
             }
         }
@@ -239,7 +242,7 @@ private fun LiveChatListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text(if (contactsMode) "Контакты" else "Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
@@ -591,7 +594,7 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text("Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
@@ -873,7 +876,7 @@ private fun MessageBubble(message: ChatMessage) {
 @Composable
 private fun CallsScreen(onCall: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
-        Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(22.dp))
@@ -912,7 +915,7 @@ private fun CallsScreen(onCall: () -> Unit) {
 @Composable
 private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
-        Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Контакты", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
@@ -941,7 +944,7 @@ private fun ProfileScreen(userEmail: String?, onSignOut: () -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(40.dp))
         Avatar("FV", 1, Modifier.size(92.dp), highlighted = true)
         Spacer(Modifier.height(15.dp))
