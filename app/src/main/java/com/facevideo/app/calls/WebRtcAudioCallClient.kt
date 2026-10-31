@@ -31,6 +31,7 @@ import org.webrtc.SessionDescription
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -120,33 +121,48 @@ class WebRtcAudioCallClient(
     }
 
     /**
-     * Adds TURN relays when the user configures a free Metered/Open Relay
-     * credentials URL in the GitHub Actions secret. STUN remains available
-     * as a fallback if the service is not configured or temporarily unavailable.
+     * Fetches short-lived TURN credentials through an authenticated Supabase
+     * Edge Function. The Metered API key stays server-side and is never baked
+     * into the APK. Public STUN remains available as a fallback.
      */
     private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
         val fallback = listOf(
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
             PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
         )
-        val credentialsUrl = BuildConfig.METERED_TURN_CREDENTIALS_URL.trim()
-        if (credentialsUrl.isBlank()) return fallback
+        if (!BuildConfig.SUPABASE_CONFIGURED) return fallback
+
+        val accessToken = runCatching { repository.currentAccessToken() }
+            .getOrElse {
+                Log.w(TAG, "No authenticated session for TURN credentials; falling back to STUN.", it)
+                return fallback
+            }
 
         return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL(credentialsUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 6_000
-                    readTimeout = 6_000
+                val functionUrl = BuildConfig.SUPABASE_URL.trimEnd('/') +
+                    "/functions/v1/get-arturchat-turn-credentials"
+                connection = (URL(functionUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 7_000
+                    readTimeout = 7_000
+                    doOutput = true
                     useCaches = false
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
+                    setRequestProperty("Authorization", "Bearer $accessToken")
                 }
+                connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
                 val responseCode = connection.responseCode
                 check(responseCode in 200..299) {
-                    "TURN credentials endpoint returned HTTP $responseCode."
+                    "TURN credential function returned HTTP $responseCode."
                 }
+
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONArray(response)
+                val root = JSONObject(response)
+                val json = root.optJSONArray("iceServers")
+                    ?: error("TURN credential function returned no iceServers array.")
                 val turnServers = buildList {
                     for (index in 0 until json.length()) {
                         val item = json.optJSONObject(index) ?: continue
@@ -171,7 +187,7 @@ class WebRtcAudioCallClient(
                 check(turnServers.isNotEmpty()) {
                     "TURN credentials response did not contain a TURN server."
                 }
-                Log.i(TAG, "Loaded ${turnServers.size} TURN relay URLs.")
+                Log.i(TAG, "Loaded ${turnServers.size} TURN relay URLs from the authenticated backend.")
                 fallback + turnServers
             } catch (error: Exception) {
                 Log.w(TAG, "Could not load TURN credentials; falling back to STUN.", error)
