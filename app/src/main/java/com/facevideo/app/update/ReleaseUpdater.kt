@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -226,11 +227,13 @@ internal object ReleaseUpdater {
                 }
                 val callback = Intent(context, UpdateInstallReceiver::class.java)
                     .setAction(UpdateInstallReceiver.ACTION_INSTALL_STATUS)
+                val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
                 val pendingIntent = PendingIntent.getBroadcast(
                     context,
                     sessionId,
                     callback,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                    pendingIntentFlags
                 )
                 session.commit(pendingIntent.intentSender)
             }
