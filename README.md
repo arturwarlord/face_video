@@ -29,7 +29,7 @@ The configured chat list and conversation screen use the live repository. The us
 - Calls are currently one-to-one and are started from the phone icon in a direct chat.
 - Android requests microphone permission when the user starts or accepts a call.
 - Incoming call prompts use Supabase Realtime while the app is open. Once FCM credentials and database webhooks are configured, messages and incoming calls can also be delivered while the app is backgrounded or closed.
-- WebRTC waits for ICE gathering before sending the local SDP and includes two public STUN endpoints. Some mobile networks, carrier-grade NATs and restrictive firewalls still require a TURN relay; a free Metered/Open Relay credential can be configured as the next connectivity step.
+- WebRTC waits for ICE gathering before sending the local SDP and includes two public STUN endpoints. It can also fetch short-lived TURN credentials through the authenticated Supabase Edge Function `get-arturchat-turn-credentials`; the Metered API key stays server-side. Networks with restrictive NAT/firewalls may still need this relay configured.
 - The call tables are public.face_video_calls and public.face_video_call_signals. Only authenticated users receive access, call rows are visible to their two participants, and signaling events can be read only by their recipient.
 - The database guards call status transitions: only the callee can accept/decline, only the caller can cancel a ringing call, and either participant can end an accepted call.
 - Group calls and video tracks/renderers are not enabled yet.
@@ -47,6 +47,16 @@ The configured chat list and conversation screen use the live repository. The us
 7. Realtime is enabled for `public.face_video_messages`; no manual table selection is needed.
 
 **Never put a Supabase secret/service_role key in the Android app, GitHub variables, or this repository.** The Android app uses only the publishable key and relies on database RLS for authorization.
+
+## TURN relay for difficult mobile networks
+
+The app fetches TURN relay credentials from the deployed, JWT-protected Supabase Edge Function `get-arturchat-turn-credentials`. The Metered API key is never compiled into the APK.
+
+1. Create a free Metered Open Relay account and copy the TURN credentials API URL shown by its dashboard.
+2. In Supabase Dashboard → Edge Functions → Secrets, add `METERED_TURN_CREDENTIALS_URL` with that complete API URL, including its API key.
+3. The Android app requests the temporary `iceServers` list through the authenticated Supabase Edge Function during call setup. If the relay endpoint is not configured or unavailable, the app falls back to its two public STUN servers.
+
+Metered currently describes Open Relay as free up to 20 GB of relayed traffic per month; availability and limits are subject to the provider's terms. See the [Open Relay service documentation](https://www.metered.ca/tools/openrelay/).
 
 ## Push notifications (Firebase Cloud Messaging)
 
