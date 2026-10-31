@@ -117,6 +117,14 @@ jobs:
           -PAPP_VERSION_NAME="${{ steps.version.outputs.name }}"
           -PAPP_VERSION_CODE="${{ steps.version.outputs.code }}"
 
+      - name: Verify signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+
       - name: Prepare release assets and checksum
         shell: bash
         run: |
