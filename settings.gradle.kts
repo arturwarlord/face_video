@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "FaceVideo"
+rootProject.name = "ArturChat"
 include(":app")
