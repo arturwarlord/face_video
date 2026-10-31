@@ -20,6 +20,7 @@ android {
     signingConfigs {
         create("release") {
             val keystorePath = System.getenv("ARTURCHAT_KEYSTORE_PATH")
+            storeType = "JKS"
             if (!keystorePath.isNullOrBlank()) {
                 storeFile = file(keystorePath)
             }
