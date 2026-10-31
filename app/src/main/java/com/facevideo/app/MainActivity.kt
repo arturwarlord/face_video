@@ -1,8 +1,12 @@
 package com.facevideo.app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +42,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
@@ -58,12 +63,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import com.facevideo.app.calls.WebRtcAudioCallClient
+import com.facevideo.app.data.FaceVideoCall
+import com.facevideo.app.data.SupabaseCallRepository
 import com.facevideo.app.data.DemoData
 import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.update.ArturChatUpdateHost
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flowOf
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import java.util.UUID
@@ -110,14 +121,196 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private sealed interface PendingCallAction {
+    data class Outgoing(val chat: FaceVideoChatSummary) : PendingCallAction
+    data class Incoming(val call: FaceVideoCall) : PendingCallAction
+}
+
 @Composable
 private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> Unit) {
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
     var showCallInfo by remember { mutableStateOf(false) }
+    var callInfoMessage by remember { mutableStateOf("Видеозвонки будут подключены следующим этапом. Сейчас доступны персональные аудиозвонки.") }
+
+    val context = LocalContext.current
     val supabase = SupabaseClientProvider.client
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
+    val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
+    val scope = rememberCoroutineScope()
+    val incomingCallsFlow = remember(callRepository, userId) {
+        if (callRepository != null && userId != null) {
+            callRepository.observeIncomingCalls(userId)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    val incomingCalls by incomingCallsFlow.collectAsState(initial = emptyList())
+    var incomingCallerProfile by remember { mutableStateOf<FaceVideoProfile?>(null) }
+    var activeCall by remember { mutableStateOf<FaceVideoCall?>(null) }
+    var activeCallTitle by remember { mutableStateOf("") }
+    var activeCallIsOutgoing by remember { mutableStateOf(false) }
+    var callStatus by remember { mutableStateOf("Подготовка звонка…") }
+    var callError by remember { mutableStateOf<String?>(null) }
+    var callMuted by remember { mutableStateOf(false) }
+    var callClient by remember { mutableStateOf<WebRtcAudioCallClient?>(null) }
+    var pendingCallAction by remember { mutableStateOf<PendingCallAction?>(null) }
+
+    suspend fun performCallAction(action: PendingCallAction) {
+        val repository = callRepository ?: throw IllegalStateException("Сервер звонков недоступен.")
+        val currentUser = userId ?: throw IllegalStateException("Не удалось определить пользователя.")
+        when (action) {
+            is PendingCallAction.Outgoing -> {
+                callError = null
+                val call = repository.startDirectCall(action.chat.id, currentUser, "audio")
+                activeCall = call
+                activeCallTitle = action.chat.title
+                activeCallIsOutgoing = true
+                callStatus = "Вызов собеседника…"
+                val client = WebRtcAudioCallClient(
+                    context = context,
+                    repository = repository,
+                    call = call,
+                    currentUserId = currentUser,
+                    scope = scope,
+                    onStatus = { callStatus = it },
+                    onError = { callError = it }
+                )
+                callClient = client
+                client.startOutgoing()
+            }
+            is PendingCallAction.Incoming -> {
+                callError = null
+                repository.answerCall(action.call.id)
+                val profile = repository.getProfile(action.call.callerId)
+                activeCall = action.call.copy(status = "accepted")
+                activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
+                activeCallIsOutgoing = false
+                callStatus = "Подключаем аудио…"
+                val client = WebRtcAudioCallClient(
+                    context = context,
+                    repository = repository,
+                    call = action.call.copy(status = "accepted"),
+                    currentUserId = currentUser,
+                    scope = scope,
+                    onStatus = { callStatus = it },
+                    onError = { callError = it }
+                )
+                callClient = client
+                client.startIncoming()
+            }
+        }
+    }
+
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val action = pendingCallAction
+        pendingCallAction = null
+        if (granted && action != null) {
+            scope.launch {
+                runCatching { performCallAction(action) }
+                    .onFailure { callError = it.message ?: "Не удалось начать звонок." }
+            }
+        } else if (!granted) {
+            callError = "Для аудиозвонка разреши ArturChat доступ к микрофону."
+        }
+    }
+
+    fun requestCallPermission(action: PendingCallAction) {
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            scope.launch {
+                runCatching { performCallAction(action) }
+                    .onFailure { callError = it.message ?: "Не удалось начать звонок." }
+            }
+        } else {
+            pendingCallAction = action
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun finishCall() {
+        val call = activeCall ?: return
+        scope.launch {
+            runCatching {
+                if (activeCallIsOutgoing && call.status == "ringing") {
+                    callRepository?.cancelCall(call.id)
+                } else {
+                    callRepository?.endCall(call.id)
+                }
+            }
+            callClient?.end()
+            callClient = null
+            activeCall = null
+            callMuted = false
+        }
+    }
+
+    val incomingCall = incomingCalls.firstOrNull { it.id != activeCall?.id }
+    LaunchedEffect(incomingCall?.id) {
+        incomingCallerProfile = if (incomingCall != null) {
+            runCatching { callRepository?.getProfile(incomingCall.callerId) }.getOrNull()
+        } else null
+    }
+
+    LaunchedEffect(activeCall?.id, callRepository) {
+        val call = activeCall ?: return@LaunchedEffect
+        val repository = callRepository ?: return@LaunchedEffect
+        repository.observeCall(call.id).collect { rows ->
+            val latest = rows.firstOrNull() ?: return@collect
+            when (latest.status) {
+                "accepted" -> if (activeCallIsOutgoing && callStatus.startsWith("Вызов")) {
+                    callStatus = "Собеседник ответил. Подключаем аудио…"
+                }
+                "declined" -> {
+                    callStatus = "Собеседник отклонил вызов."
+                    delay(1800)
+                    if (activeCall?.id == call.id) {
+                        callClient?.end()
+                        callClient = null
+                        activeCall = null
+                    }
+                }
+                "cancelled" -> {
+                    callStatus = "Вызов отменён."
+                    delay(1500)
+                    if (activeCall?.id == call.id) {
+                        callClient?.end()
+                        callClient = null
+                        activeCall = null
+                    }
+                }
+                "ended" -> {
+                    callStatus = "Звонок завершён."
+                    delay(1200)
+                    if (activeCall?.id == call.id) {
+                        callClient?.end()
+                        callClient = null
+                        activeCall = null
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(activeCall?.id, activeCallIsOutgoing) {
+        val call = activeCall ?: return@LaunchedEffect
+        if (activeCallIsOutgoing && call.status == "ringing") {
+            delay(45_000)
+            if (activeCall?.id == call.id && callStatus.startsWith("Вызов")) {
+                runCatching { callRepository?.cancelCall(call.id) }
+                callStatus = "Нет ответа."
+                delay(1500)
+                if (activeCall?.id == call.id) {
+                    callClient?.end()
+                    callClient = null
+                    activeCall = null
+                }
+            }
+        }
+    }
+
     val messagesByChat = remember {
         mutableStateMapOf<String, SnapshotStateList<ChatMessage>>().apply {
             DemoData.chats.forEach { chat ->
@@ -133,13 +326,33 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
             Brush.verticalGradient(listOf(Night, Color(0xFF101A30), Night))
         )
     ) {
-        if (openedLiveChat != null && liveRepository != null && userId != null) {
+        if (activeCall != null) {
+            ActiveAudioCallScreen(
+                peerName = activeCallTitle,
+                status = callStatus,
+                error = callError,
+                muted = callMuted,
+                onToggleMute = {
+                    callMuted = !callMuted
+                    callClient?.setMuted(callMuted)
+                },
+                onEnd = { finishCall() }
+            )
+        } else if (openedLiveChat != null && liveRepository != null && userId != null) {
+            val currentChat = openedLiveChat!!
             LiveChatScreen(
-                chat = openedLiveChat!!,
+                chat = currentChat,
                 repository = liveRepository,
                 userId = userId,
                 onBack = { openedLiveChat = null },
-                onCall = { showCallInfo = true }
+                onCall = { isVideo ->
+                    if (isVideo) {
+                        callInfoMessage = "Видеозвонки ещё разрабатываются. Сейчас уже можно звонить голосом."
+                        showCallInfo = true
+                    } else {
+                        requestCallPermission(PendingCallAction.Outgoing(currentChat))
+                    }
+                }
             )
         } else if (openedChat != null) {
             val chat = openedChat!!
@@ -183,17 +396,49 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
         }
     }
 
+    if (incomingCall != null && activeCall == null) {
+        AlertDialog(
+            onDismissRequest = {
+                scope.launch { runCatching { callRepository?.declineCall(incomingCall.id) } }
+            },
+            containerColor = PanelLight,
+            title = { Text("Входящий аудиозвонок", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        incomingCallerProfile?.displayName?.ifBlank { incomingCallerProfile?.username ?: "Пользователь" }
+                            ?: "Пользователь звонит тебе",
+                        color = MainText,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text("ArturChat · голосовой вызов", color = Muted, fontSize = 12.sp)
+                    if (callError != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(callError.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 11.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { requestCallPermission(PendingCallAction.Incoming(incomingCall)) }) {
+                    Text("Принять", color = Mint, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    scope.launch { runCatching { callRepository?.declineCall(incomingCall.id) } }
+                }) {
+                    Text("Отклонить", color = Muted)
+                }
+            }
+        )
+    }
+
     if (showCallInfo) {
         AlertDialog(
             onDismissRequest = { showCallInfo = false },
             containerColor = PanelLight,
             title = { Text("Видеозвонки", color = MainText, fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "Экран и кнопки звонка подготовлены как следующий модуль. Для реальных звонков нужно подключить WebRTC и сигнальный сервер; сейчас соединение ещё не устанавливается.",
-                    color = Muted
-                )
-            },
+            text = { Text(callInfoMessage, color = Muted) },
             confirmButton = {
                 TextButton(onClick = { showCallInfo = false }) {
                     Text("Понятно", color = Mint)
@@ -456,7 +701,7 @@ private fun LiveChatScreen(
     repository: SupabaseChatRepository,
     userId: String,
     onBack: () -> Unit,
-    onCall: () -> Unit
+    onCall: (Boolean) -> Unit
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
@@ -499,8 +744,8 @@ private fun LiveChatScreen(
                 Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text("синхронизация в реальном времени", color = Mint, fontSize = 10.sp)
             }
-            Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
-            Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+            Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
+            Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF25324A)))
 
@@ -874,6 +1119,61 @@ private fun MessageBubble(message: ChatMessage) {
 }
 
 @Composable
+private fun ActiveAudioCallScreen(
+    peerName: String,
+    status: String,
+    error: String?,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
+    onEnd: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(34.dp))
+        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Spacer(Modifier.weight(1f))
+        Avatar(peerName.take(2).uppercase(), peerName.hashCode().ushr(1) % 4, Modifier.size(116.dp))
+        Spacer(Modifier.height(24.dp))
+        Text(peerName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        Text(status, color = Mint, fontSize = 14.sp)
+        if (error != null) {
+            Spacer(Modifier.height(12.dp))
+            Text(error, color = Color(0xFFFFA5B5), fontSize = 12.sp)
+        }
+        Spacer(Modifier.weight(1f))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = if (muted) Color(0xFF42506A) else PanelLight,
+                shape = CircleShape,
+                modifier = Modifier.size(62.dp).clickable(onClick = onToggleMute)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(if (muted) "Микрофон выкл." else "Микрофон", color = MainText, fontSize = 10.sp)
+                }
+            }
+            Surface(
+                color = Color(0xFFB9425A),
+                shape = CircleShape,
+                modifier = Modifier.size(72.dp).clickable(onClick = onEnd)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("✕", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(36.dp))
+        Text("Звонок один на один · WebRTC", color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
 private fun CallsScreen(onCall: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
         Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
@@ -882,33 +1182,17 @@ private fun CallsScreen(onCall: () -> Unit) {
         Spacer(Modifier.height(22.dp))
         Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFF273750))) {
             Column(Modifier.fillMaxWidth().padding(19.dp)) {
-                Text("Связь без границ", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Голосовая связь уже доступна", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text("Личные и групповые аудио- и видеозвонки появятся после подключения WebRTC.", color = Muted, fontSize = 13.sp)
+                Text("Открой личную переписку и нажми на значок телефонной трубки. Входящий вызов появится прямо в приложении.", color = Muted, fontSize = 13.sp)
                 Spacer(Modifier.height(17.dp))
-                Surface(
-                    color = Color(0xFF214D4B),
-                    shape = RoundedCornerShape(13.dp),
-                    modifier = Modifier.clickable(onClick = onCall)
-                ) {
-                    Text("Проверить видеозвонки  →", color = Mint, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp))
-                }
+                Text("Видеозвонки и групповые вызовы — следующий этап.", color = Mint, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(25.dp))
-        Text("НЕДАВНИЕ", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-        Spacer(Modifier.height(12.dp))
-        DemoData.chats.take(3).forEach { chat ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(chat.initials, chat.avatarStyle, Modifier.size(47.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("История звонков появится после подключения сервера", color = Muted, fontSize = 10.sp)
-                }
-                Text("↗", color = Mint, fontSize = 20.sp)
-            }
-        }
+        Text("ПОДСКАЗКА", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(10.dp))
+        Text("Для проверки нужны два аккаунта ArturChat на двух устройствах. Оба устройства должны быть подключены к интернету.", color = Muted, fontSize = 12.sp)
     }
 }
 
