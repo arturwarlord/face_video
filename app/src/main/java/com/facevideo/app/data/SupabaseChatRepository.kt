@@ -1,7 +1,8 @@
 package com.facevideo.app.data
 
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.postgrest.query.selectAsFlow
+import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.realtime.selectAsFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -49,7 +50,7 @@ class SupabaseChatRepository(
                 filter {
                     eq("chat_id", chatId)
                 }
-                order("created_at")
+                order("created_at", Order.ASCENDING)
             }
             .decodeList<ChatMessageRecord>()
 
