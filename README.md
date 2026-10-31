@@ -9,10 +9,10 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 - Live direct chats, username lookup, message loading/sending and Realtime message synchronization.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
 - Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
-- Android system notifications are generated for new incoming messages while the app process is running and its Realtime connection is active; this is not yet FCM push delivery when the app is fully closed.
+- Android system notifications support foreground Realtime and Firebase Cloud Messaging (FCM). The FCM client and server function are implemented; remote delivery becomes active after Firebase credentials and Supabase Database Webhooks are configured.
 - WebRTC Android SDK io.github.webrtc-sdk:android:150.7871.04.
 - GitHub Actions tests and builds the Android APK.
-- Video calls, group calls and reliable FCM push delivery while the app is closed/backgrounded are not implemented yet.
+- Video calls and group calls are not implemented yet. FCM push delivery requires the Firebase and Supabase webhook setup below.
 
 ## Supabase project isolation
 
@@ -28,7 +28,7 @@ The configured chat list and conversation screen use the live repository. The us
 
 - Calls are currently one-to-one and are started from the phone icon in a direct chat.
 - Android requests microphone permission when the user starts or accepts a call.
-- Incoming call prompts are delivered while ArturChat is open and subscribed to Supabase Realtime. Push notifications for calls while the app is closed or in the background are a later task.
+- Incoming call prompts use Supabase Realtime while the app is open. Once FCM credentials and database webhooks are configured, messages and incoming calls can also be delivered while the app is backgrounded or closed.
 - WebRTC waits for ICE gathering before sending the local SDP and includes two public STUN endpoints. Some mobile networks, carrier-grade NATs and restrictive firewalls still require a TURN relay; a free Metered/Open Relay credential can be configured as the next connectivity step.
 - The call tables are public.face_video_calls and public.face_video_call_signals. Only authenticated users receive access, call rows are visible to their two participants, and signaling events can be read only by their recipient.
 - The database guards call status transitions: only the callee can accept/decline, only the caller can cancel a ringing call, and either participant can end an accepted call.
@@ -47,6 +47,23 @@ The configured chat list and conversation screen use the live repository. The us
 7. Realtime is enabled for `public.face_video_messages`; no manual table selection is needed.
 
 **Never put a Supabase secret/service_role key in the Android app, GitHub variables, or this repository.** The Android app uses only the publishable key and relies on database RLS for authorization.
+
+## Push notifications (Firebase Cloud Messaging)
+
+ArturChat now includes the Android FCM service, per-account device-token registration and the deployed Supabase Edge Function `send-arturchat-push`. Tokens are stored in `public.face_video_push_tokens`; RLS restricts each user's rows to that user. The final external credentials and webhooks still need one-time setup:
+
+1. In Firebase Console, create or select a project and add an Android app with package ID `com.facevideo.app`. Download `google-services.json` and add it in GitHub at `app/google-services.json` (the file contains client configuration, not a private service-account key). The Gradle build automatically activates Google Services when this file is present.
+2. In Firebase Console → Project settings → Service accounts, generate a private service-account JSON key. Do not commit it or add it to the Android app. Keep it for the Supabase Edge Function secret in the next step.
+3. In Supabase Dashboard → Edge Functions → Secrets, set:
+   - `FCM_SERVICE_ACCOUNT_JSON` — the complete Firebase service-account JSON.
+   - `ARTURCHAT_PUSH_WEBHOOK_SECRET` — a long random value that will be shared only with the two database webhooks.
+   - `SUPABASE_SERVICE_ROLE_KEY` — the server-only Supabase service-role/secret key. It must never be placed in Android or GitHub.
+4. Create two Supabase Database Webhooks (POST / INSERT), one for `public.face_video_messages` and one for `public.face_video_calls`. Both call `https://mitvjkhlsvxcnzhbiwye.supabase.co/functions/v1/send-arturchat-push`. Add header `x-arturchat-webhook-secret` with the same value as `ARTURCHAT_PUSH_WEBHOOK_SECRET`, plus `Content-Type: application/json`.
+5. Build and install the signed release on each phone. Sign in and open ArturChat once on each device so its FCM token is registered. On Android 13+, grant notification permission.
+
+The Edge Function sends new-message notifications to the other members of a chat and incoming-call notifications only to the callee. It ignores message notifications sent by the same account. The Android app also keeps its foreground Realtime notification fallback. Phone manufacturers may apply their own battery and background restrictions.
+
+The Firebase service-account key, Supabase service-role key and webhook secret are private server credentials. Only the Android `google-services.json` client config belongs in the app build.
 
 ## GitHub Actions
 
