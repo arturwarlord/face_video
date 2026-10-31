@@ -4,7 +4,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.Timestamp
+import com.google.firebase.Timestamp
 
 data class RemoteChatMessage(
     val id: String,
