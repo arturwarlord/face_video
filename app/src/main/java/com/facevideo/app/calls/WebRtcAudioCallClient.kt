@@ -112,6 +112,7 @@ class WebRtcAudioCallClient(
     private fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
         initializeFactory(appContext)
+        val factory = peerConnectionFactory ?: error("Не удалось инициализировать WebRTC.")
 
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         previousAudioMode = audioManager.mode
@@ -127,7 +128,7 @@ class WebRtcAudioCallClient(
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
         }
 
-        peerConnection = peerConnectionFactory.createPeerConnection(
+        peerConnection = factory.createPeerConnection(
             configuration,
             object : PeerConnection.Observer {
                 override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
@@ -162,7 +163,7 @@ class WebRtcAudioCallClient(
                                     put("candidate", candidate.sdp)
                                 }
                             )
-                        }.onFailure(::reportError)
+                        }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
                     }
                 }
 
@@ -179,14 +180,14 @@ class WebRtcAudioCallClient(
             }
         ) ?: error("WebRTC не смог создать соединение.")
 
-        val source = peerConnectionFactory.createAudioSource(MediaConstraints())
+        val source = factory.createAudioSource(MediaConstraints())
         audioSource = source
-        val track = peerConnectionFactory.createAudioTrack(
+        val track = factory.createAudioTrack(
             "arturchat-audio-${call.id}",
             source
         )
         localAudioTrack = track
-        check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) == true) {
+        check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) != null) {
             "Не удалось подключить микрофон."
         }
     }
@@ -256,7 +257,7 @@ class WebRtcAudioCallClient(
                                     "offer",
                                     buildJsonObject { put("description", description.description) }
                                 )
-                            }.onFailure(::reportError)
+                            }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
                         }
                     }
 
@@ -287,7 +288,7 @@ class WebRtcAudioCallClient(
                                     "answer",
                                     buildJsonObject { put("description", description.description) }
                                 )
-                            }.onFailure(::reportError)
+                            }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
                         }
                     }
 
