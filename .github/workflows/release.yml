@@ -86,6 +86,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
           git fetch --tags --force
           if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
             TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
