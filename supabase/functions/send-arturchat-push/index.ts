@@ -24,9 +24,19 @@ const WEBHOOK_SECRET = Deno.env.get("ARTURCHAT_PUSH_WEBHOOK_SECRET") ?? "";
 const SERVICE_ACCOUNT_JSON = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON") ?? "";
 const FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+let supabaseAdmin: ReturnType<typeof createClient> | null = null;
+
+function getSupabaseAdmin() {
+  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+    throw new Error("Supabase server credentials are not configured.");
+  }
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return supabaseAdmin;
+}
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -88,7 +98,7 @@ async function sendToDevice(
   if (response.ok) return { sent: true, removedInvalidToken: false };
   const errorBody = await response.text();
   if (response.status === 404 || errorBody.includes("UNREGISTERED") || errorBody.includes("NOT_FOUND")) {
-    await supabase.from("face_video_push_tokens")
+    await getSupabaseAdmin().from("face_video_push_tokens")
       .delete().eq("user_id", target.user_id).eq("token", target.token);
     return { sent: false, removedInvalidToken: true };
   }
@@ -106,6 +116,7 @@ Deno.serve(async (request: Request) => {
     return jsonResponse(503, { error: "Push delivery is not configured." });
   }
 
+  const supabase = getSupabaseAdmin();
   let payload: WebhookPayload;
   try {
     payload = await request.json();
