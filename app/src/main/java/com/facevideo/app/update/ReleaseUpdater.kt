@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -253,6 +254,7 @@ internal class InstallPermissionRequiredException : IOException(
 fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val pendingConfirmationIntent by UpdateInstallCoordinator.pendingConfirmationIntent.collectAsState()
     var availableRelease by remember { mutableStateOf<AvailableRelease?>(null) }
     var isDownloading by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0) }
@@ -285,8 +287,12 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                         UpdateInstallReceiver.KEY_INSTALL_MESSAGE,
                         null
                     )
-                    if (preferences.getString(UpdateInstallReceiver.KEY_INSTALL_STATE, "") == "success") {
-                        availableRelease = null
+                    when (preferences.getString(UpdateInstallReceiver.KEY_INSTALL_STATE, "")) {
+                        "success" -> {
+                            availableRelease = null
+                            installSubmitted = false
+                        }
+                        "failure" -> installSubmitted = false
                     }
                 }
                 delay(500)
@@ -308,10 +314,16 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                     if (errorMessage != null) {
                         Text(errorMessage.orEmpty())
                     }
-                    if (installSubmitted) {
+                    if (pendingConfirmationIntent != null) {
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "APK загружен и передан системному установщику. Заверши установку в окне Android.",
+                            "Android подготовил установку. Нажми «Открыть установщик Android», чтобы продолжить.",
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else if (installSubmitted && installerMessage == null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "APK передан Android. Ожидаем ответ системного установщика.",
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -323,41 +335,58 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
             },
             confirmButton = {
                 TextButton(
-                    enabled = !isDownloading,
+                    enabled = !isDownloading && (!installSubmitted || pendingConfirmationIntent != null),
                     onClick = {
-                        scope.launch {
-                            if (!context.packageManager.canRequestPackageInstalls()) {
-                                errorMessage = "Разреши установку для ArturChat в системных настройках, вернись в приложение и нажми «Обновить» ещё раз."
-                                ReleaseUpdater.openInstallPermissionSettings(context)
-                                return@launch
-                            }
-                            isDownloading = true
-                            errorMessage = null
-                            installerMessage = null
-                            installSubmitted = false
-                            progress = 0
-                            context.getSharedPreferences(
-                                UpdateInstallReceiver.PREFERENCES,
-                                Context.MODE_PRIVATE
-                            ).edit()
-                                .remove(UpdateInstallReceiver.KEY_INSTALL_STATE)
-                                .remove(UpdateInstallReceiver.KEY_INSTALL_MESSAGE)
-                                .putLong(UpdateInstallReceiver.KEY_INSTALL_UPDATED_AT, 0L)
-                                .apply()
+                        val confirmation = pendingConfirmationIntent
+                        if (confirmation != null) {
                             try {
-                                ReleaseUpdater.downloadAndInstall(context, release) { progress = it }
-                                installSubmitted = true
-                            } catch (error: InstallPermissionRequiredException) {
-                                errorMessage = error.message
+                                // This runs from a real user tap while ArturChat is in the foreground.
+                                context.startActivity(Intent(confirmation))
                             } catch (error: Exception) {
-                                errorMessage = error.message ?: "Не удалось установить обновление."
-                            } finally {
-                                isDownloading = false
+                                errorMessage = "Не удалось открыть системный установщик: ${error.message ?: "неизвестная ошибка"}"
+                            }
+                        } else if (!installSubmitted) {
+                            scope.launch {
+                                if (!context.packageManager.canRequestPackageInstalls()) {
+                                    errorMessage = "Разреши установку для ArturChat в системных настройках, вернись в приложение и нажми «Обновить» ещё раз."
+                                    ReleaseUpdater.openInstallPermissionSettings(context)
+                                    return@launch
+                                }
+                                isDownloading = true
+                                errorMessage = null
+                                installerMessage = null
+                                installSubmitted = false
+                                progress = 0
+                                context.getSharedPreferences(
+                                    UpdateInstallReceiver.PREFERENCES,
+                                    Context.MODE_PRIVATE
+                                ).edit()
+                                    .remove(UpdateInstallReceiver.KEY_INSTALL_STATE)
+                                    .remove(UpdateInstallReceiver.KEY_INSTALL_MESSAGE)
+                                    .putLong(UpdateInstallReceiver.KEY_INSTALL_UPDATED_AT, 0L)
+                                    .apply()
+                                try {
+                                    ReleaseUpdater.downloadAndInstall(context, release) { progress = it }
+                                    installSubmitted = true
+                                } catch (error: InstallPermissionRequiredException) {
+                                    errorMessage = error.message
+                                } catch (error: Exception) {
+                                    errorMessage = error.message ?: "Не удалось установить обновление."
+                                } finally {
+                                    isDownloading = false
+                                }
                             }
                         }
                     }
                 ) {
-                    Text(if (isDownloading) "Загрузка..." else if (installSubmitted && installerMessage == null) "Установщик открыт" else "Обновить")
+                    Text(
+                        when {
+                            isDownloading -> "Загрузка..."
+                            pendingConfirmationIntent != null -> "Открыть установщик Android"
+                            installSubmitted -> "Ожидаем Android..."
+                            else -> "Обновить"
+                        }
+                    )
                 }
             },
             dismissButton = {
