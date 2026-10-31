@@ -7,20 +7,34 @@ plugins {
 
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.4.0").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("4000").get().toInt()
 
 fun String.asBuildConfigString(): String =
-    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 android {
     namespace = "com.facevideo.app"
     compileSdk = 36
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("ARTURCHAT_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+            }
+            System.getenv("ARTURCHAT_KEYSTORE_PASSWORD")?.let { storePassword = it }
+            System.getenv("ARTURCHAT_KEY_ALIAS")?.let { keyAlias = it }
+            System.getenv("ARTURCHAT_KEY_PASSWORD")?.let { keyPassword = it }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.facevideo.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
@@ -35,6 +49,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+        }
     }
 
     compileOptions {
