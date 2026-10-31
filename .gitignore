@@ -13,3 +13,8 @@ supabase/.branches/
 # IDE
 .idea/
 *.iml
+
+# Android release signing material - never commit
+*.jks
+*.keystore
+arturchat-upload.jks
