@@ -29,16 +29,21 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -54,9 +59,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.facevideo.app.data.DemoData
+import com.facevideo.app.data.SupabaseClientProvider
+import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.FaceVideoChatSummary
+import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 private val Night = Color(0xFF0A1020)
 private val Panel = Color(0xFF141E32)
@@ -89,8 +99,8 @@ class MainActivity : ComponentActivity() {
                     onSurface = MainText
                 )
             ) {
-                SupabaseAuthGate { userEmail, onSignOut ->
-                    FaceVideoApp(userEmail = userEmail, onSignOut = onSignOut)
+                SupabaseAuthGate { userEmail, userId, onSignOut ->
+                    FaceVideoApp(userEmail = userEmail, userId = userId, onSignOut = onSignOut)
                 }
             }
         }
@@ -98,10 +108,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FaceVideoApp(userEmail: String?, onSignOut: () -> Unit) {
+private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> Unit) {
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
+    var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
     var showCallInfo by remember { mutableStateOf(false) }
+    val supabase = SupabaseClientProvider.client
+    val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
     val messagesByChat = remember {
         mutableStateMapOf<String, SnapshotStateList<ChatMessage>>().apply {
             DemoData.chats.forEach { chat ->
@@ -117,7 +130,15 @@ private fun FaceVideoApp(userEmail: String?, onSignOut: () -> Unit) {
             Brush.verticalGradient(listOf(Night, Color(0xFF101A30), Night))
         )
     ) {
-        if (openedChat != null) {
+        if (openedLiveChat != null && liveRepository != null && userId != null) {
+            LiveChatScreen(
+                chat = openedLiveChat!!,
+                repository = liveRepository,
+                userId = userId,
+                onBack = { openedLiveChat = null },
+                onCall = { showCallInfo = true }
+            )
+        } else if (openedChat != null) {
             val chat = openedChat!!
             ChatScreen(
                 chat = chat,
@@ -128,9 +149,30 @@ private fun FaceVideoApp(userEmail: String?, onSignOut: () -> Unit) {
         } else {
             Column(Modifier.fillMaxSize()) {
                 when (selectedTab) {
-                    MainTab.CHATS -> ChatListScreen(onOpenChat = { openedChat = it })
+                    MainTab.CHATS -> {
+                        if (liveRepository != null && userId != null) {
+                            LiveChatListScreen(
+                                repository = liveRepository,
+                                userId = userId,
+                                onOpenChat = { openedLiveChat = it }
+                            )
+                        } else {
+                            ChatListScreen(onOpenChat = { openedChat = it })
+                        }
+                    }
                     MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
-                    MainTab.CONTACTS -> ContactsScreen(onOpenChat = { openedChat = it })
+                    MainTab.CONTACTS -> {
+                        if (liveRepository != null && userId != null) {
+                            LiveChatListScreen(
+                                repository = liveRepository,
+                                userId = userId,
+                                onOpenChat = { openedLiveChat = it },
+                                contactsMode = true
+                            )
+                        } else {
+                            ContactsScreen(onOpenChat = { openedChat = it })
+                        }
+                    }
                     MainTab.PROFILE -> ProfileScreen(userEmail = userEmail, onSignOut = onSignOut)
                 }
                 BottomNavigation(selectedTab = selectedTab, onSelect = { selectedTab = it })
@@ -159,6 +201,385 @@ private fun FaceVideoApp(userEmail: String?, onSignOut: () -> Unit) {
 }
 
 @Composable
+
+@Composable
+private fun LiveChatListScreen(
+    repository: SupabaseChatRepository,
+    userId: String,
+    onOpenChat: (FaceVideoChatSummary) -> Unit,
+    contactsMode: Boolean = false
+) {
+    var chats by remember { mutableStateOf<List<FaceVideoChatSummary>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var query by remember { mutableStateOf("") }
+    var showNewChat by remember { mutableStateOf(false) }
+    var reloadKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(repository, reloadKey) {
+        isLoading = true
+        loadError = null
+        try {
+            chats = repository.listMyChats()
+        } catch (error: Exception) {
+            loadError = error.message ?: "Не удалось загрузить переписки."
+        } finally {
+            isLoading = false
+        }
+    }
+
+    val visibleChats = remember(chats, query) {
+        if (query.isBlank()) chats else chats.filter {
+            it.title.contains(query.trim(), ignoreCase = true) ||
+                it.lastMessagePreview.contains(query.trim(), ignoreCase = true)
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("FACE VIDEO", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(5.dp))
+                Text(if (contactsMode) "Контакты" else "Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+            }
+            Surface(
+                color = Color(0xFF173B3B),
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, Color(0xFF28605D))
+            ) {
+                Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(Mint))
+                    Spacer(Modifier.width(7.dp))
+                    Text("ONLINE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                }
+            }
+        }
+
+        SearchField(value = query, onValueChange = { query = it })
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(if (contactsMode) "НАЙТИ ПОЛЬЗОВАТЕЛЯ" else "ВАШИ ДИАЛОГИ", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                Text(
+                    if (contactsMode) "Поиск по псевдониму" else "${visibleChats.size} диалогов",
+                    color = MainText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Button(onClick = { showNewChat = true }) {
+                Text("＋ Новый чат")
+            }
+        }
+
+        if (isLoading) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = Mint)
+            }
+        } else if (loadError != null) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Не удалось подключиться к перепискам", color = MainText, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(loadError.orEmpty(), color = Muted, fontSize = 11.sp)
+                Spacer(Modifier.height(14.dp))
+                TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = Mint) }
+            }
+        } else if (visibleChats.isEmpty()) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Avatar("FV", 1, Modifier.size(68.dp))
+                Spacer(Modifier.height(18.dp))
+                Text(if (query.isBlank()) "Пока нет переписок" else "Ничего не найдено", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text("Нажми «Новый чат», чтобы найти человека по псевдониму.", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(15.dp))
+                TextButton(onClick = { showNewChat = true }) { Text("Найти пользователя", color = Mint) }
+            }
+        } else {
+            LazyColumn(
+                Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                items(visibleChats, key = { it.id }) { chat ->
+                    LiveChatRow(chat = chat, onClick = { onOpenChat(chat) })
+                }
+            }
+        }
+    }
+
+    if (showNewChat) {
+        NewChatDialog(
+            repository = repository,
+            currentUserId = userId,
+            onDismiss = { showNewChat = false },
+            onOpenChat = { chat ->
+                showNewChat = false
+                onOpenChat(chat)
+            }
+        )
+    }
+}
+
+@Composable
+private fun LiveChatRow(chat: FaceVideoChatSummary, onClick: () -> Unit) {
+    val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
+            .background(Color(0x66151F33)).padding(horizontal = 11.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Avatar(initials, chat.id.hashCode().ushr(1) % 4, Modifier.size(53.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                chat.lastMessagePreview.ifBlank { "Начните переписку" },
+                color = Muted,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            chat.lastMessageAt?.substringAfter("T")?.take(5) ?: "",
+            color = Muted,
+            fontSize = 10.sp
+        )
+    }
+}
+
+@Composable
+private fun NewChatDialog(
+    repository: SupabaseChatRepository,
+    currentUserId: String,
+    onDismiss: () -> Unit,
+    onOpenChat: (FaceVideoChatSummary) -> Unit
+) {
+    var username by remember { mutableStateOf("") }
+    var result by remember { mutableStateOf<FaceVideoProfile?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var isBusy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PanelLight,
+        title = { Text("Новый чат", color = MainText, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("Введи псевдоним человека, с которым хочешь начать переписку.", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24)
+                        result = null
+                        message = null
+                    },
+                    singleLine = true,
+                    label = { Text("Например, alex_24") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (result != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("@${result!!.username} · ${result!!.displayName}", color = Mint, fontWeight = FontWeight.SemiBold)
+                }
+                if (message != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(message.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !isBusy && username.length >= 3,
+                onClick = {
+                    scope.launch {
+                        isBusy = true
+                        message = null
+                        try {
+                            val profile = result
+                            if (profile == null) {
+                                val found = repository.findUser(username)
+                                if (found == null) {
+                                    message = "Пользователь не найден. Проверь псевдоним."
+                                } else if (found.id == currentUserId) {
+                                    message = "Это твой собственный аккаунт."
+                                } else {
+                                    result = found
+                                }
+                            } else {
+                                val chatId = repository.createDirectChat(profile.id)
+                                val chat = repository.getChat(chatId)
+                                if (chat == null) {
+                                    message = "Чат создан, но пока не удалось загрузить его данные."
+                                } else {
+                                    onOpenChat(chat)
+                                }
+                            }
+                        } catch (error: Exception) {
+                            message = error.message ?: "Не удалось создать переписку."
+                        } finally {
+                            isBusy = false
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    when {
+                        isBusy -> "Подключение..."
+                        result != null -> "Начать переписку"
+                        else -> "Найти"
+                    },
+                    color = Mint
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Отмена", color = Muted) }
+        }
+    )
+}
+
+@Composable
+private fun LiveChatScreen(
+    chat: FaceVideoChatSummary,
+    repository: SupabaseChatRepository,
+    userId: String,
+    onBack: () -> Unit,
+    onCall: () -> Unit
+) {
+    val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
+    val messages by messagesFlow.collectAsState(initial = emptyList())
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var draft by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isSending by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size)
+    }
+
+    fun sendMessage() {
+        val text = draft.trim()
+        if (text.isBlank() || isSending) return
+        scope.launch {
+            isSending = true
+            errorMessage = null
+            try {
+                repository.sendText(chat.id, text)
+                draft = ""
+            } catch (error: Exception) {
+                errorMessage = error.message ?: "Не удалось отправить сообщение."
+            } finally {
+                isSending = false
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+            Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text("синхронизация в реальном времени", color = Mint, fontSize = 10.sp)
+            }
+            Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+            Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF25324A)))
+
+        if (messages.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Это начало вашей переписки. Напиши первое сообщение.", color = Muted, fontSize = 12.sp)
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(11.dp)
+            ) {
+                items(messages, key = { it.id }) { message ->
+                    MessageBubble(
+                        ChatMessage(
+                            id = message.id,
+                            text = message.body,
+                            time = message.createdAt.substringAfter("T").take(5),
+                            isMine = message.senderId == userId
+                        )
+                    )
+                }
+            }
+        }
+
+        if (errorMessage != null) {
+            Text(errorMessage.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(color = PanelLight, shape = CircleShape, modifier = Modifier.size(42.dp)) {
+                Box(contentAlignment = Alignment.Center) { Text("+", color = Mint, fontSize = 25.sp) }
+            }
+            Spacer(Modifier.width(9.dp))
+            Surface(
+                Modifier.weight(1f),
+                color = Panel,
+                shape = RoundedCornerShape(22.dp),
+                border = BorderStroke(1.dp, Color(0xFF2B3B56))
+            ) {
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { sendMessage() }),
+                    textStyle = TextStyle(color = MainText, fontSize = 14.sp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+                    decorationBox = { inner ->
+                        Box {
+                            if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
+                            inner()
+                        }
+                    }
+                )
+            }
+            Spacer(Modifier.width(9.dp))
+            Box(
+                Modifier.size(43.dp).clip(CircleShape).background(if (isSending) Muted else Mint)
+                    .clickable(enabled = !isSending) { sendMessage() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("➤", color = Night, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Text(
+            "Сообщения сохраняются в Supabase и синхронизируются между устройствами",
+            color = Muted,
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 7.dp)
+        )
+    }
+}
+
+
 private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(query) {
