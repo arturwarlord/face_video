@@ -12,9 +12,13 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 - PostgreSQL migration for profiles, direct/group chats, chat members, messages, indexes, triggers and Row Level Security policies.
 - GitHub Actions builds and tests the Android APK.
 
+## Supabase project isolation
+
+The connected Supabase project already contains the NASTOLKA application's tables. Face Video therefore uses only objects with the `face_video_` prefix and its own `face_video_private` helper schema. It does not rename, drop, or modify NASTOLKA tables, policies, or functions. Both apps still share the same Supabase project, Auth tenant, Realtime publication, and project quotas.
+
 ## Current backend status
 
-The Android code now targets Supabase. The migration is committed under `supabase/migrations`, but it has **not yet been applied to your Supabase project**. The real backend will work after the project URL and publishable key are added to GitHub and the migration is deployed.
+The Android code now targets Supabase. The migration is committed under `supabase/migrations`; it creates only namespaced Face Video objects. It has not yet been applied to your Supabase project. The real backend will work after the project URL and publishable key are added to GitHub and the migration is deployed.
 
 The sample chat screen is still a UI preview; it has not yet been wired to the live repository. That is the next app-integration milestone.
 

@@ -2,11 +2,9 @@
 -- All app-owned public objects use the face_video_ prefix.
 -- Android uses only the publishable key; database RLS is the security boundary.
 
-create extension if not exists pgcrypto;
-
-create schema if not exists private;
-revoke all on schema private from public, anon;
-grant usage on schema private to authenticated;
+create schema if not exists face_video_private;
+revoke all on schema face_video_private from public, anon;
+grant usage on schema face_video_private to authenticated;
 
 create table if not exists public.face_video_profiles (
     id uuid primary key references auth.users(id) on delete cascade,
@@ -60,7 +58,7 @@ create index if not exists idx_face_video_profiles_username
 
 -- These security-definer helpers live outside the exposed Data API schema.
 -- They only perform the exact membership/creator checks required by RLS.
-create or replace function private.face_video_is_chat_member(p_chat_id uuid)
+create or replace function face_video_private.face_video_is_chat_member(p_chat_id uuid)
 returns boolean
 language sql
 stable
@@ -75,7 +73,7 @@ as $$
     );
 $$;
 
-create or replace function private.face_video_is_chat_creator(p_chat_id uuid)
+create or replace function face_video_private.face_video_is_chat_creator(p_chat_id uuid)
 returns boolean
 language sql
 stable
@@ -90,10 +88,10 @@ as $$
     );
 $$;
 
-revoke all on function private.face_video_is_chat_member(uuid) from public, anon;
-revoke all on function private.face_video_is_chat_creator(uuid) from public, anon;
-grant execute on function private.face_video_is_chat_member(uuid) to authenticated;
-grant execute on function private.face_video_is_chat_creator(uuid) to authenticated;
+revoke all on function face_video_private.face_video_is_chat_member(uuid) from public, anon;
+revoke all on function face_video_private.face_video_is_chat_creator(uuid) from public, anon;
+grant execute on function face_video_private.face_video_is_chat_member(uuid) to authenticated;
+grant execute on function face_video_private.face_video_is_chat_creator(uuid) to authenticated;
 
 -- A public SECURITY INVOKER function creates the chat and its participants atomically.
 create or replace function public.face_video_create_chat(
@@ -148,7 +146,7 @@ revoke all on function public.face_video_create_chat(uuid[], text, boolean) from
 grant execute on function public.face_video_create_chat(uuid[], text, boolean) to authenticated;
 
 -- Only users whose sign-up metadata explicitly identifies Face Video receive an app profile.
-create or replace function private.face_video_handle_new_auth_user()
+create or replace function face_video_private.face_video_handle_new_auth_user()
 returns trigger
 language plpgsql
 security definer
@@ -168,13 +166,13 @@ begin
 end;
 $$;
 
-revoke all on function private.face_video_handle_new_auth_user() from public, anon, authenticated;
+revoke all on function face_video_private.face_video_handle_new_auth_user() from public, anon, authenticated;
 drop trigger if exists on_face_video_auth_user_created on auth.users;
 create trigger on_face_video_auth_user_created
 after insert on auth.users
-for each row execute procedure private.face_video_handle_new_auth_user();
+for each row execute procedure face_video_private.face_video_handle_new_auth_user();
 
-create or replace function private.face_video_update_chat_preview()
+create or replace function face_video_private.face_video_update_chat_preview()
 returns trigger
 language plpgsql
 security definer
@@ -189,11 +187,11 @@ begin
 end;
 $$;
 
-revoke all on function private.face_video_update_chat_preview() from public, anon, authenticated;
+revoke all on function face_video_private.face_video_update_chat_preview() from public, anon, authenticated;
 drop trigger if exists after_face_video_message_insert on public.face_video_messages;
 create trigger after_face_video_message_insert
 after insert on public.face_video_messages
-for each row execute procedure private.face_video_update_chat_preview();
+for each row execute procedure face_video_private.face_video_update_chat_preview();
 
 create or replace view public.face_video_chat_summaries
 with (security_invoker = true)
@@ -246,7 +244,7 @@ with check (id = (select auth.uid()));
 drop policy if exists "face_video_chats_read_members" on public.face_video_chats;
 create policy "face_video_chats_read_members"
 on public.face_video_chats for select to authenticated
-using (private.face_video_is_chat_member(id));
+using (face_video_private.face_video_is_chat_member(id));
 
 drop policy if exists "face_video_chats_create_own" on public.face_video_chats;
 create policy "face_video_chats_create_own"
@@ -256,24 +254,24 @@ with check (created_by = (select auth.uid()));
 drop policy if exists "face_video_members_read_self" on public.face_video_chat_members;
 create policy "face_video_members_read_self"
 on public.face_video_chat_members for select to authenticated
-using (private.face_video_is_chat_member(chat_id));
+using (face_video_private.face_video_is_chat_member(chat_id));
 
 drop policy if exists "face_video_members_insert_by_creator" on public.face_video_chat_members;
 create policy "face_video_members_insert_by_creator"
 on public.face_video_chat_members for insert to authenticated
-with check (private.face_video_is_chat_creator(chat_id));
+with check (face_video_private.face_video_is_chat_creator(chat_id));
 
 drop policy if exists "face_video_messages_read_members" on public.face_video_messages;
 create policy "face_video_messages_read_members"
 on public.face_video_messages for select to authenticated
-using (private.face_video_is_chat_member(chat_id));
+using (face_video_private.face_video_is_chat_member(chat_id));
 
 drop policy if exists "face_video_messages_insert_as_self" on public.face_video_messages;
 create policy "face_video_messages_insert_as_self"
 on public.face_video_messages for insert to authenticated
 with check (
     sender_id = (select auth.uid())
-    and private.face_video_is_chat_member(chat_id)
+    and face_video_private.face_video_is_chat_member(chat_id)
 );
 
 grant select, insert, update on public.face_video_profiles to authenticated;
