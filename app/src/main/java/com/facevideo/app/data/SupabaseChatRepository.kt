@@ -51,6 +51,13 @@ private data class NewMessage(
     val body: String
 )
 
+@Serializable
+private data class NewFaceVideoPushToken(
+    @SerialName("user_id") val userId: String,
+    val token: String,
+    val platform: String = "android"
+)
+
 /**
  * User-scoped operations. The Supabase database enforces access through RLS.
  * Never add a service_role key to this Android client.
@@ -120,4 +127,22 @@ class SupabaseChatRepository(
     @OptIn(SupabaseExperimental::class)
     fun observeMyMessages(): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {}
+
+    suspend fun registerPushToken(userId: String, token: String) {
+        require(token.length in 20..4096) { "Недопустимый FCM-токен." }
+        client.from("face_video_push_tokens").insert(
+            NewFaceVideoPushToken(userId = userId, token = token),
+            upsert = true,
+            onConflict = "user_id,token"
+        )
+    }
+
+    suspend fun removePushToken(userId: String, token: String) {
+        client.from("face_video_push_tokens").delete {
+            filter {
+                eq("user_id", userId)
+                eq("token", token)
+            }
+        }
+    }
 }
