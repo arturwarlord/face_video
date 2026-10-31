@@ -8,6 +8,7 @@ plugins {
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
 val meteredTurnCredentialsUrl = providers.gradleProperty("METERED_TURN_CREDENTIALS_URL").orElse("").get()
+val firebaseConfigExists = file("google-services.json").exists()
 val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.4.3").get()
 val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("4003").get().toInt()
 
@@ -42,6 +43,7 @@ android {
         buildConfigField("String", "SUPABASE_URL", supabaseUrl.asBuildConfigString())
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", supabasePublishableKey.asBuildConfigString())
         buildConfigField("String", "METERED_TURN_CREDENTIALS_URL", meteredTurnCredentialsUrl.asBuildConfigString())
+        buildConfigField("Boolean", "FIREBASE_CONFIGURED", firebaseConfigExists.toString())
         buildConfigField(
             "Boolean",
             "SUPABASE_CONFIGURED",
@@ -94,7 +96,14 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     implementation("io.ktor:ktor-client-okhttp:3.4.3")
     implementation("io.github.webrtc-sdk:android:150.7871.04")
+    implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
+    implementation("com.google.firebase:firebase-messaging")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+}
+
+// Google Services is applied only when the Firebase config file is present.
+if (firebaseConfigExists) {
+    apply(plugin = "com.google.gms.google-services")
 }
