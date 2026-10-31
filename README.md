@@ -5,11 +5,11 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 ## Current milestone — 0.3.0
 
 - Native Android interface: Chats, Calls, Contacts, Profile.
-- Demo conversations and local message composition remain available before the backend is configured.
+- Demo conversations remain available only when backend credentials are absent; configured users receive their live Supabase conversations.
 - Supabase Auth email/password sign-up, sign-in, persistent session status and sign-out.
 - Supabase Kotlin SDK 3.8.0 with PostgREST and Realtime modules.
-- Database repository for listing chat summaries, loading/sending messages and observing realtime message changes.
-- PostgreSQL migration for profiles, direct/group chats, chat members, messages, indexes, triggers and Row Level Security policies.
+- Live chat list, username lookup, direct-chat creation, message loading/sending, and Realtime subscriptions.
+- Applied PostgreSQL migrations for isolated Face Video profiles, direct/group chats, members, messages, triggers, indexes, Realtime and Row Level Security.
 - GitHub Actions builds and tests the Android APK.
 
 ## Supabase project isolation
@@ -18,27 +18,27 @@ The connected Supabase project already contains the NASTOLKA application's table
 
 ## Current backend status
 
-The Android code now targets Supabase. The migration is committed under `supabase/migrations`; it creates only namespaced Face Video objects. It has not yet been applied to your Supabase project. The real backend will work after the project URL and publishable key are added to GitHub and the migration is deployed.
+The Android code now targets Supabase. The isolated Face Video schema is already applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`), while NASTOLKA's tables and functions remain untouched. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
 
-The sample chat screen is still a UI preview; it has not yet been wired to the live repository. That is the next app-integration milestone.
+The configured chat list and conversation screen now use the live repository. Real registration and message exchange still need a hands-on test with two separate email accounts; video calling is a later milestone and does not connect yet.
 
 ## Connect your Supabase project
 
-1. Open the Supabase Dashboard and create/open the Face Video project.
+1. Open the connected Supabase project (the current project is also used by NASTOLKA).
 2. In **Project Settings → API Keys**, copy the Project URL and the **publishable key** (the key beginning with `sb_publishable_`, or the legacy anon key if your project still uses it).
 3. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
 4. Create:
    - `SUPABASE_URL` — your project URL, e.g. `https://your-project-ref.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` — the project's publishable key.
-5. Apply the migration in `supabase/migrations/202610310001_initial_schema.sql` using Supabase migrations or the SQL Editor.
+5. The initial Face Video schema and foreign-key indexes have already been applied. Keep migration files in sync with the versions `20261031070255` and `20261031070449`.
 6. In Supabase **Authentication → Providers**, leave Email enabled. Confirm whether email verification should be required before first login.
-7. Enable Realtime for the `public.messages` table if the migration did not automatically add it to the `supabase_realtime` publication.
+7. Realtime is enabled for `public.face_video_messages`; no manual table selection is needed.
 
 **Never put a Supabase secret/service_role key in the Android app, GitHub variables, or this repository.** The Android app uses only the publishable key and relies on database RLS for authorization.
 
 ## GitHub Actions
 
-The workflow reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from repository Actions secrets and passes them into Gradle at build time. When these secrets are absent, the app builds in demo mode instead of failing.
+The workflow reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from repository Actions secrets and passes them into Gradle at build time. When these secrets are absent, the app builds in demo mode instead of failing. Never use `service_role` or `sb_secret_...` keys in the mobile app.
 
 Open **Actions → Android build**. On success, download the `face-video-debug-apk` artifact.
 
