@@ -1,15 +1,44 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const METERED_TURN_CREDENTIALS_URL = Deno.env.get("METERED_TURN_CREDENTIALS_URL") ?? "";
+// Open Relay publishes this shared TURN REST secret for its Static Auth
+// endpoint. We mint short-lived, per-request credentials server-side so the
+// Android app never contains the shared key.
+const OPEN_RELAY_SHARED_SECRET = "openrelayprojectsecret";
+const OPEN_RELAY_HOST = "staticauth.openrelay.metered.ca";
+const CREDENTIAL_LIFETIME_SECONDS = 6 * 60 * 60;
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",
-      "Cache-Control": "no-store",
+      "Cache-Control": "no-store, max-age=0",
+      "Pragma": "no-cache",
     },
   });
+}
+
+async function createTurnCredentials(): Promise<{ username: string; credential: string }> {
+  // coturn TURN REST authentication: username = expiry:opaque-user-id,
+  // credential = Base64(HMAC-SHA1(shared-secret, username)).
+  const expiresAt = Math.floor(Date.now() / 1000) + CREDENTIAL_LIFETIME_SECONDS;
+  const username = `${expiresAt}:arturchat-${crypto.randomUUID()}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(OPEN_RELAY_SHARED_SECRET),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(username),
+  );
+  const bytes = new Uint8Array(signature);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return { username, credential: btoa(binary) };
 }
 
 Deno.serve(async (request: Request) => {
@@ -18,43 +47,29 @@ Deno.serve(async (request: Request) => {
   }
 
   // The Supabase Edge gateway verifies the user's JWT before this function runs.
-  // Keep a second explicit bearer-header check so this endpoint never serves
-  // credentials to an anonymous webhook or unauthenticated request.
   const authorization = request.headers.get("Authorization") ?? "";
   if (!authorization.startsWith("Bearer ") || authorization.length < 40) {
     return jsonResponse(401, { error: "A signed-in ArturChat session is required." });
   }
 
-  if (!METERED_TURN_CREDENTIALS_URL) {
-    return jsonResponse(503, { error: "TURN relay credentials are not configured yet." });
-  }
-
   try {
-    const upstream = await fetch(METERED_TURN_CREDENTIALS_URL, {
-      method: "GET",
-      headers: { "Accept": "application/json" },
-      signal: AbortSignal.timeout(7000),
-    });
-    if (!upstream.ok) {
-      console.error("Metered TURN API returned", upstream.status);
-      return jsonResponse(502, { error: "TURN relay provider is temporarily unavailable." });
-    }
+    const { username, credential } = await createTurnCredentials();
+    const iceServers = [
+      {
+        urls: [
+          `turn:${OPEN_RELAY_HOST}:80?transport=udp`,
+          `turn:${OPEN_RELAY_HOST}:443?transport=udp`,
+          `turn:${OPEN_RELAY_HOST}:443?transport=tcp`,
+          `turns:${OPEN_RELAY_HOST}:443?transport=tcp`,
+        ],
+        username,
+        credential,
+      },
+    ];
 
-    const iceServers = await upstream.json();
-    if (!Array.isArray(iceServers) || !iceServers.some((server) => {
-      const urls = typeof server?.urls === "string"
-        ? [server.urls]
-        : Array.isArray(server?.urls) ? server.urls : [];
-      return urls.some((url: unknown) =>
-        typeof url === "string" && (url.startsWith("turn:") || url.startsWith("turns:"))
-      );
-    })) {
-      return jsonResponse(502, { error: "TURN provider did not return relay servers." });
-    }
-
-    return jsonResponse(200, { iceServers });
+    return jsonResponse(200, { iceServers, expiresAt: username.split(":")[0] });
   } catch (error) {
-    console.error("Could not fetch Metered TURN credentials", error);
-    return jsonResponse(502, { error: "Could not obtain temporary TURN credentials." });
+    console.error("Could not mint Open Relay TURN credentials", error);
+    return jsonResponse(500, { error: "Could not create temporary TURN credentials." });
   }
 });
