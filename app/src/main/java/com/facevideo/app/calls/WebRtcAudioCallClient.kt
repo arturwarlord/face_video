@@ -179,12 +179,14 @@ class WebRtcAudioCallClient(
             }
         ) ?: error("WebRTC не смог создать соединение.")
 
-        audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
-        localAudioTrack = peerConnectionFactory.createAudioTrack(
+        val source = peerConnectionFactory.createAudioSource(MediaConstraints())
+        audioSource = source
+        val track = peerConnectionFactory.createAudioTrack(
             "arturchat-audio-${call.id}",
-            audioSource
+            source
         )
-        check(peerConnection?.addTrack(localAudioTrack, listOf("arturchat-${call.id}")) == true) {
+        localAudioTrack = track
+        check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) == true) {
             "Не удалось подключить микрофон."
         }
     }
