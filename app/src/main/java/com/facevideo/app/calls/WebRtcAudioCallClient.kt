@@ -342,8 +342,13 @@ class WebRtcAudioCallClient(
 
     private fun fail(error: Throwable) {
         Log.e(TAG, "WebRTC audio call failed", error)
-        reportError(error.message ?: "Не удалось запустить звонок.")
-        end()
+        val message = error.message ?: "Не удалось запустить звонок."
+        scope.launch(Dispatchers.Main) {
+            if (!closed.get()) {
+                onError(message)
+                end()
+            }
+        }
     }
 
     companion object {
