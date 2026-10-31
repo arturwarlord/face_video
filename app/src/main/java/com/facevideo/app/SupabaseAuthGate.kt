@@ -127,7 +127,7 @@ private fun SupabaseSignInScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                "FACE VIDEO",
+                "ARTURCHAT",
                 color = AuthMint,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
