@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -256,6 +257,9 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     var isDownloading by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var installerMessage by remember { mutableStateOf<String?>(null) }
+    var installerMessageAt by remember { mutableStateOf(0L) }
+    var installSubmitted by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         availableRelease = runCatching { ReleaseUpdater.findUpdate() }.getOrNull()
@@ -264,6 +268,31 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     content()
 
     val release = availableRelease
+    LaunchedEffect(release?.versionName) {
+        if (release != null) {
+            val preferences = context.getSharedPreferences(
+                UpdateInstallReceiver.PREFERENCES,
+                Context.MODE_PRIVATE
+            )
+            while (true) {
+                val updatedAt = preferences.getLong(
+                    UpdateInstallReceiver.KEY_INSTALL_UPDATED_AT,
+                    0L
+                )
+                if (updatedAt > installerMessageAt) {
+                    installerMessageAt = updatedAt
+                    installerMessage = preferences.getString(
+                        UpdateInstallReceiver.KEY_INSTALL_MESSAGE,
+                        null
+                    )
+                    if (preferences.getString(UpdateInstallReceiver.KEY_INSTALL_STATE, "") == "success") {
+                        availableRelease = null
+                    }
+                }
+                delay(500)
+            }
+        }
+    }
     if (release != null) {
         AlertDialog(
             onDismissRequest = { if (!isDownloading) availableRelease = null },
@@ -279,6 +308,17 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                     if (errorMessage != null) {
                         Text(errorMessage.orEmpty())
                     }
+                    if (installSubmitted) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "APK загружен и передан системному установщику. Заверши установку в окне Android.",
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    if (installerMessage != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(installerMessage.orEmpty())
+                    }
                 }
             },
             confirmButton = {
@@ -293,9 +333,20 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                             }
                             isDownloading = true
                             errorMessage = null
+                            installerMessage = null
+                            installSubmitted = false
                             progress = 0
+                            context.getSharedPreferences(
+                                UpdateInstallReceiver.PREFERENCES,
+                                Context.MODE_PRIVATE
+                            ).edit()
+                                .remove(UpdateInstallReceiver.KEY_INSTALL_STATE)
+                                .remove(UpdateInstallReceiver.KEY_INSTALL_MESSAGE)
+                                .putLong(UpdateInstallReceiver.KEY_INSTALL_UPDATED_AT, 0L)
+                                .apply()
                             try {
                                 ReleaseUpdater.downloadAndInstall(context, release) { progress = it }
+                                installSubmitted = true
                             } catch (error: InstallPermissionRequiredException) {
                                 errorMessage = error.message
                             } catch (error: Exception) {
@@ -306,7 +357,7 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                         }
                     }
                 ) {
-                    Text(if (isDownloading) "Загрузка..." else "Обновить")
+                    Text(if (isDownloading) "Загрузка..." else if (installSubmitted && installerMessage == null) "Установщик открыт" else "Обновить")
                 }
             },
             dismissButton = {
