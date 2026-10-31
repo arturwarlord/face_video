@@ -7,8 +7,8 @@ plugins {
 
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
-val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.4.2").get()
-val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("4002").get().toInt()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.4.3").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("4003").get().toInt()
 
 fun String.asBuildConfigString(): String =
     "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
