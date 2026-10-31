@@ -2,6 +2,7 @@ package com.facevideo.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -74,6 +75,7 @@ import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import com.facevideo.app.notifications.AppNotificationManager
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import java.util.UUID
@@ -138,6 +140,7 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
     val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
     val scope = rememberCoroutineScope()
+    val appNotifications = remember(context) { AppNotificationManager(context) }
     val incomingCallsFlow = remember(callRepository, userId) {
         if (callRepository != null && userId != null) {
             callRepository.observeIncomingCalls(userId)
@@ -155,6 +158,49 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
     var callMuted by remember { mutableStateOf(false) }
     var callClient by remember { mutableStateOf<WebRtcAudioCallClient?>(null) }
     var pendingCallAction by remember { mutableStateOf<PendingCallAction?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    LaunchedEffect(userId) {
+        if (
+            userId != null &&
+            Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(liveRepository, userId, openedLiveChat?.id) {
+        val repository = liveRepository ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+        val chatTitles = runCatching {
+            repository.listMyChats().associate { it.id to it.title }
+        }.getOrDefault(emptyMap())
+        val knownMessageIds = mutableSetOf<String>()
+        var initialSnapshotReceived = false
+
+        repository.observeMyMessages().collect { messages ->
+            if (!initialSnapshotReceived) {
+                knownMessageIds.addAll(messages.map { it.id })
+                initialSnapshotReceived = true
+                return@collect
+            }
+
+            val newMessages = messages.filter { knownMessageIds.add(it.id) }
+            newMessages
+                .filter { it.senderId != currentUserId && it.chatId != openedLiveChat?.id }
+                .forEach { message ->
+                    appNotifications.showMessage(
+                        notificationId = message.id,
+                        title = chatTitles[message.chatId] ?: "Новое сообщение",
+                        body = message.body
+                    )
+                }
+        }
+    }
 
     suspend fun performCallAction(action: PendingCallAction) {
         val repository = callRepository ?: throw IllegalStateException("Сервер звонков недоступен.")

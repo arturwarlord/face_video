@@ -6,10 +6,12 @@ import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -25,6 +27,7 @@ import org.webrtc.PeerConnectionFactory
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A one-to-one audio call using WebRTC media and Supabase only for signaling.
@@ -44,6 +47,8 @@ class WebRtcAudioCallClient(
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
     private val closed = AtomicBoolean(false)
+    private val iceGatheringCompleted = CompletableDeferred<Unit>()
+    private val gatheredCandidateCount = AtomicInteger(0)
     private val processingLock = Mutex()
     private val processedSignals = mutableSetOf<String>()
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
@@ -121,7 +126,8 @@ class WebRtcAudioCallClient(
         audioManager.isSpeakerphoneOn = true
 
         val iceServers = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
         )
         val configuration = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -146,10 +152,17 @@ class WebRtcAudioCallClient(
                 }
 
                 override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) = Unit
+                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
+                    Log.i(TAG, "ICE gathering state=$state")
+                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                        iceGatheringCompleted.complete(Unit)
+                    }
+                }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
                     if (closed.get()) return
+                    gatheredCandidateCount.incrementAndGet()
+                    Log.i(TAG, "ICE candidate gathered: mid=${candidate.sdpMid}, line=${candidate.sdpMLineIndex}")
                     scope.launch {
                         runCatching {
                             repository.sendSignal(
@@ -248,17 +261,7 @@ class WebRtcAudioCallClient(
             override fun onCreateSuccess(description: SessionDescription) {
                 connection.setLocalDescription(object : SdpObserver {
                     override fun onSetSuccess() {
-                        scope.launch {
-                            runCatching {
-                                repository.sendSignal(
-                                    call.id,
-                                    currentUserId,
-                                    peerUserId,
-                                    "offer",
-                                    buildJsonObject { put("description", description.description) }
-                                )
-                            }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
-                        }
+                        sendLocalDescription(connection, "offer", description)
                     }
 
                     override fun onSetFailure(error: String) = reportError(error)
@@ -279,17 +282,7 @@ class WebRtcAudioCallClient(
             override fun onCreateSuccess(description: SessionDescription) {
                 connection.setLocalDescription(object : SdpObserver {
                     override fun onSetSuccess() {
-                        scope.launch {
-                            runCatching {
-                                repository.sendSignal(
-                                    call.id,
-                                    currentUserId,
-                                    peerUserId,
-                                    "answer",
-                                    buildJsonObject { put("description", description.description) }
-                                )
-                            }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
-                        }
+                        sendLocalDescription(connection, "answer", description)
                     }
 
                     override fun onSetFailure(error: String) = reportError(error)
@@ -302,6 +295,51 @@ class WebRtcAudioCallClient(
             override fun onCreateFailure(error: String) = reportError(error)
             override fun onSetFailure(error: String) = reportError(error)
         }, MediaConstraints())
+    }
+
+    private fun sendLocalDescription(
+        connection: PeerConnection,
+        signalType: String,
+        fallbackDescription: SessionDescription
+    ) {
+        scope.launch {
+            setStatus("Собираем сетевые маршруты…")
+            val gatheringFinished = withTimeoutOrNull(12_000L) {
+                iceGatheringCompleted.await()
+                true
+            } ?: false
+            val localSdp = connection.localDescription?.description
+                ?.takeIf { it.isNotBlank() }
+                ?: fallbackDescription.description
+            val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
+            Log.i(
+                TAG,
+                "Sending $signalType SDP: gatheringFinished=$gatheringFinished, " +
+                    "candidatesInSdp=$candidatesInSdp, candidateCallbacks=${gatheredCandidateCount.get()}"
+            )
+            if (candidatesInSdp == 0) {
+                reportError(
+                    "Телефон не обнаружил сетевые маршруты для звонка. " +
+                        "Проверь интернет и разрешение доступа к состоянию сети."
+                )
+            } else if (!gatheringFinished) {
+                reportError("Сбор сетевых маршрутов занял слишком много времени. Пробуем подключиться частично.")
+            }
+
+            runCatching {
+                repository.sendSignal(
+                    callId = call.id,
+                    senderId = currentUserId,
+                    recipientId = peerUserId,
+                    signalType = signalType,
+                    payload = buildJsonObject { put("description", localSdp) }
+                )
+            }.onSuccess {
+                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
+            }.onFailure {
+                reportError(it.message ?: "Не удалось отправить параметры соединения.")
+            }
+        }
     }
 
     private fun setRemoteDescription(

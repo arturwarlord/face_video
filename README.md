@@ -9,9 +9,10 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 - Live direct chats, username lookup, message loading/sending and Realtime message synchronization.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
 - Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
+- Android system notifications are generated for new incoming messages while the app process is running and its Realtime connection is active; this is not yet FCM push delivery when the app is fully closed.
 - WebRTC Android SDK io.github.webrtc-sdk:android:150.7871.04.
 - GitHub Actions tests and builds the Android APK.
-- Video calls, group calls and incoming-call notifications while the app is closed/backgrounded are not implemented yet.
+- Video calls, group calls and reliable FCM push delivery while the app is closed/backgrounded are not implemented yet.
 
 ## Supabase project isolation
 
@@ -28,7 +29,7 @@ The configured chat list and conversation screen use the live repository. The us
 - Calls are currently one-to-one and are started from the phone icon in a direct chat.
 - Android requests microphone permission when the user starts or accepts a call.
 - Incoming call prompts are delivered while ArturChat is open and subscribed to Supabase Realtime. Push notifications for calls while the app is closed or in the background are a later task.
-- The current WebRTC ICE configuration uses a public STUN server only. Some mobile networks, carrier-grade NATs and restrictive firewalls require a TURN relay. Those networks may fail to establish peer-to-peer media until a TURN service is configured.
+- WebRTC waits for ICE gathering before sending the local SDP and includes two public STUN endpoints. Some mobile networks, carrier-grade NATs and restrictive firewalls still require a TURN relay; a free Metered/Open Relay credential can be configured as the next connectivity step.
 - The call tables are public.face_video_calls and public.face_video_call_signals. Only authenticated users receive access, call rows are visible to their two participants, and signaling events can be read only by their recipient.
 - The database guards call status transitions: only the callee can accept/decline, only the caller can cancel a ringing call, and either participant can end an accepted call.
 - Group calls and video tracks/renderers are not enabled yet.
@@ -75,12 +76,12 @@ The release workflow reads the following repository Actions secrets from the pri
 
 Keep the keystore and passwords backed up privately. Never commit them or include them in an APK.
 
-The first stable release, `v0.4.0`, has already been published. To publish a later release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter the next semantic version in `release_tag`. The workflow creates the tag, tests the app, verifies the APK signature, calculates its SHA-256 checksum and publishes both assets. The current stable release is `v0.4.2`; the next audio-call release is planned as `v0.4.3` after its two-device test. Tag pushes also trigger the workflow automatically.
+The first stable release, `v0.4.0`, has already been published. To publish a later release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter the next semantic version in `release_tag`. The workflow creates the tag, tests the app, verifies the APK signature, calculates its SHA-256 checksum and publishes both assets. The current stable release is `v0.4.3`; the next fix release is planned as `v0.4.4` after Android Actions verification and the two-device call test. Tag pushes also trigger the workflow automatically.
 
 The current GitHub Actions debug APK is for testing only. It is not the signed release channel used by the updater.
 
 **Important:** the first release signed with the new permanent key cannot update an already-installed APK signed with a different temporary debug key. Install the first signed ArturChat release once; all later releases can update over it without manually downloading APK files. Supabase messages are stored online, so they remain on the server, but you may need to sign in again after that one-time change of signing key.
 
-The current published stable release is v0.4.2. The next development build adds one-to-one audio calling; publish it as v0.4.3 after the Android build and manual two-device call test are complete.
+The current published stable release is v0.4.3. Release v0.4.4 contains the ICE gathering and Android message-notification fixes; it must still be verified on two physical phones.
 
 The self-hosted updater is intended for direct APK distribution. If ArturChat is later published on Google Play, switch to the Play Core in-app update flow and remove the sideload-only install permission.

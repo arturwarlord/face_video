@@ -112,4 +112,12 @@ class SupabaseChatRepository(
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {
             eq("chat_id", chatId)
         }
+
+    /**
+     * Realtime feed for all messages visible to the signed-in user.
+     * Row Level Security limits this feed to chats the user belongs to.
+     */
+    @OptIn(SupabaseExperimental::class)
+    fun observeMyMessages(): Flow<List<FaceVideoMessage>> =
+        client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {}
 }
