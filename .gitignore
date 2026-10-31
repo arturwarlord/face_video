@@ -1,0 +1,11 @@
+# Gradle and Android build output
+.gradle/
+**/build/
+local.properties
+
+# Firebase configuration (restore from GitHub Actions secret at build time)
+app/google-services.json
+
+# IDE
+.idea/
+*.iml

@@ -89,14 +89,16 @@ class MainActivity : ComponentActivity() {
                     onSurface = MainText
                 )
             ) {
-                FaceVideoApp()
+                FirebaseAuthGate { userEmail, onSignOut ->
+                    FaceVideoApp(userEmail = userEmail, onSignOut = onSignOut)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun FaceVideoApp() {
+private fun FaceVideoApp(userEmail: String?, onSignOut: () -> Unit) {
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var showCallInfo by remember { mutableStateOf(false) }
@@ -129,7 +131,7 @@ private fun FaceVideoApp() {
                     MainTab.CHATS -> ChatListScreen(onOpenChat = { openedChat = it })
                     MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
                     MainTab.CONTACTS -> ContactsScreen(onOpenChat = { openedChat = it })
-                    MainTab.PROFILE -> ProfileScreen()
+                    MainTab.PROFILE -> ProfileScreen(userEmail = userEmail, onSignOut = onSignOut)
                 }
                 BottomNavigation(selectedTab = selectedTab, onSelect = { selectedTab = it })
             }
@@ -514,7 +516,7 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
 }
 
 @Composable
-private fun ProfileScreen() {
+private fun ProfileScreen(userEmail: String?, onSignOut: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -524,7 +526,7 @@ private fun ProfileScreen() {
         Avatar("FV", 1, Modifier.size(92.dp), highlighted = true)
         Spacer(Modifier.height(15.dp))
         Text("Ваш профиль", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text("Настроим после добавления регистрации", color = Muted, fontSize = 12.sp)
+        Text(userEmail ?: "Демонстрационный режим", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(28.dp))
         listOf("Личные данные", "Уведомления", "Конфиденциальность", "О приложении").forEachIndexed { index, label ->
             Row(
@@ -538,6 +540,22 @@ private fun ProfileScreen() {
                 Text("›", color = Muted, fontSize = 20.sp)
             }
             Spacer(Modifier.height(8.dp))
+        }
+        if (userEmail != null) {
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                color = Color(0xFF3B2631),
+                shape = RoundedCornerShape(15.dp),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)
+            ) {
+                Text(
+                    "Выйти из аккаунта",
+                    color = Color(0xFFFFA5B5),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
         }
     }
 }
