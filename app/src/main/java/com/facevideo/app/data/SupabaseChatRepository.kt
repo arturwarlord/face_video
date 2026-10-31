@@ -1,7 +1,9 @@
 package com.facevideo.app.data
 
-import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.annotations.SupabaseExperimental
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.selectAsFlow
 import kotlinx.coroutines.flow.Flow
@@ -9,22 +11,37 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ChatSummaryRecord(
+data class FaceVideoChatSummary(
     val id: String,
-    val title: String? = null,
+    val title: String,
     @SerialName("is_group") val isGroup: Boolean,
-    @SerialName("last_message_preview") val lastMessagePreview: String? = null,
+    @SerialName("last_message_preview") val lastMessagePreview: String = "",
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     @SerialName("created_at") val createdAt: String
 )
 
 @Serializable
-data class ChatMessageRecord(
+data class FaceVideoProfile(
+    val id: String,
+    val username: String,
+    @SerialName("display_name") val displayName: String,
+    @SerialName("avatar_url") val avatarUrl: String? = null
+)
+
+@Serializable
+data class FaceVideoMessage(
     val id: String,
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
     val body: String,
     @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+private data class CreateChatArguments(
+    @SerialName("p_member_ids") val memberIds: List<String>,
+    @SerialName("p_title") val title: String? = null,
+    @SerialName("p_is_group") val isGroup: Boolean = false
 )
 
 @Serializable
@@ -34,42 +51,64 @@ private data class NewMessage(
 )
 
 /**
- * Queries and realtime updates are always scoped by Supabase Auth + database RLS.
- * No service_role key is used by this Android client.
+ * User-scoped operations. The Supabase database enforces access through RLS.
+ * Never add a service_role key to this Android client.
  */
 class SupabaseChatRepository(
-    private val client: io.github.jan.supabase.SupabaseClient
+    private val client: SupabaseClient
 ) {
-    suspend fun listMyChats(): List<ChatSummaryRecord> =
-        client.from("chat_summaries")
+    suspend fun listMyChats(): List<FaceVideoChatSummary> =
+        client.from("face_video_chat_summaries")
             .select()
-            .decodeList<ChatSummaryRecord>()
+            .decodeList<FaceVideoChatSummary>()
 
-    suspend fun listMessages(chatId: String): List<ChatMessageRecord> =
-        client.from("messages")
+    suspend fun getChat(chatId: String): FaceVideoChatSummary? =
+        client.from("face_video_chat_summaries")
             .select {
-                filter {
-                    eq("chat_id", chatId)
-                }
+                filter { eq("id", chatId) }
+            }
+            .decodeList<FaceVideoChatSummary>()
+            .firstOrNull()
+
+    suspend fun findUser(username: String): FaceVideoProfile? {
+        val clean = username.trim().removePrefix("@").lowercase()
+        if (!clean.matches(Regex("^[a-z0-9_]{3,24}$"))) return null
+        return client.from("face_video_profiles")
+            .select {
+                filter { eq("username", clean) }
+            }
+            .decodeList<FaceVideoProfile>()
+            .firstOrNull()
+    }
+
+    suspend fun createDirectChat(otherUserId: String): String {
+        val result = client.postgrest.rpc(
+            "face_video_create_chat",
+            CreateChatArguments(memberIds = listOf(otherUserId))
+        )
+        return result.decodeAs<String>()
+    }
+
+    suspend fun listMessages(chatId: String): List<FaceVideoMessage> =
+        client.from("face_video_messages")
+            .select {
+                filter { eq("chat_id", chatId) }
                 order("created_at", Order.ASCENDING)
             }
-            .decodeList<ChatMessageRecord>()
+            .decodeList<FaceVideoMessage>()
 
     suspend fun sendText(chatId: String, text: String) {
         val cleanText = text.trim()
         require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
             "Сообщение должно содержать от 1 до 4000 символов."
         }
-        client.from("messages").insert(NewMessage(chatId = chatId, body = cleanText))
+        client.from("face_video_messages")
+            .insert(NewMessage(chatId = chatId, body = cleanText))
     }
 
-    /**
-     * Emits the initial visible message list and subsequent inserts/updates/deletes.
-     * The messages table must be enabled in the supabase_realtime publication.
-     */
     @OptIn(SupabaseExperimental::class)
-    fun observeMessages(chatId: String): Flow<List<ChatMessageRecord>> =
-        client.from("messages").selectAsFlow(ChatMessageRecord::id) {
+    fun observeMessages(chatId: String): Flow<List<FaceVideoMessage>> =
+        client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {
             eq("chat_id", chatId)
         }
 }

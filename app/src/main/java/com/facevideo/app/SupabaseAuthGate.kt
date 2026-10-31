@@ -39,6 +39,8 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 private val AuthBackground = Color(0xFF0A1020)
 private val AuthMint = Color(0xFF65E6D2)
@@ -47,13 +49,12 @@ private val AuthText = Color(0xFFF4F6FC)
 
 @Composable
 fun SupabaseAuthGate(
-    content: @Composable (userEmail: String?, onSignOut: () -> Unit) -> Unit
+    content: @Composable (userEmail: String?, userId: String?, onSignOut: () -> Unit) -> Unit
 ) {
     val supabase = SupabaseClientProvider.client
 
-    // Without project credentials, the app remains a clearly marked UI demo.
     if (supabase == null) {
-        content(null) {}
+        content(null, null) {}
         return
     }
 
@@ -72,21 +73,30 @@ fun SupabaseAuthGate(
             }
         }
         is SessionStatus.Authenticated -> {
-            val email = status.session.user?.email ?: "Пользователь"
-            content(email) {
+            val user = status.session.user
+            content(user?.email ?: "Пользователь", user?.id) {
                 scope.launch { supabase.auth.signOut() }
             }
         }
         else -> {
             SupabaseSignInScreen(
-                onSignIn = { email, password -> supabase.auth.signInWith(Email) {
-                    this.email = email
-                    this.password = password
-                } },
-                onSignUp = { email, password -> supabase.auth.signUpWith(Email) {
-                    this.email = email
-                    this.password = password
-                } }
+                onSignIn = { email, password ->
+                    supabase.auth.signInWith(Email) {
+                        this.email = email
+                        this.password = password
+                    }
+                },
+                onSignUp = { email, password, username ->
+                    supabase.auth.signUpWith(Email) {
+                        this.email = email
+                        this.password = password
+                        data = buildJsonObject {
+                            put("face_video_app", true)
+                            put("username", username)
+                            put("display_name", username)
+                        }
+                    }
+                }
             )
         }
     }
@@ -95,10 +105,11 @@ fun SupabaseAuthGate(
 @Composable
 private fun SupabaseSignInScreen(
     onSignIn: suspend (String, String) -> Unit,
-    onSignUp: suspend (String, String) -> Unit
+    onSignUp: suspend (String, String, String) -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var isRegistration by remember { mutableStateOf(false) }
     var isBusy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -142,6 +153,17 @@ private fun SupabaseSignInScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                 colors = authFieldColors()
             )
+            if (isRegistration) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24); message = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Псевдоним (username)") },
+                    colors = authFieldColors()
+                )
+            }
             Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = password,
@@ -163,15 +185,23 @@ private fun SupabaseSignInScreen(
             Button(
                 onClick = {
                     val cleanEmail = email.trim()
-                    if (!cleanEmail.contains("@") || password.length < 6) {
-                        message = "Проверь email и пароль (не менее 6 символов)."
+                    val cleanUsername = username.trim()
+                    val validUsername = cleanUsername.matches(Regex("^[a-z0-9_]{3,24}$"))
+                    if (!cleanEmail.contains("@") || password.length < 6 ||
+                        (isRegistration && !validUsername)
+                    ) {
+                        message = if (isRegistration) {
+                            "Проверь email, пароль (минимум 6 символов) и псевдоним (3–24 символа)."
+                        } else {
+                            "Проверь email и пароль (не менее 6 символов)."
+                        }
                     } else {
                         isBusy = true
                         message = null
                         scope.launch {
                             try {
                                 if (isRegistration) {
-                                    onSignUp(cleanEmail, password)
+                                    onSignUp(cleanEmail, password, cleanUsername)
                                     message = "Аккаунт создан. Проверь почту, если включено подтверждение email."
                                 } else {
                                     onSignIn(cleanEmail, password)
