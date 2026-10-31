@@ -169,6 +169,10 @@ create trigger after_face_video_message_insert
 after insert on public.messages
 for each row execute procedure public.update_chat_after_message();
 
+-- Trigger functions are callable only by the owning triggers, not through the Data API.
+revoke all on function public.handle_new_auth_user() from public, anon, authenticated;
+revoke all on function public.update_chat_after_message() from public, anon, authenticated;
+
 -- A view using invoker permissions preserves base-table RLS.
 create or replace view public.chat_summaries
 with (security_invoker = true)
