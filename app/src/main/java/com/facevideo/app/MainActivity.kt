@@ -201,8 +201,6 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
 }
 
 @Composable
-
-@Composable
 private fun LiveChatListScreen(
     repository: SupabaseChatRepository,
     userId: String,
@@ -580,6 +578,7 @@ private fun LiveChatScreen(
 }
 
 
+@Composable
 private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(query) {
