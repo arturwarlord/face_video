@@ -130,11 +130,17 @@ class SupabaseChatRepository(
 
     suspend fun registerPushToken(userId: String, token: String) {
         require(token.length in 20..4096) { "Недопустимый FCM-токен." }
-        client.from("face_video_push_tokens").insert(
-            NewFaceVideoPushToken(userId = userId, token = token),
-            upsert = true,
-            onConflict = "user_id,token"
-        )
+        val existing = client.from("face_video_push_tokens").select {
+            filter {
+                eq("user_id", userId)
+                eq("token", token)
+            }
+        }.decodeList<NewFaceVideoPushToken>()
+        if (existing.isEmpty()) {
+            client.from("face_video_push_tokens").insert(
+                NewFaceVideoPushToken(userId = userId, token = token)
+            )
+        }
     }
 
     suspend fun removePushToken(userId: String, token: String) {
