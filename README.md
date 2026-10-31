@@ -14,7 +14,7 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 ## Supabase project isolation
 
-The connected Supabase project already contains the NASTOLKA application's tables. ArturChat therefore uses only objects with the `face_video_` prefix and its own `face_video_private` helper schema. It does not rename, drop, or modify NASTOLKA tables, policies, or functions. Both apps still share the same Supabase project, Auth tenant, Realtime publication, and project quotas.
+The legacy NASTOLKA database objects have been removed from the connected Supabase project. The remaining application schema belongs to ArturChat and uses the `face_video_` prefix plus its `face_video_private` helper schema.
 
 ## Current backend status
 
@@ -24,7 +24,7 @@ The configured chat list and conversation screen now use the live repository. Re
 
 ## Connect your Supabase project
 
-1. Open the connected Supabase project (the current project is also used by NASTOLKA).
+1. Open the Supabase project connected to ArturChat.
 2. In **Project Settings → API Keys**, copy the Project URL and the **publishable key** (the key beginning with `sb_publishable_`, or the legacy anon key if your project still uses it).
 3. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
 4. Create:
@@ -55,7 +55,7 @@ Minimum supported Android version: Android 8.0 (API 26).
 
 ### One-time release signing setup
 
-Before publishing the first stable release, add the following repository Actions secrets from the private signing setup archive:
+The release workflow reads the following repository Actions secrets from the private signing setup archive:
 
 - `ARTURCHAT_KEYSTORE_BASE64`
 - `ARTURCHAT_KEYSTORE_PASSWORD`
@@ -64,7 +64,7 @@ Before publishing the first stable release, add the following repository Actions
 
 Keep the keystore and passwords backed up privately. Never commit them or include them in an APK.
 
-After the secrets are saved, create a GitHub Release tag such as `v0.4.0`. The **ArturChat release** workflow tests the app, builds a release-signed APK, calculates its SHA-256 checksum and publishes both assets. Future tags (for example `v0.4.1`) become in-app updates automatically.
+To publish the first stable release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter `v0.4.0` in `release_tag`. The workflow creates the tag, tests the app, builds a release-signed APK, calculates its SHA-256 checksum and publishes both assets. For later updates, run the same workflow with `v0.4.1`, `v0.4.2`, and so on. Tag pushes also trigger the workflow automatically.
 
 The current GitHub Actions debug APK is for testing only. It is not the signed release channel used by the updater.
 
