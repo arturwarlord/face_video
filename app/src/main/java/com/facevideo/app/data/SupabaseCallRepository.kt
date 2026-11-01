@@ -1,7 +1,6 @@
 package com.facevideo.app.data
 
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.annotations.SupabaseExperimental
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
@@ -64,10 +63,6 @@ private data class FaceVideoCallStatusUpdate(val status: String)
  * participants can see a call and that signaling payloads go only to the peer.
  */
 class SupabaseCallRepository(private val client: SupabaseClient) {
-
-    suspend fun currentAccessToken(): String =
-        client.auth.currentSessionOrNull()?.accessToken
-            ?: throw IllegalStateException("Сессия ArturChat не авторизована.")
 
     suspend fun startDirectCall(
         chatId: String,
