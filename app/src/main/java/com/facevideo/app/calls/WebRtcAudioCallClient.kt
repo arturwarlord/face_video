@@ -29,9 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A one-to-one audio call using WebRTC media and Supabase only for signaling.
- * STUN-only connectivity is best-effort; networks that require TURN relay need
- * a separately hosted TURN service.
+ * A one-to-one audio call using direct WebRTC peer-to-peer media and Supabase
+ * only for signaling. STUN helps discover public-facing addresses; no TURN
+ * relay is configured, so strict NAT/firewall combinations may block the call.
  */
 class WebRtcAudioCallClient(
     context: Context,
@@ -181,7 +181,7 @@ class WebRtcAudioCallClient(
                 override fun onIceCandidate(candidate: IceCandidate) {
                     if (closed.get()) return
                     gatheredCandidateCount.incrementAndGet()
-                    val candidateType = Regex("""\styp\s+(host|srflx|relay)""")
+                    val candidateType = Regex("""\styp\s+(host|srflx|prflx|relay)""")
                         .find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
                     Log.i(
                         TAG,
