@@ -442,17 +442,17 @@ class WebRtcAudioCallClient(
                 .forEach { remoteSdpCandidateKeys.add(it) }
             remoteSdpCandidateKeys.size
         }
-        Log.i(TAG, "Remote SDP ${type.canonicalForm}: embedded candidates=$embeddedCandidateCount")
+        Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
                 remoteDescriptionSet.set(true)
-                Log.i(TAG, "Remote SDP ${type.canonicalForm} applied successfully")
+                Log.i(TAG, "Remote SDP ${type.canonicalForm()} applied successfully")
                 flushRemoteCandidates()
                 onSuccess()
             }
 
             override fun onSetFailure(error: String) {
-                Log.e(TAG, "Remote SDP ${type.canonicalForm} rejected: $error")
+                Log.e(TAG, "Remote SDP ${type.canonicalForm()} rejected: $error")
                 reportError("Не удалось применить параметры удалённого соединения: $error")
             }
             override fun onCreateSuccess(description: SessionDescription) = Unit
