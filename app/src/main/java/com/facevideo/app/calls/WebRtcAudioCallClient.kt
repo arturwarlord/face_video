@@ -6,11 +6,14 @@ import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -46,9 +49,22 @@ class WebRtcAudioCallClient(
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
     private val closed = AtomicBoolean(false)
+    private val iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
+    private val localHostCandidates = AtomicInteger(0)
+    private val localSrflxCandidates = AtomicInteger(0)
+    private val localOtherCandidates = AtomicInteger(0)
+    private val remoteCandidatesReceived = AtomicInteger(0)
+    private val remoteCandidatesQueued = AtomicInteger(0)
+    private val remoteCandidatesApplied = AtomicInteger(0)
+    private val remoteCandidatesRejected = AtomicInteger(0)
+    private val remoteCandidatesAlreadyInSdp = AtomicInteger(0)
+    private val remoteDescriptionSet = AtomicBoolean(false)
+    private val candidateLock = Any()
+    private val remoteSdpCandidateKeys = mutableSetOf<String>()
     private var connectionTimeoutJob: Job? = null
     @Volatile private var lastIceConnectionState = PeerConnection.IceConnectionState.NEW
+    @Volatile private var lastHandledSignal = "none"
     private val processingLock = Mutex()
     private val processedSignals = mutableSetOf<String>()
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
@@ -145,7 +161,9 @@ class WebRtcAudioCallClient(
         peerConnection = factory.createPeerConnection(
             configuration,
             object : PeerConnection.Observer {
-                override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
+                override fun onSignalingChange(state: PeerConnection.SignalingState) {
+                    Log.i(TAG, "P2P signaling state=$state")
+                }
 
                 override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
                     lastIceConnectionState = state
@@ -166,7 +184,7 @@ class WebRtcAudioCallClient(
                         }
                         PeerConnection.IceConnectionState.FAILED -> {
                             connectionTimeoutJob?.cancel()
-                            reportError(DIRECT_P2P_FAILED_MESSAGE)
+                            reportDirectConnectionFailure("ICE перешёл в состояние FAILED")
                         }
                         PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
                         else -> Unit
@@ -176,6 +194,9 @@ class WebRtcAudioCallClient(
                 override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                     Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
+                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                        iceGatheringCompleted.complete(Unit)
+                    }
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
@@ -183,6 +204,11 @@ class WebRtcAudioCallClient(
                     gatheredCandidateCount.incrementAndGet()
                     val candidateType = Regex("""\styp\s+(host|srflx|prflx|relay)""")
                         .find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+                    when (candidateType) {
+                        "host" -> localHostCandidates.incrementAndGet()
+                        "srflx" -> localSrflxCandidates.incrementAndGet()
+                        else -> localOtherCandidates.incrementAndGet()
+                    }
                     Log.i(
                         TAG,
                         "P2P ICE candidate gathered: type=$candidateType, " +
@@ -230,14 +256,48 @@ class WebRtcAudioCallClient(
         }
     }
 
+    /**
+     * Supabase Realtime is the fast path. A small PostgREST polling loop is a
+     * recovery path for dropped realtime notifications; rows are deduplicated
+     * by signal id so the same SDP/ICE message is never applied twice.
+     */
     private fun observeSignals() {
         signalJob?.cancel()
         signalJob = scope.launch {
-            repository.observeSignals(call.id, currentUserId).collect { signals ->
-                signals.sortedBy { it.createdAt }.forEach { signal ->
-                    if (processedSignals.add(signal.id)) {
-                        processingLock.withLock { handleSignal(signal) }
+            launch {
+                runCatching {
+                    repository.observeSignals(call.id, currentUserId).collect { signals ->
+                        processIncomingSignals(signals, "realtime")
                     }
+                }.onFailure {
+                    Log.w(TAG, "Realtime signal stream stopped; polling will continue.", it)
+                }
+            }
+            launch {
+                while (isActive && !closed.get()) {
+                    runCatching {
+                        repository.listSignals(call.id, currentUserId)
+                    }.onSuccess { signals ->
+                        processIncomingSignals(signals, "poll")
+                    }.onFailure {
+                        Log.w(TAG, "Signal recovery poll failed.", it)
+                    }
+                    delay(SIGNAL_RECOVERY_POLL_MS)
+                }
+            }
+        }
+    }
+
+    private suspend fun processIncomingSignals(
+        signals: List<FaceVideoCallSignal>,
+        source: String
+    ) {
+        signals.sortedBy { it.createdAt }.forEach { signal ->
+            processingLock.withLock {
+                if (processedSignals.add(signal.id)) {
+                    lastHandledSignal = signal.signalType
+                    Log.i(TAG, "Received ${signal.signalType} signal via $source")
+                    handleSignal(signal)
                 }
             }
         }
@@ -249,6 +309,7 @@ class WebRtcAudioCallClient(
                 if (isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В приглашении отсутствует SDP offer.")
+                Log.i(TAG, "Applying remote SDP offer, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.OFFER, description) {
                     createAnswer()
                     scheduleDirectConnectionTimeout()
@@ -259,8 +320,8 @@ class WebRtcAudioCallClient(
                 if (!isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В ответе отсутствует SDP answer.")
+                Log.i(TAG, "Applying remote SDP answer, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.ANSWER, description) {
-                    flushRemoteCandidates()
                     setStatus("Завершаем подключение…")
                     scheduleDirectConnectionTimeout()
                 }
@@ -272,11 +333,7 @@ class WebRtcAudioCallClient(
                 val candidateText = signal.payload["candidate"]?.jsonPrimitive?.contentOrNull
                 if (mid != null && lineIndex != null && candidateText != null) {
                     val candidate = IceCandidate(mid, lineIndex, candidateText)
-                    if (peerConnection?.remoteDescription == null) {
-                        pendingRemoteCandidates += candidate
-                    } else {
-                        peerConnection?.addIceCandidate(candidate)
-                    }
+                    receiveRemoteCandidate(candidate)
                 }
             }
         }
@@ -333,17 +390,25 @@ class WebRtcAudioCallClient(
             setStatus("Отправляем параметры прямого соединения…")
             // Trickle ICE sends candidates independently through Supabase, so
             // the offer/answer does not wait for gathering to finish.
+            val gatheringFinished = withTimeoutOrNull(LOCAL_ICE_GATHER_WAIT_MS) {
+                iceGatheringCompleted.await()
+                true
+            } ?: false
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
             Log.i(
                 TAG,
+                "Local ICE gather finished=$gatheringFinished; SDP candidate count=$candidatesInSdp"
+            )
+            Log.i(
+                TAG,
                 "Sending P2P $signalType SDP: candidatesInSdp=$candidatesInSdp, " +
                     "candidateCallbacks=${gatheredCandidateCount.get()}; remaining candidates use trickle ICE"
             )
             if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
-                Log.i(TAG, "No ICE candidates embedded in SDP yet; waiting for trickle ICE callbacks.")
+                Log.w(TAG, "No ICE candidates found in SDP or callbacks yet.")
             }
 
             runCatching {
@@ -368,22 +433,97 @@ class WebRtcAudioCallClient(
         onSuccess: () -> Unit
     ) {
         val connection = peerConnection ?: return
+        val embeddedCandidateCount = synchronized(candidateLock) {
+            remoteDescriptionSet.set(false)
+            remoteSdpCandidateKeys.clear()
+            sdp.lineSequence()
+                .filter { it.startsWith("a=candidate:") }
+                .map { it.removePrefix("a=") }
+                .forEach { remoteSdpCandidateKeys.add(it) }
+            remoteSdpCandidateKeys.size
+        }
+        Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
+                remoteDescriptionSet.set(true)
+                Log.i(TAG, "Remote SDP ${type.canonicalForm()} applied successfully")
                 flushRemoteCandidates()
                 onSuccess()
             }
 
-            override fun onSetFailure(error: String) = reportError(error)
+            override fun onSetFailure(error: String) {
+                Log.e(TAG, "Remote SDP ${type.canonicalForm()} rejected: $error")
+                reportError("Не удалось применить параметры удалённого соединения: $error")
+            }
             override fun onCreateSuccess(description: SessionDescription) = Unit
-            override fun onCreateFailure(error: String) = reportError(error)
+            override fun onCreateFailure(error: String) = Unit
         }, SessionDescription(type, sdp))
     }
 
+    private fun receiveRemoteCandidate(candidate: IceCandidate) {
+        remoteCandidatesReceived.incrementAndGet()
+        val queued = synchronized(candidateLock) {
+            if (!remoteDescriptionSet.get()) {
+                if (pendingRemoteCandidates.none { it.sdp == candidate.sdp }) {
+                    pendingRemoteCandidates += candidate
+                    remoteCandidatesQueued.incrementAndGet()
+                }
+                true
+            } else {
+                false
+            }
+        }
+        if (queued) {
+            Log.i(TAG, "Queued remote ICE candidate; remote SDP is not ready yet")
+        } else {
+            applyRemoteCandidate(candidate)
+        }
+    }
+
     private fun flushRemoteCandidates() {
-        val candidates = pendingRemoteCandidates.toList()
-        pendingRemoteCandidates.clear()
-        candidates.forEach { peerConnection?.addIceCandidate(it) }
+        val candidates = synchronized(candidateLock) {
+            remoteDescriptionSet.set(true)
+            pendingRemoteCandidates.toList().also { pendingRemoteCandidates.clear() }
+        }
+        Log.i(TAG, "Applying ${candidates.size} queued remote ICE candidates")
+        candidates.forEach { applyRemoteCandidate(it) }
+    }
+
+    private fun applyRemoteCandidate(candidate: IceCandidate) {
+        val alreadyInSdp = synchronized(candidateLock) {
+            candidate.sdp in remoteSdpCandidateKeys
+        }
+        if (alreadyInSdp) {
+            remoteCandidatesAlreadyInSdp.incrementAndGet()
+            return
+        }
+        val added = runCatching { peerConnection?.addIceCandidate(candidate) == true }
+            .getOrElse {
+                Log.w(TAG, "Could not add remote ICE candidate", it)
+                false
+            }
+        if (added) {
+            remoteCandidatesApplied.incrementAndGet()
+            Log.i(TAG, "Remote ICE candidate accepted")
+        } else {
+            remoteCandidatesRejected.incrementAndGet()
+            Log.w(TAG, "Remote ICE candidate was rejected by WebRTC")
+        }
+    }
+
+    private fun diagnosticSummary(): String {
+        val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
+        return "Диагностика: ICE=$lastIceConnectionState; remote SDP=${remoteDescriptionSet.get()}; " +
+            "сигнал=$lastHandledSignal; локальные кандидаты host/srflx/other=" +
+            "${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
+            "удалённые получено/в очереди/принято/отклонено/уже в SDP=" +
+            "${remoteCandidatesReceived.get()}/${pending}/${remoteCandidatesApplied.get()}/" +
+            "${remoteCandidatesRejected.get()}/${remoteCandidatesAlreadyInSdp.get()}"
+    }
+
+    private fun reportDirectConnectionFailure(reason: String) {
+        Log.w(TAG, "$reason. ${diagnosticSummary()}")
+        reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}")
     }
 
     private fun scheduleDirectConnectionTimeout() {
@@ -395,7 +535,7 @@ class WebRtcAudioCallClient(
                 state == PeerConnection.IceConnectionState.CHECKING ||
                 state == PeerConnection.IceConnectionState.DISCONNECTED
             ) {
-                reportError(DIRECT_P2P_FAILED_MESSAGE)
+                reportDirectConnectionFailure("Не удалось выбрать прямую пару ICE-кандидатов за 30 секунд")
             }
         }
     }
@@ -426,6 +566,8 @@ class WebRtcAudioCallClient(
     companion object {
         private const val TAG = "ArturChatWebRTC"
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
+        private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
+        private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val DIRECT_P2P_FAILED_MESSAGE =
             "Не удалось установить прямое соединение между телефонами. " +
                 "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +

@@ -50,14 +50,16 @@ The configured chat list and conversation screen use the live repository. The us
 
 ## Direct peer-to-peer audio calls (no TURN relay)
 
-- Audio uses WebRTC directly between the two phones (peer-to-peer). Supabase Realtime remains responsible for call invitations and signaling only; it does not carry audio.
-- The Android client uses public STUN endpoints only for NAT address discovery. STUN does not relay voice traffic. No TURN server, Metered account, Open Relay endpoint, or media relay is configured.
-- Offer/answer SDP is sent immediately; ICE candidates are sent separately using trickle ICE to avoid waiting for the entire candidate-gathering phase before signaling.
-- The client records ICE candidate types and connection-state changes in Android logs. If ICE remains in `CHECKING`/`DISCONNECTED` for 30 seconds, the user receives a direct-connectivity diagnostic instead of an indefinite spinner.
-- Direct P2P is best-effort. It commonly works when both devices can establish compatible NAT mappings, but some mobile networks, carrier-grade NATs, symmetric NATs, and restrictive firewalls require TURN. In those networks this no-relay build cannot complete the call. Try both devices on the same Wi-Fi or switch one device to a different network.
-- STUN endpoints used for discovery: `stun:stun.l.google.com:19302` and `stun:stun.cloudflare.com:3478`. Audio media is not sent to these STUN services.
-- The call tables remain `public.face_video_calls` and `public.face_video_call_signals`. Existing participant-scoped RLS and guarded call status transitions remain in place.
+- Audio uses WebRTC directly between the two phones (peer-to-peer). Supabase is used only for call invitations and signaling; audio media is not relayed through Supabase.
+- STUN is used only for public-address discovery. No TURN server, Metered account, Open Relay endpoint, or media relay is configured.
+- Before sending SDP offer/answer, the client waits up to five seconds for local ICE gathering so that reachable candidates are embedded in SDP. Trickle ICE continues as a fallback for any candidates discovered later.
+- Supabase Realtime is the low-latency signal path. During a call, the Android client also polls the recipient-scoped signal rows every 900 ms as a recovery path in case a Realtime notification is missed; signal IDs are deduplicated before processing.
+- The client logs local/remote ICE candidate counts, whether remote SDP was accepted, whether remote candidates were accepted/rejected by WebRTC, and the ICE connection state. If direct connectivity fails, the call screen displays a diagnostic summary rather than only a generic timeout.
+- Direct P2P remains best-effort. Some carrier NAT/firewall combinations still require TURN. In those networks this no-relay build cannot complete the call. A same-Wi-Fi test should normally be possible when both phones are on the same reachable LAN; if it fails, use the displayed candidate diagnostics to distinguish signaling, candidate-application, and network-pairing issues.
+- STUN endpoints used for discovery: `stun:stun.l.google.com:19302` and `stun:stun.cloudflare.com:3478`. Voice media is not sent to these STUN services.
+- Call tables remain `public.face_video_calls` and `public.face_video_call_signals`. Existing participant-scoped RLS and guarded call status transitions remain in place.
 - Incoming call signaling is available while the app maintains its Supabase Realtime connection. Reliable wake-up after Android kills the app is a separate push-notification requirement; foreground/background behavior must be verified on physical devices.
+
 
 ## Push notifications (Firebase Cloud Messaging)
 
