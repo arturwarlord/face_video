@@ -3,7 +3,6 @@ package com.facevideo.app.calls
 import android.content.Context
 import android.media.AudioManager
 import android.util.Log
-import com.facevideo.app.BuildConfig
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
@@ -12,8 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -30,10 +28,6 @@ import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import org.json.JSONArray
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * A one-to-one audio call using WebRTC media and Supabase only for signaling.
@@ -53,8 +47,9 @@ class WebRtcAudioCallClient(
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
     private val closed = AtomicBoolean(false)
-    private val iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
+    private var connectionTimeoutJob: Job? = null
+    @Volatile private var lastIceConnectionState = PeerConnection.IceConnectionState.NEW
     private val processingLock = Mutex()
     private val processedSignals = mutableSetOf<String>()
     private val pendingRemoteCandidates = mutableListOf<IceCandidate>()
@@ -107,6 +102,7 @@ class WebRtcAudioCallClient(
     fun end() {
         if (!closed.compareAndSet(false, true)) return
         signalJob?.cancel()
+        connectionTimeoutJob?.cancel()
         runCatching { peerConnection?.close() }
         runCatching { peerConnection?.dispose() }
         runCatching { localAudioTrack?.dispose() }
@@ -121,82 +117,14 @@ class WebRtcAudioCallClient(
     }
 
     /**
-     * Fetches short-lived TURN credentials through an authenticated Supabase
-     * Edge Function. The Metered API key stays server-side and is never baked
-     * into the APK. Public STUN remains available as a fallback.
+     * Direct peer-to-peer mode. STUN is used only to discover public-facing
+     * network addresses; audio is never relayed by these STUN services.
+     * No TURN server or third-party media relay is configured in this build.
      */
-    private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
-        val fallback = listOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-        )
-        if (!BuildConfig.SUPABASE_CONFIGURED) return fallback
-
-        val accessToken = runCatching { repository.currentAccessToken() }
-            .getOrElse {
-                Log.w(TAG, "No authenticated session for TURN credentials; falling back to STUN.", it)
-                return fallback
-            }
-
-        return withContext(Dispatchers.IO) {
-            var connection: HttpURLConnection? = null
-            try {
-                val functionUrl = BuildConfig.SUPABASE_URL.trimEnd('/') +
-                    "/functions/v1/get-arturchat-turn-credentials"
-                connection = (URL(functionUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    connectTimeout = 7_000
-                    readTimeout = 7_000
-                    doOutput = true
-                    useCaches = false
-                    setRequestProperty("Content-Type", "application/json")
-                    setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
-                    setRequestProperty("Authorization", "Bearer $accessToken")
-                }
-                connection.outputStream.use { it.write("{}".toByteArray(Charsets.UTF_8)) }
-                val responseCode = connection.responseCode
-                check(responseCode in 200..299) {
-                    "TURN credential function returned HTTP $responseCode."
-                }
-
-                val response = connection.inputStream.bufferedReader().use { it.readText() }
-                val root = JSONObject(response)
-                val json = root.optJSONArray("iceServers")
-                    ?: error("TURN credential function returned no iceServers array.")
-                val turnServers = buildList {
-                    for (index in 0 until json.length()) {
-                        val item = json.optJSONObject(index) ?: continue
-                        val urls = when (val rawUrls = item.opt("urls")) {
-                            is String -> listOf(rawUrls)
-                            is JSONArray -> (0 until rawUrls.length()).mapNotNull { urlIndex ->
-                                rawUrls.optString(urlIndex).takeIf { it.isNotBlank() && it != "null" }
-                            }
-                            else -> emptyList()
-                        }
-                        val username = item.optString("username").takeIf { it.isNotBlank() && it != "null" }
-                        val password = item.optString("credential").takeIf { it.isNotBlank() && it != "null" }
-                        urls.filter { it.startsWith("turn:", true) || it.startsWith("turns:", true) }
-                            .forEach { turnUrl ->
-                                val builder = PeerConnection.IceServer.builder(turnUrl)
-                                if (username != null) builder.setUsername(username)
-                                if (password != null) builder.setPassword(password)
-                                add(builder.createIceServer())
-                            }
-                    }
-                }
-                check(turnServers.isNotEmpty()) {
-                    "TURN credentials response did not contain a TURN server."
-                }
-                Log.i(TAG, "Loaded ${turnServers.size} TURN relay URLs from the authenticated backend.")
-                fallback + turnServers
-            } catch (error: Exception) {
-                Log.w(TAG, "Could not load TURN credentials; falling back to STUN.", error)
-                fallback
-            } finally {
-                connection?.disconnect()
-            }
-        }
-    }
+    private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+    )
 
     private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
@@ -221,29 +149,46 @@ class WebRtcAudioCallClient(
                 override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
 
                 override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                    lastIceConnectionState = state
+                    Log.i(TAG, "P2P ICE connection state=$state")
                     when (state) {
                         PeerConnection.IceConnectionState.CONNECTED,
-                        PeerConnection.IceConnectionState.COMPLETED -> setStatus("Звонок активен")
-                        PeerConnection.IceConnectionState.CHECKING -> setStatus("Устанавливаем соединение…")
-                        PeerConnection.IceConnectionState.DISCONNECTED -> setStatus("Соединение прервано. Пытаемся восстановить…")
-                        PeerConnection.IceConnectionState.FAILED -> reportError("Не удалось соединить устройства. Возможно, этой сети нужен TURN-сервер.")
-                        PeerConnection.IceConnectionState.CLOSED -> Unit
+                        PeerConnection.IceConnectionState.COMPLETED -> {
+                            connectionTimeoutJob?.cancel()
+                            setStatus("Звонок активен")
+                        }
+                        PeerConnection.IceConnectionState.CHECKING -> {
+                            setStatus("Проверяем прямое соединение…")
+                            scheduleDirectConnectionTimeout()
+                        }
+                        PeerConnection.IceConnectionState.DISCONNECTED -> {
+                            setStatus("Соединение прервано. Пытаемся восстановить…")
+                            scheduleDirectConnectionTimeout()
+                        }
+                        PeerConnection.IceConnectionState.FAILED -> {
+                            connectionTimeoutJob?.cancel()
+                            reportError(DIRECT_P2P_FAILED_MESSAGE)
+                        }
+                        PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
                         else -> Unit
                     }
                 }
 
                 override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
-                    Log.i(TAG, "ICE gathering state=$state")
-                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
-                        iceGatheringCompleted.complete(Unit)
-                    }
+                    Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
                     if (closed.get()) return
                     gatheredCandidateCount.incrementAndGet()
-                    Log.i(TAG, "ICE candidate gathered: mid=${candidate.sdpMid}, line=${candidate.sdpMLineIndex}")
+                    val candidateType = Regex("""\styp\s+(host|srflx|relay)""")
+                        .find(candidate.sdp)?.groupValues?.getOrNull(1) ?: "unknown"
+                    Log.i(
+                        TAG,
+                        "P2P ICE candidate gathered: type=$candidateType, " +
+                            "mid=${candidate.sdpMid}, line=${candidate.sdpMLineIndex}"
+                    )
                     scope.launch {
                         runCatching {
                             repository.sendSignal(
@@ -384,27 +329,20 @@ class WebRtcAudioCallClient(
         fallbackDescription: SessionDescription
     ) {
         scope.launch {
-            setStatus("Собираем сетевые маршруты…")
-            val gatheringFinished = withTimeoutOrNull(12_000L) {
-                iceGatheringCompleted.await()
-                true
-            } ?: false
+            setStatus("Отправляем параметры прямого соединения…")
+            // Trickle ICE sends candidates independently through Supabase, so
+            // the offer/answer does not wait for gathering to finish.
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
             Log.i(
                 TAG,
-                "Sending $signalType SDP: gatheringFinished=$gatheringFinished, " +
-                    "candidatesInSdp=$candidatesInSdp, candidateCallbacks=${gatheredCandidateCount.get()}"
+                "Sending P2P $signalType SDP: candidatesInSdp=$candidatesInSdp, " +
+                    "candidateCallbacks=${gatheredCandidateCount.get()}; remaining candidates use trickle ICE"
             )
-            if (candidatesInSdp == 0) {
-                reportError(
-                    "Телефон не обнаружил сетевые маршруты для звонка. " +
-                        "Проверь интернет и разрешение доступа к состоянию сети."
-                )
-            } else if (!gatheringFinished) {
-                reportError("Сбор сетевых маршрутов занял слишком много времени. Пробуем подключиться частично.")
+            if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
+                Log.i(TAG, "No ICE candidates embedded in SDP yet; waiting for trickle ICE callbacks.")
             }
 
             runCatching {
@@ -447,6 +385,19 @@ class WebRtcAudioCallClient(
         candidates.forEach { peerConnection?.addIceCandidate(it) }
     }
 
+    private fun scheduleDirectConnectionTimeout() {
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = scope.launch {
+            delay(DIRECT_P2P_TIMEOUT_MS)
+            val state = lastIceConnectionState
+            if (state == PeerConnection.IceConnectionState.CHECKING ||
+                state == PeerConnection.IceConnectionState.DISCONNECTED
+            ) {
+                reportError(DIRECT_P2P_FAILED_MESSAGE)
+            }
+        }
+    }
+
     private fun setStatus(message: String) {
         scope.launch(Dispatchers.Main) {
             if (!closed.get()) onStatus(message)
@@ -472,6 +423,11 @@ class WebRtcAudioCallClient(
 
     companion object {
         private const val TAG = "ArturChatWebRTC"
+        private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
+        private const val DIRECT_P2P_FAILED_MESSAGE =
+            "Не удалось установить прямое соединение между телефонами. " +
+                "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
+                "или переключить один из телефонов на другую сеть."
         @Volatile private var peerConnectionFactory: PeerConnectionFactory? = null
 
         private fun initializeFactory(context: Context) {
