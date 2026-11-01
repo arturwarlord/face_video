@@ -48,13 +48,16 @@ The configured chat list and conversation screen use the live repository. The us
 
 **Never put a Supabase secret/service_role key in the Android app, GitHub variables, or this repository.** The Android app uses only the publishable key and relies on database RLS for authorization.
 
-## TURN relay for difficult mobile networks
+## Direct peer-to-peer audio calls (no TURN relay)
 
-The app fetches short-lived TURN credentials from the deployed, JWT-protected Supabase Edge Function `get-arturchat-turn-credentials`. The function uses Open Relay's documented Static Auth endpoint (`staticauth.openrelay.metered.ca`) and generates per-request TURN REST credentials server-side using the published shared authentication secret. No payment card, Metered dashboard account, or user-provided API key is required for this public relay mode.
-
-The Android app requests the temporary `iceServers` list during call setup. Credentials expire after six hours and are never embedded in the APK. If the relay provider is unavailable, the app falls back to its public STUN servers. Open Relay is a shared community relay: availability, capacity and any usage limits are controlled by the provider and are not an SLA.
-
-References: [Open Relay Static Auth](https://www.metered.ca/tools/openrelay/) · [TURN REST authentication format](https://github.com/coturn/coturn/wiki/turnserver).
+- Audio uses WebRTC directly between the two phones (peer-to-peer). Supabase Realtime remains responsible for call invitations and signaling only; it does not carry audio.
+- The Android client uses public STUN endpoints only for NAT address discovery. STUN does not relay voice traffic. No TURN server, Metered account, Open Relay endpoint, or media relay is configured.
+- Offer/answer SDP is sent immediately; ICE candidates are sent separately using trickle ICE to avoid waiting for the entire candidate-gathering phase before signaling.
+- The client records ICE candidate types and connection-state changes in Android logs. If ICE remains in `CHECKING`/`DISCONNECTED` for 30 seconds, the user receives a direct-connectivity diagnostic instead of an indefinite spinner.
+- Direct P2P is best-effort. It commonly works when both devices can establish compatible NAT mappings, but some mobile networks, carrier-grade NATs, symmetric NATs, and restrictive firewalls require TURN. In those networks this no-relay build cannot complete the call. Try both devices on the same Wi-Fi or switch one device to a different network.
+- STUN endpoints used for discovery: `stun:stun.l.google.com:19302` and `stun:stun.cloudflare.com:3478`. Audio media is not sent to these STUN services.
+- The call tables remain `public.face_video_calls` and `public.face_video_call_signals`. Existing participant-scoped RLS and guarded call status transitions remain in place.
+- Incoming call signaling is available while the app maintains its Supabase Realtime connection. Reliable wake-up after Android kills the app is a separate push-notification requirement; foreground/background behavior must be verified on physical devices.
 
 ## Push notifications (Firebase Cloud Messaging)
 
