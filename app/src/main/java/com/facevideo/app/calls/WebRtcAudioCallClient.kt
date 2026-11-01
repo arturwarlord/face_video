@@ -251,6 +251,7 @@ class WebRtcAudioCallClient(
                     ?: return reportError("В приглашении отсутствует SDP offer.")
                 setRemoteDescription(SessionDescription.Type.OFFER, description) {
                     createAnswer()
+                    scheduleDirectConnectionTimeout()
                 }
             }
 
@@ -261,6 +262,7 @@ class WebRtcAudioCallClient(
                 setRemoteDescription(SessionDescription.Type.ANSWER, description) {
                     flushRemoteCandidates()
                     setStatus("Завершаем подключение…")
+                    scheduleDirectConnectionTimeout()
                 }
             }
 
@@ -389,7 +391,8 @@ class WebRtcAudioCallClient(
         connectionTimeoutJob = scope.launch {
             delay(DIRECT_P2P_TIMEOUT_MS)
             val state = lastIceConnectionState
-            if (state == PeerConnection.IceConnectionState.CHECKING ||
+            if (state == PeerConnection.IceConnectionState.NEW ||
+                state == PeerConnection.IceConnectionState.CHECKING ||
                 state == PeerConnection.IceConnectionState.DISCONNECTED
             ) {
                 reportError(DIRECT_P2P_FAILED_MESSAGE)
