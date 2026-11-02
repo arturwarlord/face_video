@@ -63,20 +63,18 @@ The configured chat list and conversation screen use the live repository. The us
 
 ## Push notifications (Firebase Cloud Messaging)
 
-ArturChat now includes the Android FCM service, per-account device-token registration and the deployed Supabase Edge Function `send-arturchat-push`. Tokens are stored in `public.face_video_push_tokens`; RLS restricts each user's rows to that user. The final external credentials and webhooks still need one-time setup:
+ArturChat contains an Android FCM receiver, per-account device-token registration, and the deployed Supabase Edge Function `send-arturchat-push`. The push delivery path is not active until a Firebase Android config, server FCM key, and two Supabase Database Webhooks are configured.
 
-1. In Firebase Console, create or select a project and add an Android app with package ID `com.facevideo.app`. Download `google-services.json` and add it in GitHub at `app/google-services.json` (the file contains client configuration, not a private service-account key). The Gradle build automatically activates Google Services when this file is present.
-2. In Firebase Console → Project settings → Service accounts, generate a private service-account JSON key. Do not commit it or add it to the Android app. Keep it for the Supabase Edge Function secret in the next step.
-3. In Supabase Dashboard → Edge Functions → Secrets, set:
-   - `FCM_SERVICE_ACCOUNT_JSON` — the complete Firebase service-account JSON.
-   - `ARTURCHAT_PUSH_WEBHOOK_SECRET` — a long random value that will be shared only with the two database webhooks.
-   - `SUPABASE_SERVICE_ROLE_KEY` — the server-only Supabase service-role/secret key. It must never be placed in Android or GitHub.
-4. Create two Supabase Database Webhooks (POST / INSERT), one for `public.face_video_messages` and one for `public.face_video_calls`. Both call `https://mitvjkhlsvxcnzhbiwye.supabase.co/functions/v1/send-arturchat-push`. Add header `x-arturchat-webhook-secret` with the same value as `ARTURCHAT_PUSH_WEBHOOK_SECRET`, plus `Content-Type: application/json`.
-5. Build and install the signed release on each phone. Sign in and open ArturChat once on each device so its FCM token is registered. On Android 13+, grant notification permission.
+**Current verified status (2026-11-02):** the Supabase push-token table has zero registered devices, and there are no Database Webhooks/trigger calls configured for `face_video_messages` or `face_video_calls`. The Android build previously did not receive `google-services.json`, so it compiled with FCM registration disabled.
 
-The Edge Function sends new-message notifications to the other members of a chat and incoming-call notifications only to the callee. It ignores message notifications sent by the same account. The Android app also keeps its foreground Realtime notification fallback. Phone manufacturers may apply their own battery and background restrictions.
+Follow [docs/PUSH_NOTIFICATIONS_SETUP.md](docs/PUSH_NOTIFICATIONS_SETUP.md) for the one-time setup. GitHub Actions now accepts the Android client config through the repository secret `FIREBASE_GOOGLE_SERVICES_BASE64`, writes it to `app/google-services.json` only during the build, validates package ID `com.facevideo.app`, and keeps the file ignored by Git. The same optional step is included in debug, signed-candidate, and release workflows.
 
-The Firebase service-account key, Supabase service-role key and webhook secret are private server credentials. Only the Android `google-services.json` client config belongs in the app build.
+The Firebase service-account JSON and webhook secret belong only in Supabase Edge Function Secrets. Never store the service-account private key in GitHub, Android, or the repository. Supabase provides the legacy `SUPABASE_SERVICE_ROLE_KEY` environment variable to hosted Edge Functions; it must never be put in the Android app.
+
+The Edge Function sends new-message notifications to the other members of a chat and incoming-call notifications only to the callee. After setup, open ArturChat on each phone once and sign in so each FCM token is registered. On Android 13+, allow notification permission. Test incoming messages and calls with the app backgrounded (not force-stopped), then test after locking the screen.
+
+**Provider note:** Android push transport uses Google Firebase Cloud Messaging. It does not carry call audio; voice remains direct WebRTC peer-to-peer. If a strict no-Google requirement applies to push too, this provider must be replaced and the compatibility/coverage of an alternative must be assessed separately.
+
 
 ## GitHub Actions
 
