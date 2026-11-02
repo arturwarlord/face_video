@@ -101,6 +101,14 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             .decodeSingle<FaceVideoCall>()
     }
 
+    suspend fun getCallById(callId: String): FaceVideoCall? =
+        client.from("face_video_calls")
+            .select {
+                filter { eq("id", callId) }
+            }
+            .decodeList<FaceVideoCall>()
+            .firstOrNull()
+
     suspend fun getProfile(userId: String): FaceVideoProfile? =
         client.from("face_video_profiles")
             .select {
