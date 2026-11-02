@@ -22,9 +22,9 @@ internal object CallNotificationIntents {
 }
 
 /**
- * Displays Android notifications for incoming messages received through the
- * app's live Supabase Realtime subscription. Reliable delivery after process
- * death requires a separate FCM integration.
+ * Displays local Realtime notifications and remote FCM notifications.
+ * Incoming-call notifications use Android CallStyle on API 31+ and expose
+ * Accept/Decline actions that are routed through the signed-in app session.
  */
 class AppNotificationManager(context: Context) {
     private val appContext = context.applicationContext
