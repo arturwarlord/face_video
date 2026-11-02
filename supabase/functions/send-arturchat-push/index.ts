@@ -81,15 +81,19 @@ async function sendToDevice(
       body: JSON.stringify({
         message: {
           token: target.token,
-          notification: { title: payload.title, body: payload.body },
           data,
-          android: {
-            priority: "HIGH",
-            notification: {
-              channel_id: payload.type === "call" ? "arturchat_calls" : "arturchat_messages",
-              sound: "default",
-            },
-          },
+          android: payload.type === "call"
+            ? { priority: "HIGH" }
+            : {
+                priority: "HIGH",
+                notification: {
+                  channel_id: "arturchat_messages",
+                  sound: "default",
+                },
+              },
+          ...(payload.type === "message"
+            ? { notification: { title: payload.title, body: payload.body } }
+            : {}),
         },
       }),
     },
