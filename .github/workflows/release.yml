@@ -21,6 +21,7 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      FIREBASE_GOOGLE_SERVICES_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_BASE64 }}
       ARTURCHAT_KEYSTORE_BASE64: ${{ secrets.ARTURCHAT_KEYSTORE_BASE64 }}
       ARTURCHAT_KEYSTORE_PASSWORD: ${{ secrets.ARTURCHAT_KEYSTORE_PASSWORD }}
       ARTURCHAT_KEY_ALIAS: ${{ secrets.ARTURCHAT_KEY_ALIAS }}
@@ -42,6 +43,29 @@ jobs:
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Prepare Firebase Android configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_GOOGLE_SERVICES_BASE64:-}" ]; then
+            echo "::warning::FIREBASE_GOOGLE_SERVICES_BASE64 is not configured; this APK will not register FCM tokens."
+            exit 0
+          fi
+          printf '%s' "$FIREBASE_GOOGLE_SERVICES_BASE64" | base64 --decode > app/google-services.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("app/google-services.json").read_text(encoding="utf-8"))
+          clients = config.get("client", [])
+          package_names = {
+              item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for item in clients
+          }
+          if "com.facevideo.app" not in package_names:
+              raise SystemExit("Firebase config does not contain Android package com.facevideo.app")
+          PY
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
