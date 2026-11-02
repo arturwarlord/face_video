@@ -76,6 +76,7 @@ import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.formatChatMessageTime
+import com.facevideo.app.data.formatUnreadBadge
 import com.facevideo.app.data.sortChatMessagesChronologically
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
