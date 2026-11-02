@@ -4,7 +4,7 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 ## Current development milestone — one-to-one audio calls
 
-- Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog and active audio-call screen.
+- Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog, actionable Android CallStyle notification (Accept/Decline), and active audio-call screen.
 - Supabase Auth email/password registration, sign-in, persistent session status and sign-out.
 - Live direct chats, username lookup, message loading/sending and Realtime message synchronization.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
