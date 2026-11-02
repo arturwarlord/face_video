@@ -39,6 +39,17 @@ data class FaceVideoMessage(
 )
 
 @Serializable
+data class FaceVideoChatUnreadCount(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("unread_count") val unreadCount: Long
+)
+
+@Serializable
+private data class MarkChatReadArguments(
+    @SerialName("p_chat_id") val chatId: String
+)
+
+@Serializable
 private data class CreateChatArguments(
     @SerialName("p_member_ids") val memberIds: List<String>,
     @SerialName("p_title") val title: String? = null,
@@ -104,6 +115,21 @@ class SupabaseChatRepository(
                 order("created_at", Order.ASCENDING)
             }
             .decodeList<FaceVideoMessage>()
+
+    /** Returns unread message counts for every conversation of the signed-in user. */
+    suspend fun getUnreadCounts(): Map<String, Int> {
+        val rows = client.postgrest.rpc("face_video_get_unread_counts")
+            .decodeList<FaceVideoChatUnreadCount>()
+        return rows.associate { it.chatId to it.unreadCount.coerceAtLeast(0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+    }
+
+    /** Advances only the current user's read watermark for this chat. */
+    suspend fun markChatRead(chatId: String) {
+        client.postgrest.rpc(
+            "face_video_mark_chat_read",
+            MarkChatReadArguments(chatId)
+        )
+    }
 
     suspend fun sendText(chatId: String, text: String) {
         val cleanText = text.trim()

@@ -36,3 +36,11 @@ fun formatChatMessageTime(
 private fun parseMessageInstant(value: String): Instant? =
     runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
         ?: runCatching { Instant.parse(value) }.getOrNull()
+
+
+/** Compact badge text for unread counts; null means no badge should be shown. */
+fun formatUnreadBadge(count: Int): String? = when {
+    count <= 0 -> null
+    count > 99 -> "99+"
+    else -> count.toString()
+}

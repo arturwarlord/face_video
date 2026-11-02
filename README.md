@@ -6,7 +6,7 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 - Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog, actionable Android CallStyle notification (Accept/Decline), and active audio-call screen.
 - Supabase Auth email/password registration, sign-in, persistent session status and sign-out.
-- Live direct chats, username lookup, chronological Realtime message ordering, local-time message timestamps, message loading/sending and synchronization.
+- Live direct chats, username lookup, chronological Realtime message ordering, local-time message timestamps, per-chat unread counters and an aggregate Chats-tab badge.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
 - Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
 - Android system notifications support foreground Realtime and Firebase Cloud Messaging (FCM). The FCM client and server function are implemented; remote delivery becomes active after Firebase credentials and Supabase Database Webhooks are configured.

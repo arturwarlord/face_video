@@ -48,6 +48,20 @@ class ChatMessageFormattingTest {
     }
 
     @Test
+    fun unreadBadgeIsHiddenForZeroAndNegativeCounts() {
+        assertEquals(null, formatUnreadBadge(0))
+        assertEquals(null, formatUnreadBadge(-2))
+    }
+
+    @Test
+    fun unreadBadgeShowsCountsAndCapsAtNinetyNinePlus() {
+        assertEquals("1", formatUnreadBadge(1))
+        assertEquals("12", formatUnreadBadge(12))
+        assertEquals("99", formatUnreadBadge(99))
+        assertEquals("99+", formatUnreadBadge(100))
+    }
+
+    @Test
     fun messageTimeIsFormattedInRequestedLocalZone() {
         assertEquals(
             "12:45",
