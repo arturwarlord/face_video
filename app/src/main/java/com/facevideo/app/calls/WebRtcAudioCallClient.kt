@@ -597,6 +597,7 @@ class WebRtcAudioCallClient(
 
     private fun sendIceRestartRequest(reason: String) {
         if (!restartRequestSent.compareAndSet(false, true)) return
+        restartAttempted.set(true)
         scope.launch {
             runCatching {
                 repository.sendSignal(
