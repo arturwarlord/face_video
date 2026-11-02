@@ -89,7 +89,7 @@ Do not create a webhook for `face_video_call_signals`: ICE/SDP candidates are fr
 
 - Send a message from phone A to phone B while B is on the home screen.
 - Call B while B is in the background and its screen is locked.
-- Tap the incoming-call notification. ArturChat should open and show the existing **Accept / Decline** dialog.
+- On Android 12+, the incoming call should appear as a system CallStyle notification with **Accept** and **Decline** actions. On Android 8–11, the notification shows the same actions as buttons. Tapping either action opens ArturChat; Accept starts the existing authenticated call flow (requesting microphone permission if needed), while Decline updates the call status. Tapping the notification body opens the app and shows the existing incoming-call dialog.
 - Repeat with the roles reversed.
 
 Test with the app backgrounded or screen locked. Android's **Force stop** action deliberately blocks app background execution and push delivery until the user opens the app again. Xiaomi/MIUI battery restrictions may also need the user to allow ArturChat autostart and unrestricted background activity.
