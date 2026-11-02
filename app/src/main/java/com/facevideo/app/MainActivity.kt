@@ -191,6 +191,8 @@ private fun FaceVideoApp(
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
+    var unreadCounts by remember(userId) { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callInfoMessage by remember { mutableStateOf("Видеозвонки будут подключены следующим этапом. Сейчас доступны персональные аудиозвонки.") }
 
@@ -239,9 +241,20 @@ private fun FaceVideoApp(
         }
     }
 
-    LaunchedEffect(liveRepository, userId, openedLiveChat?.id) {
+    LaunchedEffect(liveRepository, userId, openedLiveChat?.id, unreadRefreshKey) {
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
+
+        suspend fun refreshUnreadCounts() {
+            runCatching { repository.getUnreadCounts() }
+                .onSuccess { unreadCounts = it }
+                .onFailure {
+                    android.util.Log.w("ArturChatUnread", "Could not refresh unread counters", it)
+                }
+        }
+
+        refreshUnreadCounts()
+
         val chatTitles = runCatching {
             repository.listMyChats().associate { it.id to it.title }
         }.getOrDefault(emptyMap())
@@ -252,6 +265,7 @@ private fun FaceVideoApp(
             if (!initialSnapshotReceived) {
                 knownMessageIds.addAll(messages.map { it.id })
                 initialSnapshotReceived = true
+                refreshUnreadCounts()
                 return@collect
             }
 
@@ -265,6 +279,8 @@ private fun FaceVideoApp(
                         body = message.body
                     )
                 }
+
+            refreshUnreadCounts()
         }
     }
 
@@ -481,6 +497,7 @@ private fun FaceVideoApp(
                 repository = liveRepository,
                 userId = userId,
                 onBack = { openedLiveChat = null },
+                onMarkedRead = { unreadRefreshKey += 1 },
                 onCall = { isVideo ->
                     if (isVideo) {
                         callInfoMessage = "Видеозвонки ещё разрабатываются. Сейчас уже можно звонить голосом."
@@ -506,6 +523,7 @@ private fun FaceVideoApp(
                             LiveChatListScreen(
                                 repository = liveRepository,
                                 userId = userId,
+                                unreadCounts = unreadCounts,
                                 onOpenChat = { openedLiveChat = it }
                             )
                         } else {
@@ -518,6 +536,7 @@ private fun FaceVideoApp(
                             LiveChatListScreen(
                                 repository = liveRepository,
                                 userId = userId,
+                                unreadCounts = unreadCounts,
                                 onOpenChat = { openedLiveChat = it },
                                 contactsMode = true
                             )
@@ -540,7 +559,11 @@ private fun FaceVideoApp(
                         }
                     )
                 }
-                BottomNavigation(selectedTab = selectedTab, onSelect = { selectedTab = it })
+                BottomNavigation(
+                    selectedTab = selectedTab,
+                    unreadChatsCount = unreadCounts.values.sum().coerceAtMost(999),
+                    onSelect = { selectedTab = it }
+                )
             }
         }
     }
@@ -603,6 +626,7 @@ private fun FaceVideoApp(
 private fun LiveChatListScreen(
     repository: SupabaseChatRepository,
     userId: String,
+    unreadCounts: Map<String, Int>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     contactsMode: Boolean = false
 ) {
@@ -704,7 +728,11 @@ private fun LiveChatListScreen(
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 items(visibleChats, key = { it.id }) { chat ->
-                    LiveChatRow(chat = chat, onClick = { onOpenChat(chat) })
+                    LiveChatRow(
+                        chat = chat,
+                        unreadCount = unreadCounts[chat.id] ?: 0,
+                        onClick = { onOpenChat(chat) }
+                    )
                 }
             }
         }
@@ -724,7 +752,7 @@ private fun LiveChatListScreen(
 }
 
 @Composable
-private fun LiveChatRow(chat: FaceVideoChatSummary, onClick: () -> Unit) {
+private fun LiveChatRow(chat: FaceVideoChatSummary, unreadCount: Int, onClick: () -> Unit) {
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
@@ -745,11 +773,25 @@ private fun LiveChatRow(chat: FaceVideoChatSummary, onClick: () -> Unit) {
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            chat.lastMessageAt?.substringAfter("T")?.take(5) ?: "",
-            color = Muted,
-            fontSize = 10.sp
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                chat.lastMessageAt?.substringAfter("T")?.take(5) ?: "",
+                color = Muted,
+                fontSize = 10.sp
+            )
+            formatUnreadBadge(unreadCount)?.let { badgeText ->
+                Spacer(Modifier.height(6.dp))
+                Surface(color = Mint, shape = CircleShape) {
+                    Text(
+                        badgeText,
+                        color = Night,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -852,6 +894,7 @@ private fun LiveChatScreen(
     repository: SupabaseChatRepository,
     userId: String,
     onBack: () -> Unit,
+    onMarkedRead: () -> Unit,
     onCall: (Boolean) -> Unit
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
@@ -864,6 +907,14 @@ private fun LiveChatScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
+        runCatching { repository.markChatRead(chat.id) }
+            .onSuccess { onMarkedRead() }
+            .onFailure {
+                android.util.Log.w("ArturChatUnread", "Could not mark chat as read", it)
+            }
+    }
 
     LaunchedEffect(orderedMessages.lastOrNull()?.id, orderedMessages.size) {
         if (orderedMessages.isNotEmpty()) {
@@ -1435,7 +1486,11 @@ private fun ProfileScreen(userEmail: String?, onSignOut: () -> Unit) {
 }
 
 @Composable
-private fun BottomNavigation(selectedTab: MainTab, onSelect: (MainTab) -> Unit) {
+private fun BottomNavigation(
+    selectedTab: MainTab,
+    unreadChatsCount: Int,
+    onSelect: (MainTab) -> Unit
+) {
     Surface(color = Color(0xFF10192B), shadowElevation = 12.dp) {
         Row(
             Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 12.dp),
@@ -1447,7 +1502,23 @@ private fun BottomNavigation(selectedTab: MainTab, onSelect: (MainTab) -> Unit) 
                     Modifier.weight(1f).clickable { onSelect(tab) }.padding(vertical = 3.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(tab.symbol, color = if (selected) Mint else Muted, fontSize = 20.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(tab.symbol, color = if (selected) Mint else Muted, fontSize = 20.sp)
+                        if (tab == MainTab.CHATS) {
+                            formatUnreadBadge(unreadChatsCount)?.let { badgeText ->
+                                Spacer(Modifier.width(5.dp))
+                                Surface(color = Color(0xFFFF667D), shape = CircleShape) {
+                                    Text(
+                                        badgeText,
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(3.dp))
                     Text(
                         tab.title,
