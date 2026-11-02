@@ -1,6 +1,7 @@
 package com.facevideo.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -75,7 +76,10 @@ import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import com.facevideo.app.notifications.AppNotificationManager
+import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
@@ -99,9 +103,18 @@ private enum class MainTab(val title: String, val symbol: String) {
     PROFILE("Профиль", "◌")
 }
 
+data class CallNotificationAction(
+    val callId: String,
+    val action: String,
+    val nonce: Long
+)
+
 class MainActivity : ComponentActivity() {
+    private val pendingCallNotificationAction = MutableStateFlow<CallNotificationAction?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureCallNotificationAction(intent)
         setContent {
             MaterialTheme(
                 colorScheme = darkColorScheme(
@@ -115,11 +128,44 @@ class MainActivity : ComponentActivity() {
             ) {
                 ArturChatUpdateHost {
                     SupabaseAuthGate { userEmail, userId, onSignOut ->
-                        FaceVideoApp(userEmail = userEmail, userId = userId, onSignOut = onSignOut)
+                        FaceVideoApp(
+                            userEmail = userEmail,
+                            userId = userId,
+                            onSignOut = onSignOut,
+                            callNotificationActionFlow = pendingCallNotificationAction,
+                            onCallNotificationActionHandled = { nonce ->
+                                if (pendingCallNotificationAction.value?.nonce == nonce) {
+                                    pendingCallNotificationAction.value = null
+                                }
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        captureCallNotificationAction(intent)
+    }
+
+    private fun captureCallNotificationAction(intent: Intent?) {
+        val callId = intent?.getStringExtra(CallNotificationIntents.EXTRA_CALL_ID)
+            ?: return
+        val action = intent.getStringExtra(CallNotificationIntents.EXTRA_CALL_ACTION)
+            ?: return
+        if (action !in setOf(
+                CallNotificationIntents.ACTION_ANSWER,
+                CallNotificationIntents.ACTION_DECLINE
+            )
+        ) return
+        pendingCallNotificationAction.value = CallNotificationAction(
+            callId = callId,
+            action = action,
+            nonce = System.nanoTime()
+        )
     }
 }
 
@@ -129,7 +175,15 @@ private sealed interface PendingCallAction {
 }
 
 @Composable
-private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> Unit) {
+private fun FaceVideoApp(
+    userEmail: String?,
+    userId: String?,
+    onSignOut: () -> Unit,
+    callNotificationActionFlow: StateFlow<CallNotificationAction?>,
+    onCallNotificationActionHandled: (Long) -> Unit
+) {
+    val callNotificationAction by callNotificationActionFlow.collectAsState()
+
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
@@ -235,6 +289,7 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
             }
             is PendingCallAction.Incoming -> {
                 callError = null
+                appNotifications.cancelNotification(action.call.id)
                 repository.answerCall(action.call.id)
                 val profile = repository.getProfile(action.call.callerId)
                 activeCall = action.call.copy(status = "accepted")
@@ -281,6 +336,27 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
             pendingCallAction = action
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+
+    LaunchedEffect(callNotificationAction?.nonce, callRepository, userId) {
+        val request = callNotificationAction ?: return@LaunchedEffect
+        val repository = callRepository ?: return@LaunchedEffect
+        val currentUser = userId ?: return@LaunchedEffect
+
+        val call = runCatching { repository.getCallById(request.callId) }.getOrNull()
+        if (call != null && call.calleeId == currentUser && call.status == "ringing") {
+            when (request.action) {
+                CallNotificationIntents.ACTION_ANSWER -> {
+                    requestCallPermission(PendingCallAction.Incoming(call))
+                }
+                CallNotificationIntents.ACTION_DECLINE -> {
+                    runCatching { repository.declineCall(call.id) }
+                        .onFailure { callError = it.message ?: "Не удалось отклонить вызов." }
+                }
+            }
+        }
+        appNotifications.cancelNotification(request.callId)
+        onCallNotificationActionHandled(request.nonce)
     }
 
     fun finishCall() {
@@ -468,6 +544,7 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
     if (incomingCall != null && activeCall == null) {
         AlertDialog(
             onDismissRequest = {
+                appNotifications.cancelNotification(incomingCall.id)
                 scope.launch { runCatching { callRepository?.declineCall(incomingCall.id) } }
             },
             containerColor = PanelLight,
@@ -494,6 +571,7 @@ private fun FaceVideoApp(userEmail: String?, userId: String?, onSignOut: () -> U
             },
             dismissButton = {
                 TextButton(onClick = {
+                    appNotifications.cancelNotification(incomingCall.id)
                     scope.launch { runCatching { callRepository?.declineCall(incomingCall.id) } }
                 }) {
                     Text("Отклонить", color = Muted)

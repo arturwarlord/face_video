@@ -18,3 +18,6 @@ supabase/.branches/
 *.jks
 *.keystore
 arturchat-upload.jks
+
+# Firebase Android client configuration (injected by GitHub Actions)
+app/google-services.json
