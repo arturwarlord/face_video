@@ -61,6 +61,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +75,8 @@ import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.data.formatChatMessageTime
+import com.facevideo.app.data.sortChatMessagesChronologically
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
@@ -852,14 +856,19 @@ private fun LiveChatScreen(
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
+    // Realtime rows can arrive in primary-key order rather than message time order.
+    // Always render the timeline chronologically so every new message stays at the bottom.
+    val orderedMessages = remember(messages) { sortChatMessagesChronologically(messages) }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size)
+    LaunchedEffect(orderedMessages.lastOrNull()?.id, orderedMessages.size) {
+        if (orderedMessages.isNotEmpty()) {
+            listState.animateScrollToItem(orderedMessages.lastIndex)
+        }
     }
 
     fun sendMessage() {
@@ -896,7 +905,7 @@ private fun LiveChatScreen(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF25324A)))
 
-        if (messages.isEmpty()) {
+        if (orderedMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text("Это начало вашей переписки. Напиши первое сообщение.", color = Muted, fontSize = 12.sp)
             }
@@ -907,12 +916,12 @@ private fun LiveChatScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(11.dp)
             ) {
-                items(messages, key = { it.id }) { message ->
+                items(orderedMessages, key = { it.id }) { message ->
                     MessageBubble(
                         ChatMessage(
                             id = message.id,
                             text = message.body,
-                            time = message.createdAt.substringAfter("T").take(5),
+                            time = formatChatMessageTime(message.createdAt),
                             isMine = message.senderId == userId
                         )
                     )
@@ -942,7 +951,11 @@ private fun LiveChatScreen(
                     value = draft,
                     onValueChange = { draft = it },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        capitalization = KeyboardCapitalization.None,
+                        imeAction = ImeAction.Send
+                    ),
                     keyboardActions = KeyboardActions(onSend = { sendMessage() }),
                     textStyle = TextStyle(color = MainText, fontSize = 14.sp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
@@ -1243,24 +1256,31 @@ private fun MessageBubble(message: ChatMessage) {
         Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start
     ) {
-        Surface(
-            color = if (message.isMine) Color(0xFF245E5D) else PanelLight,
-            shape = RoundedCornerShape(
-                topStart = 18.dp, topEnd = 18.dp,
-                bottomStart = if (message.isMine) 18.dp else 5.dp,
-                bottomEnd = if (message.isMine) 5.dp else 18.dp
-            ),
-            modifier = Modifier.widthIn(max = 300.dp)
+        Column(
+            modifier = Modifier.widthIn(max = 300.dp),
+            horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start
         ) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text(message.text, color = MainText, fontSize = 14.sp)
+            Surface(
+                color = if (message.isMine) Color(0xFF245E5D) else PanelLight,
+                shape = RoundedCornerShape(
+                    topStart = 18.dp, topEnd = 18.dp,
+                    bottomStart = if (message.isMine) 18.dp else 5.dp,
+                    bottomEnd = if (message.isMine) 5.dp else 18.dp
+                )
+            ) {
                 Text(
-                    message.time,
-                    color = Color(0xFFB8C9D0),
-                    fontSize = 9.sp,
-                    modifier = Modifier.align(Alignment.End).padding(top = 5.dp)
+                    message.text,
+                    color = MainText,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                 )
             }
+            Text(
+                message.time,
+                color = Muted,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(top = 3.dp, start = 8.dp, end = 8.dp)
+            )
         }
     }
 }
