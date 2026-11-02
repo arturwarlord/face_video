@@ -50,15 +50,15 @@ The configured chat list and conversation screen use the live repository. The us
 
 ## Direct peer-to-peer audio calls (no TURN relay)
 
-- Audio uses WebRTC directly between the two phones (peer-to-peer). Supabase is used only for call invitations and signaling; audio media is not relayed through Supabase.
-- STUN is used only for public-address discovery. No TURN server, Metered account, Open Relay endpoint, or media relay is configured.
-- Before sending SDP offer/answer, the client waits up to five seconds for local ICE gathering so that reachable candidates are embedded in SDP. Trickle ICE continues as a fallback for any candidates discovered later.
-- Supabase Realtime is the low-latency signal path. During a call, the Android client also polls the recipient-scoped signal rows every 900 ms as a recovery path in case a Realtime notification is missed; signal IDs are deduplicated before processing.
-- The client logs local/remote ICE candidate counts, whether remote SDP was accepted, whether remote candidates were accepted/rejected by WebRTC, and the ICE connection state. If direct connectivity fails, the call screen displays a diagnostic summary rather than only a generic timeout.
-- Direct P2P remains best-effort. Some carrier NAT/firewall combinations still require TURN. In those networks this no-relay build cannot complete the call. A same-Wi-Fi test should normally be possible when both phones are on the same reachable LAN; if it fails, use the displayed candidate diagnostics to distinguish signaling, candidate-application, and network-pairing issues.
+- Audio uses WebRTC directly between the two phones. Supabase transports signaling only; it does not relay voice media.
+- STUN discovers public-facing addresses. No TURN server, Metered account, Open Relay endpoint, or media relay is configured.
+- SDP includes locally gathered ICE candidates, with trickle ICE as a fallback. Signal rows are also polled as a recovery path alongside Realtime.
+- If an established direct route is lost, the caller performs one ICE restart. The callee can request it through an ICE control signal. The restart renegotiates offer/answer and gathers a fresh ICE candidate generation without creating a new call record.
+- The Android client records the selected candidate pair (candidate type, transport, address family), whether ICE is receiving packets, and recovery status. Raw IP addresses are not shown on the call screen.
+- A single ICE restart can recover transient NAT mapping or network-path changes, but it cannot guarantee connectivity through symmetric/strict NAT or a carrier that blocks peer-to-peer UDP. Those cases still require TURN relay.
 - STUN endpoints used for discovery: `stun:stun.l.google.com:19302` and `stun:stun.cloudflare.com:3478`. Voice media is not sent to these STUN services.
-- Call tables remain `public.face_video_calls` and `public.face_video_call_signals`. Existing participant-scoped RLS and guarded call status transitions remain in place.
-- Incoming call signaling is available while the app maintains its Supabase Realtime connection. Reliable wake-up after Android kills the app is a separate push-notification requirement; foreground/background behavior must be verified on physical devices.
+- Call signaling remains participant-scoped by RLS in `public.face_video_calls` and `public.face_video_call_signals`. The restart request uses the existing `ice` signal type and requires no database schema migration.
+- Incoming call signaling is available while the app maintains its Supabase Realtime connection. Reliable wake-up after Android kills the app remains a separate push-notification requirement.
 
 
 ## Push notifications (Firebase Cloud Messaging)
