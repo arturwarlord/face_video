@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,6 +85,7 @@ import com.facevideo.app.data.mergeChatMessageSnapshots
 import com.facevideo.app.data.buildChatInboxPreview
 import com.facevideo.app.data.resolveMessageDeliveryStatus
 import com.facevideo.app.data.sortChatMessagesChronologically
+import com.facevideo.app.data.shouldShowChatMessageTime
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
@@ -1013,10 +1015,10 @@ private fun LiveChatScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(11.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                items(orderedMessages, key = { it.id }) { message ->
+                itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
                     MessageBubble(
                         ChatMessage(
                             id = message.id,
@@ -1026,7 +1028,8 @@ private fun LiveChatScreen(
                             deliveryStatus = if (message.senderId == userId) {
                                 resolveMessageDeliveryStatus(message.id, receipts)
                             } else null
-                        )
+                        ),
+                        showTime = shouldShowChatMessageTime(orderedMessages, index)
                     )
                 }
             }
@@ -1354,52 +1357,54 @@ private fun ChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(message: ChatMessage, showTime: Boolean = true) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start
     ) {
-        Column(
+        Surface(
             modifier = Modifier.widthIn(max = 300.dp),
-            horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start
+            color = if (message.isMine) Color(0xFF245E5D) else PanelLight,
+            shape = RoundedCornerShape(
+                topStart = 18.dp, topEnd = 18.dp,
+                bottomStart = if (message.isMine) 18.dp else 5.dp,
+                bottomEnd = if (message.isMine) 5.dp else 18.dp
+            )
         ) {
-            Surface(
-                color = if (message.isMine) Color(0xFF245E5D) else PanelLight,
-                shape = RoundedCornerShape(
-                    topStart = 18.dp, topEnd = 18.dp,
-                    bottomStart = if (message.isMine) 18.dp else 5.dp,
-                    bottomEnd = if (message.isMine) 5.dp else 18.dp
+            Column(
+                modifier = Modifier.padding(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = 8.dp,
+                    bottom = if (showTime) 6.dp else 8.dp
                 )
             ) {
                 Text(
                     message.text,
                     color = MainText,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    fontSize = 14.sp
                 )
-            }
-            Row(
-                modifier = Modifier.padding(top = 3.dp, start = 8.dp, end = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    message.time,
-                    color = Muted,
-                    fontSize = 9.sp
-                )
-                if (message.isMine && message.deliveryStatus != null) {
-                    Spacer(Modifier.width(4.dp))
-                    val (ticks, tickColor) = when (message.deliveryStatus) {
-                        MessageDeliveryStatus.SENT -> "✓" to Muted
-                        MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
-                        MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF55B8FF)
+                if (showTime) {
+                    Row(
+                        modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(message.time, color = Muted, fontSize = 9.sp)
+                        if (message.isMine && message.deliveryStatus != null) {
+                            Spacer(Modifier.width(4.dp))
+                            val (ticks, tickColor) = when (message.deliveryStatus) {
+                                MessageDeliveryStatus.SENT -> "✓" to Muted
+                                MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
+                                MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF55B8FF)
+                            }
+                            Text(
+                                ticks,
+                                color = tickColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                    Text(
-                        ticks,
-                        color = tickColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
                 }
             }
         }
