@@ -1,5 +1,8 @@
 # ArturChat
 
+**Official website:** https://arturwarlord.github.io/face_video/  
+**Latest Android release:** https://github.com/arturwarlord/face_video/releases/latest
+
 Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase.
 
 ## Current development milestone — one-to-one audio calls
