@@ -122,6 +122,26 @@
     .shot-image img { width:100%; height:100%; display:block; object-fit:cover; transition:transform .5s ease; }
     .shot-card:hover .shot-image img { transform:scale(1.035); }
     .shot-tag { position:absolute; left:9px; top:9px; padding:5px 8px; border-radius:999px; color:#eef0ff; background:rgba(9,14,27,.82); border:1px solid rgba(255,255,255,.13); font-size:9px; letter-spacing:.03em; backdrop-filter:blur(10px); }
+
+    .shot-ui { height:100%; min-height:100%; padding:18px 13px 14px; color:#f5f7ff; background:radial-gradient(circle at 90% 0%,rgba(113,91,220,.34),transparent 42%),linear-gradient(160deg,#111c32,#080e1b); font-size:10px; }
+    .ui-status { display:flex; justify-content:space-between; color:#aebbd4; font-size:8px; margin-bottom:15px; }
+    .ui-brand { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:800; margin-bottom:13px; }
+    .ui-avatar { width:29px; height:29px; border-radius:50%; background:linear-gradient(135deg,#b49bff,#4ed6d9); display:inline-grid; place-items:center; color:#091321; font-weight:900; }
+    .ui-search { padding:8px 10px; border:1px solid rgba(190,204,236,.13); border-radius:10px; color:#8594b1; background:rgba(255,255,255,.04); margin-bottom:12px; }
+    .ui-row { display:flex; align-items:center; gap:9px; padding:10px 0; border-bottom:1px solid rgba(190,204,236,.09); }
+    .ui-row strong { display:block; font-size:9px; margin-bottom:3px; }
+    .ui-row small { color:#8f9db8; font-size:8px; }
+    .ui-pill { margin-left:auto; color:#07121d; background:#79e0c0; border-radius:99px; padding:3px 6px; font-size:7px; font-weight:800; }
+    .ui-story { height:190px; border-radius:14px; padding:13px; display:flex; flex-direction:column; justify-content:space-between; background:linear-gradient(155deg,rgba(18,28,48,.1),rgba(7,12,25,.8)),linear-gradient(135deg,#9c79c8,#4d8795 55%,#172c49); border:1px solid rgba(255,255,255,.16); }
+    .ui-story-top { display:flex; justify-content:space-between; font-size:8px; }
+    .ui-story-title { font-size:17px; line-height:1.1; font-weight:850; letter-spacing:-.04em; }
+    .ui-action { text-align:center; margin-top:12px; border-radius:10px; padding:9px; background:linear-gradient(100deg,#aa8aff,#62dce0); color:#081321; font-size:9px; font-weight:850; }
+    .ui-profile-head { text-align:center; padding:14px 0 17px; }
+    .ui-profile-avatar { width:67px; height:67px; display:grid; place-items:center; margin:0 auto 9px; border-radius:24px; background:linear-gradient(135deg,#a88bff,#5cd9dd); color:#091321; font-size:22px; font-weight:900; box-shadow:0 12px 30px rgba(101,126,255,.25); }
+    .ui-profile-head strong { display:block; font-size:13px; }
+    .ui-profile-head small { color:#91a0bd; font-size:8px; }
+    .ui-setting { padding:10px 11px; margin:7px 0; border:1px solid rgba(190,204,236,.1); border-radius:10px; background:rgba(255,255,255,.035); color:#cbd5e8; font-size:9px; }
+
     .shot-card h3 { margin:14px 3px 4px; font-size:14px; letter-spacing:-.02em; }
     .shot-card p { margin:0 3px 4px; color:var(--muted); font-size:11px; line-height:1.65; }
     .roadmap { position:relative; overflow:hidden; border:1px solid rgba(148,135,255,.18); border-radius:30px; padding:38px; background:radial-gradient(650px 360px at 94% 0%,rgba(107,103,235,.16),transparent 65%),linear-gradient(145deg,rgba(20,29,53,.94),rgba(9,16,30,.95)); box-shadow:var(--shadow); }
@@ -288,7 +308,7 @@
     <section id="preview" class="gallery-section">
       <div class="wrap">
         <div class="section-head">
-          <div><div class="kicker">Визуальное направление</div><h2>Больше способов<br>быть рядом.</h2></div>
+          <div><div class="kicker">Визуальный обзор</div><h2>Знакомьтесь с ArturChat<br>ближе.</h2></div>
           <p class="section-copy">От лаконичной переписки до новых форм общения — показываем, каким может стать ArturChat.</p>
         </div>
         <div class="gallery-note">Концептуальные макеты интерфейса. Будущие экраны могут измениться по мере разработки.</div>
@@ -312,6 +332,40 @@
           <article class="shot-card">
             <div class="shot-image"><img src="assets/concept-stories.webp" alt="Концепт раздела историй с публикациями друзей" loading="lazy"><span class="shot-tag">В планах</span></div>
             <h3>Истории</h3><p>Делитесь моментами дня в фото и коротких видео.</p>
+          </article>
+          <article class="shot-card">
+            <div class="shot-image"><div class="shot-ui">
+              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
+              <div class="ui-brand"><span class="ui-avatar">A</span> ArturChat</div>
+              <div class="ui-search">⌕ Поиск по диалогам</div>
+              <div class="ui-row"><span class="ui-avatar">M</span><div><strong>Марк</strong><small>Отправил фотографию</small></div><span class="ui-pill">2</span></div>
+              <div class="ui-row"><span class="ui-avatar">S</span><div><strong>София</strong><small>Увидимся сегодня?</small></div></div>
+              <div class="ui-row"><span class="ui-avatar">R</span><div><strong>Радмир</strong><small>Отлично, договорились</small></div></div>
+              <div class="ui-row"><span class="ui-avatar">D</span><div><strong>Друзья</strong><small>Новое сообщение в группе</small></div></div>
+            </div><span class="shot-tag">Концепт</span></div>
+            <h3>Все диалоги</h3><p>Быстрый доступ к перепискам, новым сообщениям и любимым контактам.</p>
+          </article>
+          <article class="shot-card">
+            <div class="shot-image"><div class="shot-ui">
+              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
+              <div class="ui-brand">Новая история <span style="margin-left:auto;color:#9e8aff">✕</span></div>
+              <div class="ui-story"><div class="ui-story-top"><span>● Ваша история</span><span>•••</span></div><div class="ui-story-title">Моменты,<br>которыми хочется<br>делиться.</div></div>
+              <div class="ui-action">Опубликовать историю</div>
+              <div style="text-align:center;color:#8f9db8;font-size:8px;margin-top:10px">Фото · Видео · Настройки аудитории</div>
+            </div><span class="shot-tag">Будущий экран</span></div>
+            <h3>Создание истории</h3><p>Выбирайте фото или видео, добавляйте подпись и делитесь моментом с друзьями.</p>
+          </article>
+          <article class="shot-card">
+            <div class="shot-image"><div class="shot-ui">
+              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
+              <div class="ui-brand">Мой профиль</div>
+              <div class="ui-profile-head"><div class="ui-profile-avatar">A</div><strong>Ваше имя</strong><small>@username · На связи</small></div>
+              <div class="ui-setting">✎　Редактировать профиль</div>
+              <div class="ui-setting">◉　Фото и информация</div>
+              <div class="ui-setting">◈　Приватность профиля</div>
+              <div class="ui-setting">⚙　Настройки аккаунта</div>
+            </div><span class="shot-tag">Будущий экран</span></div>
+            <h3>Настройки профиля</h3><p>Управляйте личной информацией, статусом и тем, что видят другие пользователи.</p>
           </article>
         </div>
       </div>
@@ -404,7 +458,6 @@
       <div class="footer-links">
         <a href="#features">Возможности</a>
         <a href="#roadmap">Планы</a>
-        <a href="https://github.com/arturwarlord/face_video/releases" target="_blank" rel="noopener">Релизы</a>
         <a href="https://github.com/arturwarlord/face_video" target="_blank" rel="noopener">GitHub</a>
       </div>
       <div class="credits">Разработчики: ARTUR A<br>Бета-тест: Rasul S, Radmir A</div>
