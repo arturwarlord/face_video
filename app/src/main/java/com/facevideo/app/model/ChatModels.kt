@@ -11,11 +11,18 @@ data class ChatSummary(
     val avatarStyle: Int = 0
 )
 
+enum class MessageDeliveryStatus {
+    SENT,
+    DELIVERED,
+    READ
+}
+
 data class ChatMessage(
     val id: String,
     val text: String,
     val time: String,
-    val isMine: Boolean
+    val isMine: Boolean,
+    val deliveryStatus: MessageDeliveryStatus? = null
 )
 
 fun filterChats(chats: List<ChatSummary>, query: String): List<ChatSummary> {
