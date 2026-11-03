@@ -9,6 +9,7 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 - Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog, actionable Android CallStyle notification (Accept/Decline), and active audio-call screen.
 - Supabase Auth email/password registration, sign-in, persistent session status and sign-out.
+- Editable personal profile: load and update the current user's display name and unique username through Supabase Row Level Security.
 - Live direct chats, username lookup, chronological Realtime message ordering and local-time timestamps.
 - Per-chat and aggregate unread counters; when a chat has unread messages, the inbox preview shows the newest unread incoming message rather than a newer outgoing message.
 - Per-recipient delivery/read receipts: one check for sent, two grey checks for delivered, and two blue checks for read. Receipt updates synchronize through Supabase Realtime.
