@@ -64,6 +64,11 @@ data class FaceVideoMessageReceipt(
 )
 
 @Serializable
+private data class FaceVideoChatMemberUserId(
+    @SerialName("user_id") val userId: String
+)
+
+@Serializable
 private data class MarkChatReadArguments(
     @SerialName("p_chat_id") val chatId: String
 )
@@ -147,6 +152,16 @@ class SupabaseChatRepository(
             }
             .decodeList<FaceVideoChatSummary>()
             .firstOrNull()
+
+    /** Returns the other participant of a direct chat; RLS limits rows to chat members. */
+    suspend fun getDirectChatPeerId(chatId: String, currentUserId: String): String? =
+        client.from("face_video_chat_members")
+            .select {
+                filter { eq("chat_id", chatId) }
+            }
+            .decodeList<FaceVideoChatMemberUserId>()
+            .firstOrNull { it.userId != currentUserId }
+            ?.userId
 
     suspend fun findUser(username: String): FaceVideoProfile? {
         val clean = username.trim().removePrefix("@").lowercase()
