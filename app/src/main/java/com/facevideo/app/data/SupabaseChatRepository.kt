@@ -87,6 +87,12 @@ private data class NewMessage(
 )
 
 @Serializable
+private data class UpdateFaceVideoProfile(
+    val username: String,
+    @SerialName("display_name") val displayName: String
+)
+
+@Serializable
 private data class NewFaceVideoPushToken(
     @SerialName("user_id") val userId: String,
     val token: String,
@@ -100,6 +106,35 @@ private data class NewFaceVideoPushToken(
 class SupabaseChatRepository(
     private val client: SupabaseClient
 ) {
+
+    suspend fun getMyProfile(userId: String): FaceVideoProfile? =
+        client.from("face_video_profiles")
+            .select {
+                filter { eq("id", userId) }
+            }
+            .decodeList<FaceVideoProfile>()
+            .firstOrNull()
+
+    suspend fun updateMyProfile(
+        userId: String,
+        username: String,
+        displayName: String
+    ): FaceVideoProfile {
+        val cleanUsername = username.trim().removePrefix("@").lowercase()
+        val cleanDisplayName = displayName.trim()
+        require(cleanUsername.matches(Regex("^[a-z0-9_]{3,24}$"))) {
+            "Псевдоним должен содержать 3–24 символа: латинские буквы, цифры или _."
+        }
+        require(cleanDisplayName.length <= 48) {
+            "Имя должно содержать не более 48 символов."
+        }
+        return client.from("face_video_profiles")
+            .update(UpdateFaceVideoProfile(username = cleanUsername, displayName = cleanDisplayName)) {
+                select()
+                filter { eq("id", userId) }
+            }
+            .decodeSingle<FaceVideoProfile>()
+    }
     suspend fun listMyChats(): List<FaceVideoChatSummary> =
         client.from("face_video_chat_summaries")
             .select()
