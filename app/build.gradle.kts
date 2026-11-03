@@ -8,8 +8,8 @@ plugins {
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
 val firebaseConfigExists = file("google-services.json").exists()
-val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.5.7").get()
-val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("5007").get().toInt()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.5.8").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("5008").get().toInt()
 
 fun String.asBuildConfigString(): String =
     "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
