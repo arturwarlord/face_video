@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*.*.*"
+    branches:
+      - "publish-release-v*"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -94,6 +96,9 @@ jobs:
         run: |
           set -euo pipefail
           RAW_TAG="${RELEASE_TAG_INPUT}"
+          case "$RAW_TAG" in
+            publish-release-*) RAW_TAG="${RAW_TAG#publish-release-}" ;;
+          esac
           VERSION="${RAW_TAG#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Release version must use MAJOR.MINOR.PATCH format, with or without a leading v (for example 0.4.4 or v0.4.4)"
@@ -165,6 +170,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ArturChat ${{ steps.version.outputs.name }}
           generate_release_notes: false
           body: |
