@@ -302,10 +302,16 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     if (release != null) {
         AlertDialog(
             onDismissRequest = { if (!isDownloading) availableRelease = null },
-            title = { Text("Доступна ArturChat ${release.versionName}", fontWeight = FontWeight.Bold) },
+            title = { Text("Доступно обновление: ${release.versionName}", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text(release.notes.ifBlank { "Вышла новая версия приложения." })
+                    Text(
+                        "Следите за новостями на нашем сайте:\n" +
+                            "https://github.com/arturwarlord/face_video\n\n" +
+                            "В дальнейшем все релизы также будут публиковаться на HTML-странице.\n\n" +
+                            "Разработчики: ARTUR A\n" +
+                            "Бета-тест: Rasul S, Radmir A"
+                    )
                     if (isDownloading) {
                         Spacer(Modifier.height(12.dp))
                         CircularProgressIndicator(progress = { progress / 100f })
