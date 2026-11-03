@@ -109,6 +109,7 @@ import io.github.jan.supabase.realtime.realtime
 private val Night = Color(0xFFF7F5FA)
 private val Panel = Color(0xFFFFFFFF)
 private val PanelLight = Color(0xFFF0EDF6)
+private val IncomingMessage = Color(0xFFE2E4E8)
 private val Mint = Color(0xFF78BFB2)
 private val MainText = Color(0xFF343246)
 private val Muted = Color(0xFF858397)
@@ -218,6 +219,7 @@ private fun FaceVideoApp(
     val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
     val scope = rememberCoroutineScope()
     var onlineUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var presenceAvailable by remember { mutableStateOf(false) }
 
     // Share online state only with authenticated ArturChat profiles through a private Realtime channel.
     LaunchedEffect(supabase, userId) {
@@ -236,6 +238,7 @@ private fun FaceVideoApp(
         try {
             presenceChannel.subscribe(blockUntilSubscribed = true)
             presenceChannel.track(FaceVideoPresence(userId = currentUserId))
+            presenceAvailable = true
             android.util.Log.i("ArturChatPresence", "Online presence connected")
             awaitCancellation()
         } catch (error: kotlinx.coroutines.CancellationException) {
@@ -243,6 +246,7 @@ private fun FaceVideoApp(
         } catch (error: Exception) {
             android.util.Log.w("ArturChatPresence", "Could not connect online presence", error)
             onlineUserIds = emptySet()
+            presenceAvailable = false
         } finally {
             presenceCollector.cancel()
             runCatching { currentClient.realtime.removeChannel(presenceChannel) }
@@ -250,6 +254,7 @@ private fun FaceVideoApp(
                     android.util.Log.w("ArturChatPresence", "Could not remove online presence channel", it)
                 }
             onlineUserIds = emptySet()
+            presenceAvailable = false
         }
     }
     val appNotifications = remember(context) { AppNotificationManager(context) }
@@ -562,6 +567,7 @@ private fun FaceVideoApp(
                 repository = liveRepository,
                 userId = userId,
                 onlineUserIds = onlineUserIds,
+                presenceAvailable = presenceAvailable,
                 onBack = { openedLiveChat = null },
                 onMarkedRead = { unreadRefreshKey += 1 },
                 onCall = { isVideo ->
@@ -972,6 +978,7 @@ private fun LiveChatScreen(
     repository: SupabaseChatRepository,
     userId: String,
     onlineUserIds: Set<String>,
+    presenceAvailable: Boolean,
     onBack: () -> Unit,
     onMarkedRead: () -> Unit,
     onCall: (Boolean) -> Unit
@@ -1059,6 +1066,8 @@ private fun LiveChatScreen(
                 Text(
                     when {
                         chat.isGroup -> "Групповой чат"
+                        !presenceAvailable -> "Статус недоступен"
+                        peerUserId == null -> "Проверяем статус…"
                         peerIsOnline -> "В сети"
                         else -> "Не в сети"
                     },
@@ -1439,7 +1448,7 @@ private fun MessageBubble(
         Surface(
             // Reserve a fixed lane for the delivery ticks so they stay beside the final bubble line.
             modifier = Modifier.widthIn(max = if (message.isMine && showTime) 270.dp else 300.dp),
-            color = if (message.isMine) Color(0xFFD9EFE9) else PanelLight,
+            color = if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
             shape = RoundedCornerShape(
                 topStart = 18.dp, topEnd = 18.dp,
                 bottomStart = if (message.isMine) 18.dp else 5.dp,
