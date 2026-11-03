@@ -158,6 +158,8 @@ jobs:
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Prepare release assets and checksum
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -165,6 +167,34 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk release/ArturChat.apk
           cd release
           sha256sum ArturChat.apk > ArturChat.apk.sha256
+          cd ..
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          changelog = Path("docs/CHANGELOG.md").read_text(encoding="utf-8")
+          sections = re.split(r"(?m)^## \\[", changelog)
+          selected = None
+          for section in sections[1:]:
+              heading, *body = section.splitlines()
+              match = re.match(r"([^\\]]+)\\]", heading)
+              if match and match.group(1).removeprefix("v") == version:
+                  selected = "\\n".join(body).strip()
+                  break
+          if selected is None:
+              raise SystemExit(f"Missing docs/CHANGELOG.md section for release {version}")
+          fixed = (
+              "\\n\\n---\\n\\n"
+              "Следите за новостями на нашем сайте:\\n"
+              "https://arturwarlord.github.io/face_video/\\n\\n"
+              "Исходный код: https://github.com/arturwarlord/face_video\\n\\n"
+              "Разработчики: ARTUR A\\n"
+              "Бета-тест: Rasul S, Radmir A\\n"
+          )
+          Path("release/release-notes.md").write_text(selected + fixed, encoding="utf-8")
+          PY
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -173,14 +203,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: ArturChat ${{ steps.version.outputs.name }}
           generate_release_notes: false
-          body: |
-            Следите за новостями на нашем сайте:
-            https://github.com/arturwarlord/face_video
-
-            В дальнейшем все релизы также будут публиковаться на HTML-странице.
-
-            Разработчики: ARTUR A
-            Бета-тест: Rasul S, Radmir A
+          body_path: release/release-notes.md
           files: |
             release/ArturChat.apk
             release/ArturChat.apk.sha256
