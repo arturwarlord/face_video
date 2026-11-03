@@ -20,6 +20,8 @@ create index if not exists idx_face_video_message_receipts_chat_message
     on public.face_video_message_receipts(chat_id, message_id);
 create index if not exists idx_face_video_message_receipts_recipient_chat
     on public.face_video_message_receipts(recipient_id, chat_id, read_at);
+create index if not exists idx_face_video_message_receipts_sender
+    on public.face_video_message_receipts(sender_id);
 
 alter table public.face_video_message_receipts enable row level security;
 
