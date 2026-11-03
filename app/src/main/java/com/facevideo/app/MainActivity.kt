@@ -580,7 +580,7 @@ private fun FaceVideoApp(
                 }
                 BottomNavigation(
                     selectedTab = selectedTab,
-                    unreadChatsCount = unreadSummaries.values.sumOf { it.unreadCount.coerceAtLeast(0) }.coerceAtMost(999),
+                    unreadChatsCount = unreadSummaries.values.sumOf { it.unreadCount.coerceAtLeast(0L) }.coerceAtMost(999L).toInt(),
                     onSelect = { selectedTab = it }
                 )
             }
