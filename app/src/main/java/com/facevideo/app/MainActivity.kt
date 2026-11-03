@@ -538,7 +538,8 @@ private fun FaceVideoApp(
             )
         } else {
             Column(Modifier.fillMaxSize()) {
-                when (selectedTab) {
+                Box(Modifier.weight(1f)) {
+                    when (selectedTab) {
                     MainTab.CHATS -> {
                         if (liveRepository != null && userId != null) {
                             LiveChatListScreen(
@@ -579,7 +580,8 @@ private fun FaceVideoApp(
                                 }
                                 onSignOut()
                             }
-                        }
+                            }
+                }
                     )
                 }
                 BottomNavigation(
