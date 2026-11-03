@@ -78,6 +78,7 @@ import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.data.FaceVideoPresence
 import com.facevideo.app.data.FaceVideoChatUnreadSummary
 import com.facevideo.app.data.formatChatMessageTime
 import com.facevideo.app.data.formatUnreadBadge
@@ -99,6 +100,11 @@ import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import java.util.UUID
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.awaitCancellation
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.presenceDataFlow
+import io.github.jan.supabase.realtime.track
+import io.github.jan.supabase.realtime.realtime
 
 private val Night = Color(0xFFF7F5FA)
 private val Panel = Color(0xFFFFFFFF)
@@ -211,6 +217,41 @@ private fun FaceVideoApp(
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
     val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
     val scope = rememberCoroutineScope()
+    var onlineUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    // Share online state only with authenticated ArturChat profiles through a private Realtime channel.
+    LaunchedEffect(supabase, userId) {
+        val currentClient = supabase ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+        val presenceChannel = currentClient.channel("face_video:online") {
+            isPrivate = true
+        }
+        val presenceFlow = presenceChannel.presenceDataFlow<FaceVideoPresence>()
+        val presenceCollector = launch {
+            presenceFlow.collect { presences ->
+                onlineUserIds = presences.mapTo(mutableSetOf()) { it.userId }
+            }
+        }
+
+        try {
+            presenceChannel.subscribe(blockUntilSubscribed = true)
+            presenceChannel.track(FaceVideoPresence(userId = currentUserId))
+            android.util.Log.i("ArturChatPresence", "Online presence connected")
+            awaitCancellation()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w("ArturChatPresence", "Could not connect online presence", error)
+            onlineUserIds = emptySet()
+        } finally {
+            presenceCollector.cancel()
+            runCatching { currentClient.realtime.removeChannel(presenceChannel) }
+                .onFailure {
+                    android.util.Log.w("ArturChatPresence", "Could not remove online presence channel", it)
+                }
+            onlineUserIds = emptySet()
+        }
+    }
     val appNotifications = remember(context) { AppNotificationManager(context) }
     val incomingCallsFlow = remember(callRepository, userId) {
         if (callRepository != null && userId != null) {
@@ -520,6 +561,7 @@ private fun FaceVideoApp(
                 chat = currentChat,
                 repository = liveRepository,
                 userId = userId,
+                onlineUserIds = onlineUserIds,
                 onBack = { openedLiveChat = null },
                 onMarkedRead = { unreadRefreshKey += 1 },
                 onCall = { isVideo ->
@@ -929,12 +971,25 @@ private fun LiveChatScreen(
     chat: FaceVideoChatSummary,
     repository: SupabaseChatRepository,
     userId: String,
+    onlineUserIds: Set<String>,
     onBack: () -> Unit,
     onMarkedRead: () -> Unit,
     onCall: (Boolean) -> Unit
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
+    var peerUserId by remember(repository, chat.id, userId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(repository, chat.id, userId, chat.isGroup) {
+        peerUserId = if (chat.isGroup) {
+            null
+        } else {
+            runCatching { repository.getDirectChatPeerId(chat.id, userId) }
+                .onFailure {
+                    android.util.Log.w("ArturChatPresence", "Could not resolve chat peer", it)
+                }
+                .getOrNull()
+        }
+    }
     var locallySentMessages by remember(chat.id) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
     LaunchedEffect(messages) {
         if (locallySentMessages.isNotEmpty()) {
@@ -1000,7 +1055,16 @@ private fun LiveChatScreen(
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                Text("синхронизация в реальном времени", color = Mint, fontSize = 10.sp)
+                val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
+                Text(
+                    when {
+                        chat.isGroup -> "Групповой чат"
+                        peerIsOnline -> "В сети"
+                        else -> "Не в сети"
+                    },
+                    color = if (peerIsOnline) Mint else Muted,
+                    fontSize = 10.sp
+                )
             }
             Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
             Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
@@ -1085,12 +1149,6 @@ private fun LiveChatScreen(
                 Text("➤", color = Night, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Text(
-            "Сообщения сохраняются в Supabase и синхронизируются между устройствами",
-            color = Muted,
-            fontSize = 9.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 7.dp)
-        )
     }
 }
 
@@ -1350,12 +1408,6 @@ private fun ChatScreen(
                 Text("➤", color = Night, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
-        Text(
-            "Локальный прототип · сообщения не отправляются в интернет",
-            color = Muted,
-            fontSize = 9.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 7.dp)
-        )
     }
 }
 
