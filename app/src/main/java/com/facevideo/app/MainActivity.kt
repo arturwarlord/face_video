@@ -540,49 +540,49 @@ private fun FaceVideoApp(
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f)) {
                     when (selectedTab) {
-                    MainTab.CHATS -> {
-                        if (liveRepository != null && userId != null) {
-                            LiveChatListScreen(
-                                repository = liveRepository,
-                                userId = userId,
-                                unreadSummaries = unreadSummaries,
-                                onOpenChat = { openedLiveChat = it }
-                            )
-                        } else {
-                            ChatListScreen(onOpenChat = { openedChat = it })
+                        MainTab.CHATS -> {
+                            if (liveRepository != null && userId != null) {
+                                LiveChatListScreen(
+                                    repository = liveRepository,
+                                    userId = userId,
+                                    unreadSummaries = unreadSummaries,
+                                    onOpenChat = { openedLiveChat = it }
+                                )
+                            } else {
+                                ChatListScreen(onOpenChat = { openedChat = it })
+                            }
                         }
-                    }
-                    MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
-                    MainTab.CONTACTS -> {
-                        if (liveRepository != null && userId != null) {
-                            LiveChatListScreen(
-                                repository = liveRepository,
-                                userId = userId,
-                                unreadSummaries = unreadSummaries,
-                                onOpenChat = { openedLiveChat = it },
-                                contactsMode = true
-                            )
-                        } else {
-                            ContactsScreen(onOpenChat = { openedChat = it })
+                        MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
+                        MainTab.CONTACTS -> {
+                            if (liveRepository != null && userId != null) {
+                                LiveChatListScreen(
+                                    repository = liveRepository,
+                                    userId = userId,
+                                    unreadSummaries = unreadSummaries,
+                                    onOpenChat = { openedLiveChat = it },
+                                    contactsMode = true
+                                )
+                            } else {
+                                ContactsScreen(onOpenChat = { openedChat = it })
+                            }
                         }
-                    }
-                    MainTab.PROFILE -> ProfileScreen(
-                        userEmail = userEmail,
-                        userId = userId,
-                        repository = liveRepository,
-                        onSignOut = {
-                            val currentUserId = userId
-                            scope.launch {
-                                if (currentUserId != null && liveRepository != null) {
-                                    runCatching {
-                                        PushTokenRegistrar.unregister(context, liveRepository, currentUserId)
+                        MainTab.PROFILE -> ProfileScreen(
+                            userEmail = userEmail,
+                            userId = userId,
+                            repository = liveRepository,
+                            onSignOut = {
+                                val currentUserId = userId
+                                scope.launch {
+                                    if (currentUserId != null && liveRepository != null) {
+                                        runCatching {
+                                            PushTokenRegistrar.unregister(context, liveRepository, currentUserId)
+                                        }
                                     }
+                                    onSignOut()
                                 }
-                                onSignOut()
                             }
-                            }
-                }
-                    )
+                        )
+                    }
                 }
                 BottomNavigation(
                     selectedTab = selectedTab,
