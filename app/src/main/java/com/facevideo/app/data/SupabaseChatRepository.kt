@@ -167,13 +167,20 @@ class SupabaseChatRepository(
         )
     }
 
-    suspend fun sendText(chatId: String, text: String) {
+    /**
+     * Inserts a message and returns the persisted row. The caller can render this
+     * immediately, without waiting for the Realtime subscription to echo the INSERT.
+     */
+    suspend fun sendText(chatId: String, text: String): FaceVideoMessage {
         val cleanText = text.trim()
         require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
             "Сообщение должно содержать от 1 до 4000 символов."
         }
-        client.from("face_video_messages")
-            .insert(NewMessage(chatId = chatId, body = cleanText))
+        return client.from("face_video_messages")
+            .insert(NewMessage(chatId = chatId, body = cleanText)) {
+                select()
+            }
+            .decodeSingle<FaceVideoMessage>()
     }
 
     @OptIn(SupabaseExperimental::class)

@@ -78,6 +78,7 @@ import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.FaceVideoChatUnreadSummary
 import com.facevideo.app.data.formatChatMessageTime
 import com.facevideo.app.data.formatUnreadBadge
+import com.facevideo.app.data.mergeChatMessageSnapshots
 import com.facevideo.app.data.buildChatInboxPreview
 import com.facevideo.app.data.resolveMessageDeliveryStatus
 import com.facevideo.app.data.sortChatMessagesChronologically
@@ -926,11 +927,20 @@ private fun LiveChatScreen(
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
+    var locallySentMessages by remember(chat.id) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
+    LaunchedEffect(messages) {
+        if (locallySentMessages.isNotEmpty()) {
+            val serverIds = messages.mapTo(mutableSetOf()) { it.id }
+            locallySentMessages = locallySentMessages.filterNot { it.id in serverIds }
+        }
+    }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
-    val orderedMessages = remember(messages) { sortChatMessagesChronologically(messages) }
+    val orderedMessages = remember(messages, locallySentMessages) {
+        mergeChatMessageSnapshots(messages, locallySentMessages)
+    }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -958,7 +968,11 @@ private fun LiveChatScreen(
             isSending = true
             errorMessage = null
             try {
-                repository.sendText(chat.id, text)
+                val persistedMessage = repository.sendText(chat.id, text)
+                locallySentMessages = mergeChatMessageSnapshots(
+                    locallySentMessages,
+                    listOf(persistedMessage)
+                )
                 draft = ""
             } catch (error: Exception) {
                 errorMessage = error.message ?: "Не удалось отправить сообщение."

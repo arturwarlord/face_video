@@ -91,3 +91,16 @@ fun resolveMessageDeliveryStatus(
     }
 }
 
+/**
+ * Merges the latest Realtime snapshot with messages returned directly by the
+ * INSERT request. Realtime may echo the same row later; id-based de-duplication
+ * keeps it visible exactly once.
+ */
+fun mergeChatMessageSnapshots(
+    serverMessages: List<FaceVideoMessage>,
+    locallySentMessages: List<FaceVideoMessage>
+): List<FaceVideoMessage> =
+    sortChatMessagesChronologically(
+        (serverMessages + locallySentMessages).distinctBy { it.id }
+    )
+

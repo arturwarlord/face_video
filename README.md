@@ -9,6 +9,7 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 - Live direct chats, username lookup, chronological Realtime message ordering and local-time timestamps.
 - Per-chat and aggregate unread counters; when a chat has unread messages, the inbox preview shows the newest unread incoming message rather than a newer outgoing message.
 - Per-recipient delivery/read receipts: one check for sent, two grey checks for delivered, and two blue checks for read. Receipt updates synchronize through Supabase Realtime.
+- A newly sent message is rendered immediately from the row returned by Supabase INSERT; it is merged with Realtime snapshots by message ID to avoid duplicates.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
 - Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
 - Android system notifications support foreground Realtime and Firebase Cloud Messaging (FCM). The FCM client and server function are implemented; remote delivery becomes active after Firebase credentials and Supabase Database Webhooks are configured.
