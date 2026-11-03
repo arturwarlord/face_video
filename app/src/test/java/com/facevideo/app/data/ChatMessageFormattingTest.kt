@@ -171,6 +171,76 @@ class ChatMessageFormattingTest {
     }
 
     @Test
+    fun locallyReturnedMessageAppearsBeforeRealtimeSnapshotArrives() {
+        val olderServerMessage = FaceVideoMessage(
+            id = "message-1",
+            chatId = "chat-1",
+            senderId = "other-user",
+            body = "Incoming message",
+            createdAt = "2026-11-03T10:00:00Z"
+        )
+        val justSent = FaceVideoMessage(
+            id = "message-2",
+            chatId = "chat-1",
+            senderId = "user-1",
+            body = "My immediate reply",
+            createdAt = "2026-11-03T10:01:00Z"
+        )
+
+        val merged = mergeChatMessageSnapshots(
+            serverMessages = listOf(olderServerMessage),
+            locallySentMessages = listOf(justSent)
+        )
+
+        assertEquals(listOf("message-1", "message-2"), merged.map { it.id })
+        assertEquals("My immediate reply", merged.last().body)
+    }
+
+    @Test
+    fun realtimeEchoDoesNotDuplicateAnAlreadyVisibleSentMessage() {
+        val sentRow = FaceVideoMessage(
+            id = "message-2",
+            chatId = "chat-1",
+            senderId = "user-1",
+            body = "My immediate reply",
+            createdAt = "2026-11-03T10:01:00Z"
+        )
+
+        val merged = mergeChatMessageSnapshots(
+            serverMessages = listOf(sentRow),
+            locallySentMessages = listOf(sentRow)
+        )
+
+        assertEquals(1, merged.size)
+        assertEquals("message-2", merged.single().id)
+    }
+
+    @Test
+    fun locallySentMessageIsInsertedAtChronologicalPosition() {
+        val laterServerMessage = FaceVideoMessage(
+            id = "message-3",
+            chatId = "chat-1",
+            senderId = "other-user",
+            body = "A later message",
+            createdAt = "2026-11-03T10:02:00Z"
+        )
+        val sentRow = FaceVideoMessage(
+            id = "message-2",
+            chatId = "chat-1",
+            senderId = "user-1",
+            body = "My reply",
+            createdAt = "2026-11-03T10:01:00Z"
+        )
+
+        val merged = mergeChatMessageSnapshots(
+            serverMessages = listOf(laterServerMessage),
+            locallySentMessages = listOf(sentRow)
+        )
+
+        assertEquals(listOf("message-2", "message-3"), merged.map { it.id })
+    }
+
+    @Test
     fun messageTimeIsFormattedInRequestedLocalZone() {
         assertEquals(
             "12:45",
