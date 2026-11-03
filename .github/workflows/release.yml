@@ -175,23 +175,23 @@ jobs:
 
           version = os.environ["RELEASE_VERSION"]
           changelog = Path("docs/CHANGELOG.md").read_text(encoding="utf-8")
-          sections = re.split(r"(?m)^## \\[", changelog)
+          sections = re.split(r"(?m)^## \[", changelog)
           selected = None
           for section in sections[1:]:
               heading, *body = section.splitlines()
-              match = re.match(r"([^\\]]+)\\]", heading)
+              match = re.match(r"(.+?)\]", heading)
               if match and match.group(1).removeprefix("v") == version:
-                  selected = "\\n".join(body).strip()
+                  selected = "\n".join(body).strip()
                   break
           if selected is None:
               raise SystemExit(f"Missing docs/CHANGELOG.md section for release {version}")
           fixed = (
-              "\\n\\n---\\n\\n"
-              "Следите за новостями на нашем сайте:\\n"
-              "https://arturwarlord.github.io/face_video/\\n\\n"
-              "Исходный код: https://github.com/arturwarlord/face_video\\n\\n"
-              "Разработчики: ARTUR A\\n"
-              "Бета-тест: Rasul S, Radmir A\\n"
+              "\n\n---\n\n"
+              "Следите за новостями на нашем сайте:\n"
+              "https://arturwarlord.github.io/face_video/\n\n"
+              "Исходный код: https://github.com/arturwarlord/face_video\n\n"
+              "Разработчики: ARTUR A\n"
+              "Бета-тест: Rasul S, Radmir A\n"
           )
           Path("release/release-notes.md").write_text(selected + fixed, encoding="utf-8")
           PY
