@@ -850,7 +850,7 @@ private fun NewChatDialog(
                 OutlinedTextField(
                     value = username,
                     onValueChange = {
-                        username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24)
+                        username = it.lowercase().filter { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == '_' }.take(24)
                         result = null
                         message = null
                     },
