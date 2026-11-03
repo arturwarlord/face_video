@@ -1,5 +1,6 @@
 name: ArturChat signed candidate APK
 
+# Rebuild signed candidate after the 0.5.3 profile input validation update.
 on:
   push:
     branches: [main]
