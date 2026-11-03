@@ -1019,6 +1019,8 @@ private fun LiveChatScreen(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
+                    val startsNewSenderGroup = index > 0 &&
+                        orderedMessages[index - 1].senderId != message.senderId
                     MessageBubble(
                         ChatMessage(
                             id = message.id,
@@ -1029,7 +1031,8 @@ private fun LiveChatScreen(
                                 resolveMessageDeliveryStatus(message.id, receipts)
                             } else null
                         ),
-                        showTime = shouldShowChatMessageTime(orderedMessages, index)
+                        showTime = shouldShowChatMessageTime(orderedMessages, index),
+                        separateFromPrevious = startsNewSenderGroup
                     )
                 }
             }
@@ -1357,11 +1360,30 @@ private fun ChatScreen(
 }
 
 @Composable
-private fun MessageBubble(message: ChatMessage, showTime: Boolean = true) {
+private fun MessageBubble(
+    message: ChatMessage,
+    showTime: Boolean = true,
+    separateFromPrevious: Boolean = false
+) {
     Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start
+        Modifier.fillMaxWidth().padding(top = if (separateFromPrevious) 8.dp else 0.dp),
+        horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
+        if (message.isMine && showTime && message.deliveryStatus != null) {
+            val (ticks, tickColor) = when (message.deliveryStatus) {
+                MessageDeliveryStatus.SENT -> "✓" to Muted
+                MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
+                MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF55B8FF)
+            }
+            Text(
+                ticks,
+                modifier = Modifier.padding(end = 6.dp, bottom = 3.dp),
+                color = tickColor,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
         Surface(
             modifier = Modifier.widthIn(max = 300.dp),
             color = if (message.isMine) Color(0xFF245E5D) else PanelLight,
@@ -1375,8 +1397,8 @@ private fun MessageBubble(message: ChatMessage, showTime: Boolean = true) {
                 modifier = Modifier.padding(
                     start = 14.dp,
                     end = 14.dp,
-                    top = 8.dp,
-                    bottom = if (showTime) 6.dp else 8.dp
+                    top = 5.dp,
+                    bottom = if (showTime) 4.dp else 5.dp
                 )
             ) {
                 Text(
@@ -1385,26 +1407,12 @@ private fun MessageBubble(message: ChatMessage, showTime: Boolean = true) {
                     fontSize = 14.sp
                 )
                 if (showTime) {
-                    Row(
-                        modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(message.time, color = Muted, fontSize = 9.sp)
-                        if (message.isMine && message.deliveryStatus != null) {
-                            Spacer(Modifier.width(4.dp))
-                            val (ticks, tickColor) = when (message.deliveryStatus) {
-                                MessageDeliveryStatus.SENT -> "✓" to Muted
-                                MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
-                                MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF55B8FF)
-                            }
-                            Text(
-                                ticks,
-                                color = tickColor,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    Text(
+                        message.time,
+                        modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
+                        color = Muted,
+                        fontSize = 9.sp
+                    )
                 }
             }
         }
