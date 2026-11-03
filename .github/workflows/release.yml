@@ -166,7 +166,15 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ArturChat ${{ steps.version.outputs.name }}
-          generate_release_notes: true
+          generate_release_notes: false
+          body: |
+            Следите за новостями на нашем сайте:
+            https://github.com/arturwarlord/face_video
+
+            В дальнейшем все релизы также будут публиковаться на HTML-странице.
+
+            Разработчики: ARTUR A
+            Бета-тест: Rasul S, Radmir A
           files: |
             release/ArturChat.apk
             release/ArturChat.apk.sha256
