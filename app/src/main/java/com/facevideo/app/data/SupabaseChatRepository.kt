@@ -45,8 +45,32 @@ data class FaceVideoChatUnreadCount(
 )
 
 @Serializable
+data class FaceVideoChatUnreadSummary(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("unread_count") val unreadCount: Long,
+    @SerialName("last_unread_body") val lastUnreadBody: String? = null,
+    @SerialName("last_unread_at") val lastUnreadAt: String? = null
+)
+
+@Serializable
+data class FaceVideoMessageReceipt(
+    val id: String,
+    @SerialName("message_id") val messageId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    @SerialName("recipient_id") val recipientId: String,
+    @SerialName("delivered_at") val deliveredAt: String? = null,
+    @SerialName("read_at") val readAt: String? = null
+)
+
+@Serializable
 private data class MarkChatReadArguments(
     @SerialName("p_chat_id") val chatId: String
+)
+
+@Serializable
+private data class MarkMessagesDeliveredArguments(
+    @SerialName("p_message_ids") val messageIds: List<String>
 )
 
 @Serializable
@@ -116,14 +140,26 @@ class SupabaseChatRepository(
             }
             .decodeList<FaceVideoMessage>()
 
-    /** Returns unread message counts for every conversation of the signed-in user. */
-    suspend fun getUnreadCounts(): Map<String, Int> {
-        val rows = client.postgrest.rpc("face_video_get_unread_counts")
-            .decodeList<FaceVideoChatUnreadCount>()
-        return rows.associate { it.chatId to it.unreadCount.coerceAtLeast(0).coerceAtMost(Int.MAX_VALUE.toLong()).toInt() }
+    /** Returns unread counts and the newest incoming unread message for every chat. */
+    suspend fun getUnreadSummaries(): Map<String, FaceVideoChatUnreadSummary> {
+        val rows = client.postgrest.rpc("face_video_get_unread_summaries")
+            .decodeList<FaceVideoChatUnreadSummary>()
+        return rows.associateBy { it.chatId }
     }
 
-    /** Advances only the current user's read watermark for this chat. */
+    /** Marks newly received messages as delivered for this signed-in recipient. */
+    suspend fun markMessagesDelivered(messageIds: List<String>) {
+        messageIds.distinct().chunked(100).forEach { batch ->
+            if (batch.isNotEmpty()) {
+                client.postgrest.rpc(
+                    "face_video_mark_messages_delivered",
+                    MarkMessagesDeliveredArguments(batch)
+                )
+            }
+        }
+    }
+
+    /** Advances the current user's read watermark and receipt state for this chat. */
     suspend fun markChatRead(chatId: String) {
         client.postgrest.rpc(
             "face_video_mark_chat_read",
@@ -143,6 +179,13 @@ class SupabaseChatRepository(
     @OptIn(SupabaseExperimental::class)
     fun observeMessages(chatId: String): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {
+            eq("chat_id", chatId)
+        }
+
+    /** Live delivery/read receipts visible to the sender and recipient. */
+    @OptIn(SupabaseExperimental::class)
+    fun observeMessageReceipts(chatId: String): Flow<List<FaceVideoMessageReceipt>> =
+        client.from("face_video_message_receipts").selectAsFlow(FaceVideoMessageReceipt::id) {
             eq("chat_id", chatId)
         }
 

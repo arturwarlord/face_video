@@ -44,3 +44,50 @@ fun formatUnreadBadge(count: Int): String? = when {
     count > 99 -> "99+"
     else -> count.toString()
 }
+
+/** Preview data shown in the chat list; when unread messages exist, use the newest unread incoming message. */
+data class ChatInboxPreview(
+    val text: String,
+    val timestamp: String?
+)
+
+fun buildChatInboxPreview(
+    latestMessagePreview: String,
+    latestMessageAt: String?,
+    unreadSummary: FaceVideoChatUnreadSummary?
+): ChatInboxPreview {
+    if (
+        unreadSummary != null &&
+        unreadSummary.unreadCount > 0 &&
+        !unreadSummary.lastUnreadBody.isNullOrBlank()
+    ) {
+        return ChatInboxPreview(
+            text = unreadSummary.lastUnreadBody,
+            timestamp = unreadSummary.lastUnreadAt ?: latestMessageAt
+        )
+    }
+
+    return ChatInboxPreview(
+        text = latestMessagePreview,
+        timestamp = latestMessageAt
+    )
+}
+
+/** For a group message, show delivered/read only after every recipient has reached that state. */
+fun resolveMessageDeliveryStatus(
+    messageId: String,
+    receipts: List<FaceVideoMessageReceipt>
+): com.facevideo.app.model.MessageDeliveryStatus {
+    val messageReceipts = receipts.filter { it.messageId == messageId }
+    if (messageReceipts.isEmpty()) return com.facevideo.app.model.MessageDeliveryStatus.SENT
+
+    return when {
+        messageReceipts.all { it.readAt != null } ->
+            com.facevideo.app.model.MessageDeliveryStatus.READ
+        messageReceipts.all { it.deliveredAt != null } ->
+            com.facevideo.app.model.MessageDeliveryStatus.DELIVERED
+        else ->
+            com.facevideo.app.model.MessageDeliveryStatus.SENT
+    }
+}
+

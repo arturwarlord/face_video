@@ -75,8 +75,11 @@ import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.data.FaceVideoChatUnreadSummary
 import com.facevideo.app.data.formatChatMessageTime
 import com.facevideo.app.data.formatUnreadBadge
+import com.facevideo.app.data.buildChatInboxPreview
+import com.facevideo.app.data.resolveMessageDeliveryStatus
 import com.facevideo.app.data.sortChatMessagesChronologically
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
@@ -88,6 +91,7 @@ import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
+import com.facevideo.app.model.MessageDeliveryStatus
 import java.util.UUID
 import kotlinx.coroutines.launch
 
@@ -192,7 +196,7 @@ private fun FaceVideoApp(
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
-    var unreadCounts by remember(userId) { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var unreadSummaries by remember(userId) { mutableStateOf<Map<String, FaceVideoChatUnreadSummary>>(emptyMap()) }
     var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callInfoMessage by remember { mutableStateOf("Видеозвонки будут подключены следующим этапом. Сейчас доступны персональные аудиозвонки.") }
@@ -246,15 +250,27 @@ private fun FaceVideoApp(
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
 
-        suspend fun refreshUnreadCounts() {
-            runCatching { repository.getUnreadCounts() }
-                .onSuccess { unreadCounts = it }
+        suspend fun refreshUnreadSummaries() {
+            runCatching { repository.getUnreadSummaries() }
+                .onSuccess { unreadSummaries = it }
                 .onFailure {
-                    android.util.Log.w("ArturChatUnread", "Could not refresh unread counters", it)
+                    android.util.Log.w("ArturChatUnread", "Could not refresh unread summaries", it)
                 }
         }
 
-        refreshUnreadCounts()
+        suspend fun markIncomingMessagesDelivered(messages: List<com.facevideo.app.data.FaceVideoMessage>) {
+            val incomingIds = messages
+                .filter { it.senderId != currentUserId }
+                .map { it.id }
+            if (incomingIds.isNotEmpty()) {
+                runCatching { repository.markMessagesDelivered(incomingIds) }
+                    .onFailure {
+                        android.util.Log.w("ArturChatReceipts", "Could not mark messages delivered", it)
+                    }
+            }
+        }
+
+        refreshUnreadSummaries()
 
         val chatTitles = runCatching {
             repository.listMyChats().associate { it.id to it.title }
@@ -266,7 +282,8 @@ private fun FaceVideoApp(
             if (!initialSnapshotReceived) {
                 knownMessageIds.addAll(messages.map { it.id })
                 initialSnapshotReceived = true
-                refreshUnreadCounts()
+                markIncomingMessagesDelivered(messages)
+                refreshUnreadSummaries()
                 return@collect
             }
 
@@ -281,7 +298,8 @@ private fun FaceVideoApp(
                     )
                 }
 
-            refreshUnreadCounts()
+            markIncomingMessagesDelivered(newMessages)
+            refreshUnreadSummaries()
         }
     }
 
@@ -524,7 +542,7 @@ private fun FaceVideoApp(
                             LiveChatListScreen(
                                 repository = liveRepository,
                                 userId = userId,
-                                unreadCounts = unreadCounts,
+                                unreadSummaries = unreadSummaries,
                                 onOpenChat = { openedLiveChat = it }
                             )
                         } else {
@@ -537,7 +555,7 @@ private fun FaceVideoApp(
                             LiveChatListScreen(
                                 repository = liveRepository,
                                 userId = userId,
-                                unreadCounts = unreadCounts,
+                                unreadSummaries = unreadSummaries,
                                 onOpenChat = { openedLiveChat = it },
                                 contactsMode = true
                             )
@@ -562,7 +580,7 @@ private fun FaceVideoApp(
                 }
                 BottomNavigation(
                     selectedTab = selectedTab,
-                    unreadChatsCount = unreadCounts.values.sum().coerceAtMost(999),
+                    unreadChatsCount = unreadSummaries.values.sumOf { it.unreadCount.coerceAtLeast(0L) }.coerceAtMost(999L).toInt(),
                     onSelect = { selectedTab = it }
                 )
             }
@@ -627,7 +645,7 @@ private fun FaceVideoApp(
 private fun LiveChatListScreen(
     repository: SupabaseChatRepository,
     userId: String,
-    unreadCounts: Map<String, Int>,
+    unreadSummaries: Map<String, FaceVideoChatUnreadSummary>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     contactsMode: Boolean = false
 ) {
@@ -650,10 +668,11 @@ private fun LiveChatListScreen(
         }
     }
 
-    val visibleChats = remember(chats, query) {
-        if (query.isBlank()) chats else chats.filter {
-            it.title.contains(query.trim(), ignoreCase = true) ||
-                it.lastMessagePreview.contains(query.trim(), ignoreCase = true)
+    val visibleChats = remember(chats, query, unreadSummaries) {
+        if (query.isBlank()) chats else chats.filter { chat ->
+            chat.title.contains(query.trim(), ignoreCase = true) ||
+                chat.lastMessagePreview.contains(query.trim(), ignoreCase = true) ||
+                unreadSummaries[chat.id]?.lastUnreadBody.orEmpty().contains(query.trim(), ignoreCase = true)
         }
     }
 
@@ -731,7 +750,7 @@ private fun LiveChatListScreen(
                 items(visibleChats, key = { it.id }) { chat ->
                     LiveChatRow(
                         chat = chat,
-                        unreadCount = unreadCounts[chat.id] ?: 0,
+                        unreadSummary = unreadSummaries[chat.id],
                         onClick = { onOpenChat(chat) }
                     )
                 }
@@ -753,7 +772,13 @@ private fun LiveChatListScreen(
 }
 
 @Composable
-private fun LiveChatRow(chat: FaceVideoChatSummary, unreadCount: Int, onClick: () -> Unit) {
+private fun LiveChatRow(
+    chat: FaceVideoChatSummary,
+    unreadSummary: FaceVideoChatUnreadSummary?,
+    onClick: () -> Unit
+) {
+    val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
+    val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
@@ -766,9 +791,10 @@ private fun LiveChatRow(chat: FaceVideoChatSummary, unreadCount: Int, onClick: (
             Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Spacer(Modifier.height(5.dp))
             Text(
-                chat.lastMessagePreview.ifBlank { "Начните переписку" },
-                color = Muted,
+                preview.text.ifBlank { "Начните переписку" },
+                color = if (unreadCount > 0) MainText else Muted,
                 fontSize = 12.sp,
+                fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -776,8 +802,8 @@ private fun LiveChatRow(chat: FaceVideoChatSummary, unreadCount: Int, onClick: (
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                chat.lastMessageAt?.substringAfter("T")?.take(5) ?: "",
-                color = Muted,
+                preview.timestamp?.let { formatChatMessageTime(it) }.orEmpty(),
+                color = if (unreadCount > 0) Mint else Muted,
                 fontSize = 10.sp
             )
             formatUnreadBadge(unreadCount)?.let { badgeText ->
@@ -900,6 +926,8 @@ private fun LiveChatScreen(
 ) {
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
+    val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
+    val receipts by receiptsFlow.collectAsState(initial = emptyList())
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
     val orderedMessages = remember(messages) { sortChatMessagesChronologically(messages) }
@@ -974,7 +1002,10 @@ private fun LiveChatScreen(
                             id = message.id,
                             text = message.body,
                             time = formatChatMessageTime(message.createdAt),
-                            isMine = message.senderId == userId
+                            isMine = message.senderId == userId,
+                            deliveryStatus = if (message.senderId == userId) {
+                                resolveMessageDeliveryStatus(message.id, receipts)
+                            } else null
                         )
                     )
                 }
@@ -1327,12 +1358,30 @@ private fun MessageBubble(message: ChatMessage) {
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                 )
             }
-            Text(
-                message.time,
-                color = Muted,
-                fontSize = 9.sp,
-                modifier = Modifier.padding(top = 3.dp, start = 8.dp, end = 8.dp)
-            )
+            Row(
+                modifier = Modifier.padding(top = 3.dp, start = 8.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    message.time,
+                    color = Muted,
+                    fontSize = 9.sp
+                )
+                if (message.isMine && message.deliveryStatus != null) {
+                    Spacer(Modifier.width(4.dp))
+                    val (ticks, tickColor) = when (message.deliveryStatus) {
+                        MessageDeliveryStatus.SENT -> "✓" to Muted
+                        MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
+                        MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF55B8FF)
+                    }
+                    Text(
+                        ticks,
+                        color = tickColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         }
     }
 }

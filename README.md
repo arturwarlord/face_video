@@ -6,7 +6,9 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 - Native Android interface: Chats, Calls, Contacts, Profile, plus an incoming-call dialog, actionable Android CallStyle notification (Accept/Decline), and active audio-call screen.
 - Supabase Auth email/password registration, sign-in, persistent session status and sign-out.
-- Live direct chats, username lookup, chronological Realtime message ordering, local-time message timestamps, per-chat unread counters and an aggregate Chats-tab badge.
+- Live direct chats, username lookup, chronological Realtime message ordering and local-time timestamps.
+- Per-chat and aggregate unread counters; when a chat has unread messages, the inbox preview shows the newest unread incoming message rather than a newer outgoing message.
+- Per-recipient delivery/read receipts: one check for sent, two grey checks for delivered, and two blue checks for read. Receipt updates synchronize through Supabase Realtime.
 - One-to-one audio calling with WebRTC: microphone capture, offer/answer negotiation, ICE candidate exchange, accept/decline/end, mute and call-state updates.
 - Supabase Realtime carries call invitations and signaling; call and signaling rows are protected by participant-only RLS.
 - Android system notifications support foreground Realtime and Firebase Cloud Messaging (FCM). The FCM client and server function are implemented; remote delivery becomes active after Firebase credentials and Supabase Database Webhooks are configured.
@@ -22,7 +24,7 @@ The legacy NASTOLKA database objects have been removed from the connected Supaba
 
 The Android code now targets Supabase. The ArturChat schema is applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`). All NASTOLKA-specific tables, functions, policies, and Realtime publication entries have been removed. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
 
-The configured chat list and conversation screen use the live repository. The user has confirmed successful two-account registration, live message exchange and synchronization. The call tables and signaling permissions are applied; audio calls are the active development milestone.
+The configured chat list and conversation screen use the live repository. Two-account registration, live message exchange, unread counters and read receipts are implemented. The call tables and signaling permissions are applied; audio calls remain available.
 
 ## Audio call implementation notes
 
