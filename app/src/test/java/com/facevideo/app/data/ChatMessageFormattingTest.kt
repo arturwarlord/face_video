@@ -49,6 +49,52 @@ class ChatMessageFormattingTest {
     }
 
     @Test
+    fun timestampIsHiddenForEarlierMessagesInSameTenMinuteSenderBurst() {
+        val messages = listOf(
+            message("1", "first", "2026-11-03T10:00:00Z"),
+            message("2", "second", "2026-11-03T10:04:00Z"),
+            message("3", "third", "2026-11-03T10:10:00Z")
+        )
+
+        assertEquals(false, shouldShowChatMessageTime(messages, 0))
+        assertEquals(false, shouldShowChatMessageTime(messages, 1))
+        assertEquals(true, shouldShowChatMessageTime(messages, 2))
+    }
+
+    @Test
+    fun timestampIsShownWhenNextMessageIsFromAnotherUser() {
+        val messages = listOf(
+            message("1", "mine", "2026-11-03T10:00:00Z"),
+            message("2", "theirs", "2026-11-03T10:01:00Z").copy(senderId = "user-2")
+        )
+
+        assertEquals(true, shouldShowChatMessageTime(messages, 0))
+        assertEquals(true, shouldShowChatMessageTime(messages, 1))
+    }
+
+    @Test
+    fun timestampIsShownAgainAfterMoreThanTenMinutes() {
+        val messages = listOf(
+            message("1", "first", "2026-11-03T10:00:00Z"),
+            message("2", "later", "2026-11-03T10:10:01Z")
+        )
+
+        assertEquals(true, shouldShowChatMessageTime(messages, 0))
+        assertEquals(true, shouldShowChatMessageTime(messages, 1))
+    }
+
+    @Test
+    fun timestampIsShownOnLastMessageWhenBurstEndsAtExactlyTenMinutes() {
+        val messages = listOf(
+            message("1", "first", "2026-11-03T10:00:00Z"),
+            message("2", "last", "2026-11-03T10:10:00Z")
+        )
+
+        assertEquals(false, shouldShowChatMessageTime(messages, 0))
+        assertEquals(true, shouldShowChatMessageTime(messages, 1))
+    }
+
+    @Test
     fun unreadBadgeIsHiddenForZeroAndNegativeCounts() {
         assertEquals(null, formatUnreadBadge(0))
         assertEquals(null, formatUnreadBadge(-2))
