@@ -128,10 +128,7 @@ class ChatMessageFormattingTest {
 
         assertEquals(
             MessageDeliveryStatus.DELIVERED,
-            resolveMessageDeliveryStatus(
-                "message-1",
-                receipts.map { it.copy(readAt = it.readAt ?: "2026-11-03T09:03:00Z") }
-            )
+            resolveMessageDeliveryStatus("message-1", receipts)
         )
         assertEquals(
             MessageDeliveryStatus.SENT,
