@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Rebuild signed candidate after the 0.5.3 profile input validation update.
+# Rebuild signed candidate after the 0.5.4 profile input validation update.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.5.3"
-          -PAPP_VERSION_CODE="5003"
+          -PAPP_VERSION_NAME="0.5.4"
+          -PAPP_VERSION_CODE="5004"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.5.3"
-          -PAPP_VERSION_CODE="5003"
+          -PAPP_VERSION_NAME="0.5.4"
+          -PAPP_VERSION_CODE="5004"
 
       - name: Verify APK signature
         shell: bash
