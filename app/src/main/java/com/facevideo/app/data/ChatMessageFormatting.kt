@@ -1,6 +1,7 @@
 package com.facevideo.app.data
 
 import java.time.Instant
+import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -37,6 +38,24 @@ private fun parseMessageInstant(value: String): Instant? =
     runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
         ?: runCatching { Instant.parse(value) }.getOrNull()
 
+
+/**
+ * Show a timestamp only at the end of a same-sender burst.
+ * Consecutive messages from one sender within ten minutes share one timestamp.
+ */
+fun shouldShowChatMessageTime(
+    messages: List<FaceVideoMessage>,
+    index: Int
+): Boolean {
+    val current = messages.getOrNull(index) ?: return false
+    val next = messages.getOrNull(index + 1) ?: return true
+    if (current.senderId != next.senderId) return true
+
+    val currentInstant = parseMessageInstant(current.createdAt) ?: return true
+    val nextInstant = parseMessageInstant(next.createdAt) ?: return true
+    val gap = Duration.between(currentInstant, nextInstant)
+    return gap.isNegative || gap > Duration.ofMinutes(10)
+}
 
 /** Compact badge text for unread counts; null means no badge should be shown. */
 fun formatUnreadBadge(count: Int): String? = when {
