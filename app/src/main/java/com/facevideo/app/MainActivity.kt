@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -566,6 +567,8 @@ private fun FaceVideoApp(
                     }
                     MainTab.PROFILE -> ProfileScreen(
                         userEmail = userEmail,
+                        userId = userId,
+                        repository = liveRepository,
                         onSignOut = {
                             val currentUserId = userId
                             scope.launch {
@@ -1505,33 +1508,138 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
 }
 
 @Composable
-private fun ProfileScreen(userEmail: String?, onSignOut: () -> Unit) {
+private fun ProfileScreen(
+    userEmail: String?,
+    userId: String?,
+    repository: SupabaseChatRepository?,
+    onSignOut: () -> Unit
+) {
+    var profile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
+    var username by remember(userId) { mutableStateOf("") }
+    var displayName by remember(userId) { mutableStateOf("") }
+    var isLoading by remember(userId) { mutableStateOf(true) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, userId) {
+        val currentRepository = repository
+        val currentUserId = userId
+        if (currentRepository != null && currentUserId != null) {
+            runCatching { currentRepository.getMyProfile(currentUserId) }
+                .onSuccess { loaded ->
+                    profile = loaded
+                    username = loaded?.username.orEmpty()
+                    displayName = loaded?.displayName.orEmpty()
+                    if (loaded == null) errorMessage = "Профиль пока не найден."
+                }
+                .onFailure { errorMessage = it.message ?: "Не удалось загрузить профиль." }
+        }
+        isLoading = false
+    }
+
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Spacer(Modifier.height(40.dp))
-        Avatar("FV", 1, Modifier.size(92.dp), highlighted = true)
-        Spacer(Modifier.height(15.dp))
-        Text("Ваш профиль", color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(userEmail ?: "Демонстрационный режим", color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.height(28.dp))
-        listOf("Личные данные", "Уведомления", "Конфиденциальность", "О приложении").forEachIndexed { index, label ->
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(Panel).padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(listOf("◉", "♧", "▣", "ⓘ")[index], color = Mint, fontSize = 17.sp)
-                Spacer(Modifier.width(13.dp))
-                Text(label, color = MainText, fontSize = 13.sp)
-                Spacer(Modifier.weight(1f))
-                Text("›", color = Muted, fontSize = 20.sp)
+        Spacer(Modifier.height(26.dp))
+        val avatarInitials = (displayName.ifBlank { username }.ifBlank { userEmail ?: "A" })
+            .trim().take(1).uppercase()
+        Avatar(avatarInitials, 1, Modifier.size(86.dp), highlighted = profile != null)
+        Spacer(Modifier.height(13.dp))
+        Text(displayName.ifBlank { "Ваш профиль" }, color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(
+            if (username.isNotBlank()) "@$username" else userEmail ?: "Демонстрационный режим",
+            color = Muted,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(24.dp))
+
+        if (isLoading) {
+            Text("Загружаем профиль…", color = Muted, fontSize = 12.sp)
+        } else if (repository != null && userId != null && profile != null) {
+            Column(Modifier.fillMaxWidth()) {
+                Text("ЛИЧНЫЕ ДАННЫЕ", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it.take(48); successMessage = null },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Имя") },
+                    supportingText = { Text("До 48 символов") }
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24)
+                        errorMessage = null
+                        successMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Уникальный псевдоним") },
+                    leadingIcon = { Text("@", color = Mint) },
+                    supportingText = { Text("3–24 символа: a–z, 0–9 и _") }
+                )
+                Spacer(Modifier.height(5.dp))
+                Text("Электронная почта", color = Muted, fontSize = 10.sp)
+                Text(userEmail.orEmpty(), color = MainText, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+
+                if (errorMessage != null) {
+                    Text(errorMessage.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+                if (successMessage != null) {
+                    Text(successMessage.orEmpty(), color = Mint, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                }
+                Button(
+                    onClick = {
+                        val currentRepository = repository
+                        val currentUserId = userId
+                        if (currentRepository != null && currentUserId != null) {
+                            scope.launch {
+                                isSaving = true
+                                errorMessage = null
+                                successMessage = null
+                                runCatching {
+                                    currentRepository.updateMyProfile(currentUserId, username, displayName)
+                                }.onSuccess { updated ->
+                                    profile = updated
+                                    username = updated.username
+                                    displayName = updated.displayName
+                                    successMessage = "Профиль успешно обновлён."
+                                }.onFailure { failure ->
+                                    errorMessage = when {
+                                        failure.message.orEmpty().contains("duplicate", ignoreCase = true) ||
+                                            failure.message.orEmpty().contains("unique", ignoreCase = true) ->
+                                            "Этот псевдоним уже занят. Выбери другой."
+                                        else -> failure.message ?: "Не удалось сохранить изменения."
+                                    }
+                                }
+                                isSaving = false
+                            }
+                        }
+                    },
+                    enabled = !isSaving && username.length >= 3
+                ) {
+                    Text(if (isSaving) "Сохраняем…" else "Сохранить профиль")
+                }
             }
-            Spacer(Modifier.height(8.dp))
+        } else {
+            Text(
+                "Личный профиль доступен после входа в аккаунт ArturChat.",
+                color = Muted,
+                fontSize = 12.sp
+            )
         }
+
+        Spacer(Modifier.height(24.dp))
         if (userEmail != null) {
-            Spacer(Modifier.height(10.dp))
             Surface(
                 color = Color(0xFF3B2631),
                 shape = RoundedCornerShape(15.dp),
@@ -1546,6 +1654,7 @@ private fun ProfileScreen(userEmail: String?, onSignOut: () -> Unit) {
                 )
             }
         }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
