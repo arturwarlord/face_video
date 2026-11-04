@@ -92,7 +92,11 @@ internal object ReleaseUpdater {
             throw IOException("Некорректная контрольная сумма обновления.")
         }
 
-        val apkFile = File(context.cacheDir, "arturchat-update.apk")
+        val updateDirectory = File(context.cacheDir, "updates")
+        if (!updateDirectory.exists() && !updateDirectory.mkdirs()) {
+            throw IOException("Не удалось подготовить папку для обновления.")
+        }
+        val apkFile = File(updateDirectory, "ArturChat-update.apk")
         downloadFile(release.apkUrl, apkFile, onProgress)
 
         val actualHash = sha256(apkFile)
