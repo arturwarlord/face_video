@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -469,18 +470,40 @@ private fun FaceVideoApp(
 
     fun finishCall() {
         val call = activeCall ?: return
+        val shouldCancel = activeCallIsOutgoing && call.status == "ringing"
+        val clientToClose = callClient
+        val repository = callRepository
+
+        // Stop local media and restore the chat screen immediately. Do not keep
+        // the call screen waiting for a network status update from Supabase.
+        callClient = null
+        activeCall = null
+        callMuted = false
+        runCatching { clientToClose?.end() }
+            .onFailure {
+                android.util.Log.w("ArturChatCall", "Could not close local call resources", it)
+            }
+
+        // Persist the terminal state in the background; a network failure must
+        // never close the Activity or prevent the user from returning to chat.
         scope.launch {
             runCatching {
-                if (activeCallIsOutgoing && call.status == "ringing") {
-                    callRepository?.cancelCall(call.id)
+                if (shouldCancel) {
+                    repository?.cancelCall(call.id)
                 } else {
-                    callRepository?.endCall(call.id)
+                    repository?.endCall(call.id)
                 }
+            }.onFailure {
+                android.util.Log.w("ArturChatCall", "Could not update cancelled call status", it)
             }
-            callClient?.end()
-            callClient = null
-            activeCall = null
-            callMuted = false
+        }
+    }
+
+    BackHandler(enabled = activeCall != null || openedLiveChat != null || openedChat != null) {
+        when {
+            activeCall != null -> finishCall()
+            openedLiveChat != null -> openedLiveChat = null
+            openedChat != null -> openedChat = null
         }
     }
 
