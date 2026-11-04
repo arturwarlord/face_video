@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.2 update dialog and profile version display.
+# Build signed candidate for ArturChat 0.6.3 call cancellation and chat navigation fixes.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.2"
-          -PAPP_VERSION_CODE="6002"
+          -PAPP_VERSION_NAME="0.6.3"
+          -PAPP_VERSION_CODE="6003"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.2"
-          -PAPP_VERSION_CODE="6002"
+          -PAPP_VERSION_NAME="0.6.3"
+          -PAPP_VERSION_CODE="6003"
 
       - name: Verify APK signature
         shell: bash
