@@ -188,7 +188,7 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
 
     val scaled = if (maxOf(decoded.width, decoded.height) > 1920) {
         val scale = 1920f / maxOf(decoded.width, decoded.height)
-        BitmapFactory.createScaledBitmap(
+        android.graphics.Bitmap.createScaledBitmap(
             decoded,
             (decoded.width * scale).toInt().coerceAtLeast(1),
             (decoded.height * scale).toInt().coerceAtLeast(1),
