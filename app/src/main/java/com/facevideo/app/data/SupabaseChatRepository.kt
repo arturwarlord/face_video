@@ -35,7 +35,8 @@ data class FaceVideoMessage(
     @SerialName("chat_id") val chatId: String,
     @SerialName("sender_id") val senderId: String,
     val body: String,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
 @Serializable
@@ -88,7 +89,8 @@ private data class CreateChatArguments(
 @Serializable
 private data class NewMessage(
     @SerialName("chat_id") val chatId: String,
-    val body: String
+    val body: String,
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
 @Serializable
@@ -221,13 +223,23 @@ class SupabaseChatRepository(
      * Inserts a message and returns the persisted row. The caller can render this
      * immediately, without waiting for the Realtime subscription to echo the INSERT.
      */
-    suspend fun sendText(chatId: String, text: String): FaceVideoMessage {
+    suspend fun sendText(
+        chatId: String,
+        text: String,
+        replyToMessageId: String? = null
+    ): FaceVideoMessage {
         val cleanText = text.trim()
         require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
             "Сообщение должно содержать от 1 до 4000 символов."
         }
         return client.from("face_video_messages")
-            .insert(NewMessage(chatId = chatId, body = cleanText)) {
+            .insert(
+                NewMessage(
+                    chatId = chatId,
+                    body = cleanText,
+                    replyToMessageId = replyToMessageId
+                )
+            ) {
                 select()
             }
             .decodeSingle<FaceVideoMessage>()
