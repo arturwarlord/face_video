@@ -7,7 +7,9 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.selectAsFlow
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.flow.Flow
+import java.util.UUID
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -36,7 +38,11 @@ data class FaceVideoMessage(
     @SerialName("sender_id") val senderId: String,
     val body: String,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+    @SerialName("attachment_path") val attachmentPath: String? = null,
+    @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
+    @SerialName("attachment_file_name") val attachmentFileName: String? = null,
+    @SerialName("attachment_size") val attachmentSize: Long? = null
 )
 
 @Serializable
@@ -90,7 +96,11 @@ private data class CreateChatArguments(
 private data class NewMessage(
     @SerialName("chat_id") val chatId: String,
     val body: String,
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
+    @SerialName("attachment_path") val attachmentPath: String? = null,
+    @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
+    @SerialName("attachment_file_name") val attachmentFileName: String? = null,
+    @SerialName("attachment_size") val attachmentSize: Long? = null
 )
 
 @Serializable
@@ -245,6 +255,66 @@ class SupabaseChatRepository(
             .decodeSingle<FaceVideoMessage>()
     }
 
+    /**
+     * Uploads an image to a private conversation bucket.
+     * The storage RLS policy checks both the conversation membership and the sender folder.
+     * Images are normalized to JPEG on the device before they reach this method.
+     */
+    suspend fun uploadChatImage(
+        chatId: String,
+        senderId: String,
+        bytes: ByteArray
+    ): String {
+        require(bytes.isNotEmpty() && bytes.size <= MAX_CHAT_IMAGE_BYTES) {
+            "Фото должно быть не больше 10 МБ."
+        }
+        val path = "$chatId/$senderId/${UUID.randomUUID()}.jpg"
+        client.storage.from(CHAT_ATTACHMENTS_BUCKET).upload(
+            path = path,
+            data = bytes,
+            upsert = false
+        )
+        return path
+    }
+
+    /** Inserts the image message only after its file has been uploaded successfully. */
+    suspend fun sendImage(
+        chatId: String,
+        imagePath: String,
+        fileName: String,
+        fileSize: Long,
+        replyToMessageId: String? = null
+    ): FaceVideoMessage {
+        require(imagePath.startsWith("$chatId/")) {
+            "Вложение не относится к этой переписке."
+        }
+        require(fileSize in 1..MAX_CHAT_IMAGE_BYTES.toLong()) {
+            "Фото должно быть не больше 10 МБ."
+        }
+        val safeName = fileName.trim().take(255).ifBlank { "photo.jpg" }
+        return client.from("face_video_messages")
+            .insert(
+                NewMessage(
+                    chatId = chatId,
+                    body = "[Фото]",
+                    replyToMessageId = replyToMessageId,
+                    attachmentPath = imagePath,
+                    attachmentMimeType = "image/jpeg",
+                    attachmentFileName = safeName,
+                    attachmentSize = fileSize
+                )
+            ) {
+                select()
+            }
+            .decodeSingle<FaceVideoMessage>()
+    }
+
+    /** Downloads a private attachment using the current signed-in user's JWT. */
+    suspend fun downloadChatAttachment(path: String): ByteArray {
+        require(path.split('/').size == 3) { "Некорректный путь вложения." }
+        return client.storage.from(CHAT_ATTACHMENTS_BUCKET).downloadAuthenticated(path)
+    }
+
     @OptIn(SupabaseExperimental::class)
     fun observeMessages(chatId: String): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {
@@ -290,3 +360,7 @@ class SupabaseChatRepository(
         }
     }
 }
+
+
+private const val CHAT_ATTACHMENTS_BUCKET = "chat-attachments"
+private const val MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
