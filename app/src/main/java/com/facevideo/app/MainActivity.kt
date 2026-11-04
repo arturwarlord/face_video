@@ -5,6 +5,9 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Build
@@ -19,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
@@ -31,6 +35,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -72,6 +78,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -84,6 +92,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import com.facevideo.app.calls.WebRtcAudioCallClient
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.SupabaseCallRepository
@@ -114,6 +123,8 @@ import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import java.util.UUID
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.presenceDataFlow
@@ -142,6 +153,89 @@ private data class MessageReplyPreview(
     val sender: String,
     val text: String
 )
+
+private data class PreparedChatImage(
+    val bytes: ByteArray,
+    val fileName: String
+)
+
+/**
+ * Decodes a picked image, downsizes it to a chat-friendly resolution and
+ * re-encodes it as JPEG so uploads stay small and Storage accepts one format.
+ */
+private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(input, null, bounds)
+    } ?: throw IllegalArgumentException("Не удалось открыть выбранное фото.")
+
+    require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+        "Выбранный файл не является поддерживаемым изображением."
+    }
+
+    var sampleSize = 1
+    while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1920) {
+        sampleSize *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+    }
+    val decoded = resolver.openInputStream(uri)?.use { input ->
+        BitmapFactory.decodeStream(input, null, options)
+    } ?: throw IllegalArgumentException("Не удалось прочитать выбранное фото.")
+
+    val scaled = if (maxOf(decoded.width, decoded.height) > 1920) {
+        val scale = 1920f / maxOf(decoded.width, decoded.height)
+        BitmapFactory.createScaledBitmap(
+            decoded,
+            (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+    } else decoded
+
+    try {
+        val output = java.io.ByteArrayOutputStream()
+        var encoded = false
+        for (quality in listOf(85, 75, 65)) {
+            output.reset()
+            if (!scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)) {
+                throw IllegalStateException("Не удалось подготовить фото к отправке.")
+            }
+            if (output.size() <= 10 * 1024 * 1024) {
+                encoded = true
+                break
+            }
+        }
+        require(encoded && output.size() in 1..(10 * 1024 * 1024)) {
+            "Фото слишком большое. Выбери изображение поменьше."
+        }
+
+        val originalName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0) cursor.getString(index) else null
+                } else null
+            }
+            .orEmpty()
+        val baseName = originalName.substringBeforeLast('.', originalName)
+            .replace(Regex("[^A-Za-zА-Яа-я0-9 _-]"), "_")
+            .trim()
+            .take(220)
+            .ifBlank { "photo" }
+
+        return PreparedChatImage(
+            bytes = output.toByteArray(),
+            fileName = "$baseName.jpg"
+        )
+    } finally {
+        if (scaled !== decoded) scaled.recycle()
+        decoded.recycle()
+    }
+}
 
 data class CallNotificationAction(
     val callId: String,
@@ -1100,6 +1194,46 @@ private fun LiveChatScreen(
         }
     }
 
+    fun sendImage(uri: Uri) {
+        if (isSending) return
+        scope.launch {
+            isSending = true
+            errorMessage = null
+            try {
+                val prepared = withContext(Dispatchers.IO) {
+                    prepareChatImage(context, uri)
+                }
+                val path = repository.uploadChatImage(
+                    chatId = chat.id,
+                    senderId = userId,
+                    bytes = prepared.bytes
+                )
+                val persistedMessage = repository.sendImage(
+                    chatId = chat.id,
+                    imagePath = path,
+                    fileName = prepared.fileName,
+                    fileSize = prepared.bytes.size.toLong(),
+                    replyToMessageId = replyingTo?.id
+                )
+                locallySentMessages = mergeChatMessageSnapshots(
+                    locallySentMessages,
+                    listOf(persistedMessage)
+                )
+                replyingTo = null
+            } catch (error: Exception) {
+                errorMessage = error.message ?: "Не удалось отправить фото."
+            } finally {
+                isSending = false
+            }
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) sendImage(uri)
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
@@ -1166,6 +1300,8 @@ private fun LiveChatScreen(
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
+                        attachmentPath = message.attachmentPath,
+                        attachmentRepository = repository,
                         onReply = { replyingTo = message },
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -1216,12 +1352,29 @@ private fun LiveChatScreen(
             }
         }
 
+        if (isSending) {
+            Text(
+                "Отправляем фото или сообщение…",
+                color = Muted,
+                fontSize = 10.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        }
+
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(color = PanelLight, shape = CircleShape, modifier = Modifier.size(42.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text("+", color = Mint, fontSize = 25.sp) }
+            Surface(
+                color = PanelLight,
+                shape = CircleShape,
+                modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
+                    imagePicker.launch("image/*")
+                }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("+", color = Mint, fontSize = 25.sp)
+                }
             }
             Spacer(Modifier.width(9.dp))
             Surface(
@@ -1521,6 +1674,90 @@ private fun ChatScreen(
     }
 }
 
+@Composable
+private fun ChatImagePreview(
+    path: String,
+    repository: SupabaseChatRepository
+) {
+    var bitmap by remember(path) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var failed by remember(path) { mutableStateOf(false) }
+    var showFullImage by remember(path) { mutableStateOf(false) }
+
+    LaunchedEffect(path, repository) {
+        bitmap = null
+        failed = false
+        runCatching {
+            withContext(Dispatchers.IO) {
+                val bytes = repository.downloadChatAttachment(path)
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sampleSize = 1
+                while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1400) {
+                    sampleSize *= 2
+                }
+                val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+                    ?: throw IllegalStateException("Не удалось декодировать фото.")
+            }
+        }.onSuccess {
+            bitmap = it
+        }.onFailure {
+            android.util.Log.w("ArturChatAttachments", "Image download failed", it)
+            failed = true
+        }
+    }
+
+    val loaded = bitmap
+    if (loaded != null) {
+        val aspectRatio = (loaded.width.toFloat() / loaded.height.toFloat()).coerceIn(0.6f, 1.8f)
+        Image(
+            bitmap = loaded,
+            contentDescription = "Фотография",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 230.dp)
+                .aspectRatio(aspectRatio)
+                .clip(RoundedCornerShape(11.dp))
+                .clickable { showFullImage = true }
+        )
+        if (showFullImage) {
+            Dialog(onDismissRequest = { showFullImage = false }) {
+                Surface(
+                    color = Color.Black,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Image(
+                        bitmap = loaded,
+                        contentDescription = "Фотография",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 680.dp)
+                            .clickable { showFullImage = false }
+                    )
+                }
+            }
+        }
+    } else {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(if (failed) Color(0xFFEADDE1) else Color(0xFFEAE7EF)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                if (failed) "Фото недоступно" else "Загружаем фото…",
+                color = Muted,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
@@ -1529,6 +1766,8 @@ private fun MessageBubble(
     separateFromPrevious: Boolean = false,
     sameSenderPrevious: Boolean = false,
     replyPreview: MessageReplyPreview? = null,
+    attachmentPath: String? = null,
+    attachmentRepository: SupabaseChatRepository? = null,
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null
@@ -1628,6 +1867,13 @@ private fun MessageBubble(
                                 )
                             }
                         }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    if (attachmentPath != null && attachmentRepository != null) {
+                        ChatImagePreview(
+                            path = attachmentPath,
+                            repository = attachmentRepository
+                        )
                         Spacer(Modifier.height(6.dp))
                     }
                     Text(
