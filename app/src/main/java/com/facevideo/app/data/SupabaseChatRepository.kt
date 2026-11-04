@@ -271,8 +271,7 @@ class SupabaseChatRepository(
         val path = "$chatId/$senderId/${UUID.randomUUID()}.jpg"
         client.storage.from(CHAT_ATTACHMENTS_BUCKET).upload(
             path = path,
-            data = bytes,
-            upsert = false
+            data = bytes
         )
         return path
     }
