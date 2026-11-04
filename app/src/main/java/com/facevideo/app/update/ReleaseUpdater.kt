@@ -313,7 +313,7 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                 .map {
                     it.removePrefix("- ")
                         .removePrefix("• ")
-                        .replace(Regex("""\\*\\*(.*?)\\*\\*"""), "$1")
+                        .replace("**", "")
                         .trim()
                 }
                 .filterNot {
