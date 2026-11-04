@@ -1523,7 +1523,7 @@ private fun MessageBubble(
         append(message.text)
         if (deliveryTicks != null) {
             append(" ")
-            appendInlineContent("message_delivery_ticks", "")
+            appendInlineContent("message_delivery_ticks", "✓✓")
         }
     }
     val inlineTicks = if (deliveryTicks != null) {
