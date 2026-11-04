@@ -41,6 +41,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -70,6 +71,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -1114,6 +1118,7 @@ private fun LiveChatScreen(
                 itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
                     val startsNewSenderGroup = index > 0 &&
                         orderedMessages[index - 1].senderId != message.senderId
+                    val followsSameSender = index > 0 && !startsNewSenderGroup
                     val repliedMessage = message.replyToMessageId
                         ?.let { replyId -> orderedMessages.firstOrNull { it.id == replyId } }
                     val replyPreview = repliedMessage?.let { original ->
@@ -1135,6 +1140,7 @@ private fun LiveChatScreen(
                         ),
                         showTime = shouldShowChatMessageTime(orderedMessages, index),
                         separateFromPrevious = startsNewSenderGroup,
+                        sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
                         onReply = { replyingTo = message },
                         onCopy = {
@@ -1497,36 +1503,63 @@ private fun MessageBubble(
     message: ChatMessage,
     showTime: Boolean = true,
     separateFromPrevious: Boolean = false,
+    sameSenderPrevious: Boolean = false,
     replyPreview: MessageReplyPreview? = null,
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null
 ) {
     var showActions by remember(message.id) { mutableStateOf(false) }
+    val deliveryTicks = if (message.isMine && showTime) {
+        when (message.deliveryStatus) {
+            MessageDeliveryStatus.SENT -> "✓" to Muted
+            MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
+            MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF579BCB)
+            null -> null
+        }
+    } else null
+    val messageText = buildAnnotatedString {
+        append(message.text)
+        if (deliveryTicks != null) {
+            append(" ")
+            appendInlineContent("message_delivery_ticks", "")
+        }
+    }
+    val inlineTicks = if (deliveryTicks != null) {
+        mapOf(
+            "message_delivery_ticks" to InlineTextContent(
+                Placeholder(
+                    width = 22.sp,
+                    height = 12.sp,
+                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
+                )
+            ) {
+                Text(
+                    deliveryTicks.first,
+                    color = deliveryTicks.second,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        )
+    } else emptyMap()
+
     Row(
-        Modifier.fillMaxWidth().padding(top = if (separateFromPrevious) 8.dp else 0.dp),
+        Modifier.fillMaxWidth().padding(
+            top = when {
+                separateFromPrevious -> 8.dp
+                sameSenderPrevious -> 3.dp
+                else -> 0.dp
+            }
+        ),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom
     ) {
-        if (message.isMine && showTime && message.deliveryStatus != null) {
-            val (ticks, tickColor) = when (message.deliveryStatus) {
-                MessageDeliveryStatus.SENT -> "✓" to Muted
-                MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
-                MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF579BCB)
-            }
-            Text(
-                ticks,
-                modifier = Modifier.padding(end = 6.dp, bottom = 3.dp),
-                color = tickColor,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
         Box {
             Surface(
-                // Reserve a fixed lane for the delivery ticks so they stay beside the final bubble line.
+                // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
-                    .widthIn(max = if (message.isMine && showTime) 270.dp else 300.dp)
+                    .widthIn(max = 300.dp)
                     .combinedClickable(
                         enabled = onReply != null || onCopy != null,
                         onClick = {},
@@ -1574,7 +1607,8 @@ private fun MessageBubble(
                         Spacer(Modifier.height(6.dp))
                     }
                     Text(
-                        message.text,
+                        text = messageText,
+                        inlineContent = inlineTicks,
                         color = MainText,
                         fontSize = 14.sp
                     )
