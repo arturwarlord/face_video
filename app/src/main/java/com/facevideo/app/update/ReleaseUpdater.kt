@@ -7,7 +7,9 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
@@ -24,9 +26,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.facevideo.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -250,6 +254,8 @@ internal class InstallPermissionRequiredException : IOException(
     "Нужно разрешить ArturChat устанавливать обновления из этого источника."
 )
 
+private const val ARTURCHAT_OFFICIAL_SITE = "https://arturwarlord.github.io/face_video/"
+
 @Composable
 fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     val context = LocalContext.current
@@ -300,42 +306,83 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
         }
     }
     if (release != null) {
+        val updateHighlights = remember(release.notes) {
+            release.notes.lineSequence()
+                .map { it.trim() }
+                .filter { it.startsWith("- ") || it.startsWith("• ") }
+                .map {
+                    it.removePrefix("- ")
+                        .removePrefix("• ")
+                        .replace(Regex("""\\*\\*(.*?)\\*\\*"""), "$1")
+                        .trim()
+                }
+                .filterNot {
+                    it.startsWith("Следите за новостями", ignoreCase = true) ||
+                        it.startsWith("Разработчик:", ignoreCase = true) ||
+                        it.startsWith("Бета-тест:", ignoreCase = true)
+                }
+                .take(4)
+                .map { if (it.length > 100) it.take(97).trimEnd() + "…" else it }
+                .toList()
+                .ifEmpty { listOf("Новые функции и улучшения") }
+        }
         AlertDialog(
             onDismissRequest = { if (!isDownloading) availableRelease = null },
-            title = { Text("Доступно обновление: ${release.versionName}", fontWeight = FontWeight.Bold) },
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Доступно обновление", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Версия ${release.versionName}", color = Color(0xFF858397), fontSize = 12.sp)
+                }
+            },
             text = {
-                Column {
-                    Text(
-                        "Следите за новостями на нашем сайте:\n" +
-                            "https://github.com/arturwarlord/face_video\n\n" +
-                            "В дальнейшем все релизы также будут публиковаться на HTML-странице.\n\n" +
-                            "Разработчики: ARTUR A\n" +
-                            "Бета-тест: Rasul S, Radmir A"
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Что добавлено:", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color(0xFF858397))
+                    updateHighlights.forEach { item ->
+                        Text("• $item", fontSize = 12.sp, color = Color(0xFF343246))
+                    }
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(ARTURCHAT_OFFICIAL_SITE))
+                                )
+                            }.onFailure {
+                                errorMessage = "Не удалось открыть сайт."
+                            }
+                        },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("Наш сайт ↗", fontSize = 12.sp)
+                    }
+                    Text("Разработчик: Artur Ai", color = Color(0xFF858397), fontSize = 10.sp)
+                    Text("Бета-тест: Rasul S, Radmir A", color = Color(0xFF858397), fontSize = 10.sp)
+
                     if (isDownloading) {
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(4.dp))
                         CircularProgressIndicator(progress = { progress / 100f })
-                        Text("Загрузка: $progress%")
+                        Text("Загрузка: $progress%", fontSize = 11.sp)
                     }
                     if (errorMessage != null) {
-                        Text(errorMessage.orEmpty())
+                        Text(errorMessage.orEmpty(), fontSize = 11.sp, color = Color(0xFFC97888))
                     }
                     if (pendingConfirmationIntent != null) {
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "Android подготовил установку. Нажми «Открыть установщик Android», чтобы продолжить.",
-                            fontWeight = FontWeight.Medium
+                            "Файл готов. Открой установщик Android.",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp
                         )
                     } else if (installSubmitted && installerMessage == null) {
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            "APK передан Android. Ожидаем ответ системного установщика.",
-                            fontWeight = FontWeight.Medium
+                            "APK передан Android. Ожидаем подтверждение.",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp
                         )
                     }
                     if (installerMessage != null) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(installerMessage.orEmpty())
+                        Spacer(Modifier.height(4.dp))
+                        Text(installerMessage.orEmpty(), fontSize = 11.sp)
                     }
                 }
             },
@@ -391,7 +438,8 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                             pendingConfirmationIntent != null -> "Открыть установщик Android"
                             installSubmitted -> "Ожидаем Android..."
                             else -> "Обновить"
-                        }
+                        },
+                        fontSize = 12.sp
                     )
                 }
             },
@@ -399,7 +447,7 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                 TextButton(
                     enabled = !isDownloading,
                     onClick = { availableRelease = null }
-                ) { Text("Позже") }
+                ) { Text("Позже", fontSize = 12.sp) }
             }
         )
     }
