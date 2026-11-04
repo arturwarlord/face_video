@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.4 restore direct Android APK installation flow.
+# Build signed candidate for ArturChat 0.6.5 add private image sharing to chats.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.4"
-          -PAPP_VERSION_CODE="6004"
+          -PAPP_VERSION_NAME="0.6.5"
+          -PAPP_VERSION_CODE="6005"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.4"
-          -PAPP_VERSION_CODE="6004"
+          -PAPP_VERSION_NAME="0.6.5"
+          -PAPP_VERSION_CODE="6005"
 
       - name: Verify APK signature
         shell: bash
