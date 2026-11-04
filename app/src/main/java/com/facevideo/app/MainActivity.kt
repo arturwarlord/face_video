@@ -1886,6 +1886,36 @@ private fun ProfileScreen(
             )
         }
 
+        Spacer(Modifier.height(18.dp))
+        Surface(
+            color = PanelLight,
+            shape = RoundedCornerShape(15.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "ВЕРСИЯ ПРИЛОЖЕНИЯ",
+                        color = Mint,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("ArturChat", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Text(
+                    "v${BuildConfig.VERSION_NAME}",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
         if (userEmail != null) {
             Surface(
