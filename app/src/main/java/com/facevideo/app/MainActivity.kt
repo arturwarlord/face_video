@@ -2,6 +2,10 @@ package com.facevideo.app
 
 import android.Manifest
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
@@ -39,6 +45,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -123,6 +131,11 @@ private enum class MainTab(val title: String, val symbol: String) {
     CONTACTS("Контакты", "◎"),
     PROFILE("Профиль", "◌")
 }
+
+private data class MessageReplyPreview(
+    val sender: String,
+    val text: String
+)
 
 data class CallNotificationAction(
     val callId: String,
@@ -1013,9 +1026,11 @@ private fun LiveChatScreen(
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
+    var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
         runCatching { repository.markChatRead(chat.id) }
@@ -1038,12 +1053,17 @@ private fun LiveChatScreen(
             isSending = true
             errorMessage = null
             try {
-                val persistedMessage = repository.sendText(chat.id, text)
+                val persistedMessage = repository.sendText(
+                    chatId = chat.id,
+                    text = text,
+                    replyToMessageId = replyingTo?.id
+                )
                 locallySentMessages = mergeChatMessageSnapshots(
                     locallySentMessages,
                     listOf(persistedMessage)
                 )
                 draft = ""
+                replyingTo = null
             } catch (error: Exception) {
                 errorMessage = error.message ?: "Не удалось отправить сообщение."
             } finally {
@@ -1094,8 +1114,17 @@ private fun LiveChatScreen(
                 itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
                     val startsNewSenderGroup = index > 0 &&
                         orderedMessages[index - 1].senderId != message.senderId
+                    val repliedMessage = message.replyToMessageId
+                        ?.let { replyId -> orderedMessages.firstOrNull { it.id == replyId } }
+                    val replyPreview = repliedMessage?.let { original ->
+                        MessageReplyPreview(
+                            sender = if (original.senderId == userId) "Вы"
+                                else if (chat.isGroup) "Участник" else chat.title,
+                            text = original.body
+                        )
+                    }
                     MessageBubble(
-                        ChatMessage(
+                        message = ChatMessage(
                             id = message.id,
                             text = message.body,
                             time = formatChatMessageTime(message.createdAt),
@@ -1105,7 +1134,22 @@ private fun LiveChatScreen(
                             } else null
                         ),
                         showTime = shouldShowChatMessageTime(orderedMessages, index),
-                        separateFromPrevious = startsNewSenderGroup
+                        separateFromPrevious = startsNewSenderGroup,
+                        replyPreview = replyPreview,
+                        onReply = { replyingTo = message },
+                        onCopy = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
+                            Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
+                        },
+                        onReplyPreviewClick = repliedMessage?.let { original ->
+                            {
+                                val targetIndex = orderedMessages.indexOfFirst { it.id == original.id }
+                                if (targetIndex >= 0) {
+                                    scope.launch { listState.animateScrollToItem(targetIndex) }
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -1113,6 +1157,33 @@ private fun LiveChatScreen(
 
         if (errorMessage != null) {
             Text(errorMessage.orEmpty(), color = Color(0xFFC97888), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+
+        if (replyingTo != null) {
+            val selectedReply = replyingTo!!
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(PanelLight)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(Mint))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (selectedReply.senderId == userId) "Ответ себе"
+                        else "Ответ: " + if (chat.isGroup) "участнику" else chat.title,
+                        color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    Text(selectedReply.body, color = MainText, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Text(
+                    "×",
+                    color = Muted,
+                    fontSize = 22.sp,
+                    modifier = Modifier.clickable { replyingTo = null }.padding(start = 10.dp)
+                )
+            }
         }
 
         Row(
@@ -1420,12 +1491,18 @@ private fun ChatScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
     showTime: Boolean = true,
-    separateFromPrevious: Boolean = false
+    separateFromPrevious: Boolean = false,
+    replyPreview: MessageReplyPreview? = null,
+    onReply: (() -> Unit)? = null,
+    onCopy: (() -> Unit)? = null,
+    onReplyPreviewClick: (() -> Unit)? = null
 ) {
+    var showActions by remember(message.id) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth().padding(top = if (separateFromPrevious) 8.dp else 0.dp),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
@@ -1445,35 +1522,93 @@ private fun MessageBubble(
                 fontWeight = FontWeight.Bold
             )
         }
-        Surface(
-            // Reserve a fixed lane for the delivery ticks so they stay beside the final bubble line.
-            modifier = Modifier.widthIn(max = if (message.isMine && showTime) 270.dp else 300.dp),
-            color = if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
-            shape = RoundedCornerShape(
-                topStart = 18.dp, topEnd = 18.dp,
-                bottomStart = if (message.isMine) 18.dp else 5.dp,
-                bottomEnd = if (message.isMine) 5.dp else 18.dp
-            )
-        ) {
-            Column(
-                modifier = Modifier.padding(
-                    start = 14.dp,
-                    end = 14.dp,
-                    top = 5.dp,
-                    bottom = if (showTime) 4.dp else 5.dp
+        Box {
+            Surface(
+                // Reserve a fixed lane for the delivery ticks so they stay beside the final bubble line.
+                modifier = Modifier
+                    .widthIn(max = if (message.isMine && showTime) 270.dp else 300.dp)
+                    .combinedClickable(
+                        enabled = onReply != null || onCopy != null,
+                        onClick = {},
+                        onLongClick = { showActions = true }
+                    ),
+                color = if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
+                shape = RoundedCornerShape(
+                    topStart = 18.dp, topEnd = 18.dp,
+                    bottomStart = if (message.isMine) 18.dp else 5.dp,
+                    bottomEnd = if (message.isMine) 5.dp else 18.dp
                 )
             ) {
-                Text(
-                    message.text,
-                    color = MainText,
-                    fontSize = 14.sp
-                )
-                if (showTime) {
+                Column(
+                    modifier = Modifier.padding(
+                        start = 14.dp,
+                        end = 14.dp,
+                        top = 7.dp,
+                        bottom = if (showTime) 4.dp else 7.dp
+                    )
+                ) {
+                    if (replyPreview != null) {
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (message.isMine) Color(0xFFD0E9E2) else Color(0xFFD5D8DE))
+                                .clickable(enabled = onReplyPreviewClick != null) {
+                                    onReplyPreviewClick?.invoke()
+                                }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(Mint))
+                            Spacer(Modifier.width(7.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(replyPreview.sender, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    replyPreview.text,
+                                    color = MainText,
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
                     Text(
-                        message.time,
-                        modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
-                        color = Muted,
-                        fontSize = 9.sp
+                        message.text,
+                        color = MainText,
+                        fontSize = 14.sp
+                    )
+                    if (showTime) {
+                        Text(
+                            message.time,
+                            modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
+                            color = Muted,
+                            fontSize = 9.sp
+                        )
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = showActions,
+                onDismissRequest = { showActions = false },
+                containerColor = PanelLight
+            ) {
+                if (onReply != null) {
+                    DropdownMenuItem(
+                        text = { Text("Ответить", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onReply()
+                        }
+                    )
+                }
+                if (onCopy != null) {
+                    DropdownMenuItem(
+                        text = { Text("Копировать", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onCopy()
+                        }
                     )
                 }
             }
