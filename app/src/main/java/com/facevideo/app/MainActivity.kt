@@ -847,6 +847,7 @@ private fun LiveChatListScreen(
     var query by remember { mutableStateOf("") }
     var showNewChat by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(repository, reloadKey) {
         isLoading = true
