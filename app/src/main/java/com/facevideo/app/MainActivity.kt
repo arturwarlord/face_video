@@ -1166,6 +1166,7 @@ private fun LiveChatScreen(
     }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
+    var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
     val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds) {
@@ -1175,7 +1176,6 @@ private fun LiveChatScreen(
     var draft by remember { mutableStateOf("") }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
-    var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showForwardPicker by remember { mutableStateOf(false) }
     var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
