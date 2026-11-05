@@ -971,6 +971,7 @@ private fun LiveChatListScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LiveChatRow(
     chat: FaceVideoChatSummary,
