@@ -1167,13 +1167,14 @@ private fun LiveChatScreen(
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
-    val orderedMessages = remember(messages, locallySentMessages) {
-        mergeChatMessageSnapshots(messages, locallySentMessages)
+    val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds) {
+        mergeChatMessageSnapshots(messages, locallySentMessages).filterNot { it.id in hiddenMessageIds }
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showForwardPicker by remember { mutableStateOf(false) }
     var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
@@ -1345,7 +1346,7 @@ private fun LiveChatScreen(
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
-                        onToggleSelection = { selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id },
+                        onToggleSelection = if (message.deletedAt == null) ({ selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id }) else null,
                         showTime = shouldShowChatMessageTime(orderedMessages, index),
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
@@ -1384,7 +1385,7 @@ private fun LiveChatScreen(
                             scope.launch {
                                 actionBusy = true
                                 runCatching { repository.hideMessagesForMe(selectedMessageIds.toList(), userId) }
-                                    .onSuccess { selectedMessageIds = emptySet(); showDeleteSelection = false }
+                                    .onSuccess { hiddenMessageIds = hiddenMessageIds + selectedMessageIds; selectedMessageIds = emptySet(); showDeleteSelection = false }
                                     .onFailure { errorMessage = it.message ?: "Не удалось удалить сообщения." }
                                 actionBusy = false
                             }
