@@ -1347,6 +1347,71 @@ private fun LiveChatScreen(
             }
         }
 
+        if (showDeleteSelection) {
+            val selectedRows = orderedMessages.filter { it.id in selectedMessageIds }
+            val allMine = selectedRows.isNotEmpty() && selectedRows.all { it.senderId == userId }
+            AlertDialog(
+                onDismissRequest = { showDeleteSelection = false },
+                title = { Text("Удалить сообщения?") },
+                text = { Text("Выбрано: ${selectedRows.size}. Можно скрыть сообщения только у себя.") },
+                confirmButton = {
+                    Column {
+                        TextButton(onClick = {
+                            scope.launch {
+                                actionBusy = true
+                                runCatching { repository.hideMessagesForMe(selectedMessageIds.toList(), userId) }
+                                    .onSuccess { selectedMessageIds = emptySet(); showDeleteSelection = false }
+                                    .onFailure { errorMessage = it.message ?: "Не удалось удалить сообщения." }
+                                actionBusy = false
+                            }
+                        }, enabled = !actionBusy) { Text("Удалить у меня", color = Mint) }
+                        if (allMine) TextButton(onClick = {
+                            scope.launch {
+                                actionBusy = true
+                                runCatching { selectedRows.forEach { repository.deleteMessageForEveryone(it.id, userId) } }
+                                    .onSuccess { selectedMessageIds = emptySet(); showDeleteSelection = false }
+                                    .onFailure { errorMessage = it.message ?: "Не удалось удалить у всех." }
+                                actionBusy = false
+                            }
+                        }, enabled = !actionBusy) { Text("Удалить у всех", color = Color(0xFFC97888)) }
+                    }
+                },
+                dismissButton = { TextButton(onClick = { showDeleteSelection = false }) { Text("Отмена") } }
+            )
+        }
+        if (showForwardPicker) {
+            AlertDialog(
+                onDismissRequest = { showForwardPicker = false },
+                title = { Text("Переслать в чат") },
+                text = {
+                    Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                        if (forwardTargets.isEmpty()) Text("Нет других чатов", color = Muted)
+                        forwardTargets.forEach { target ->
+                            TextButton(onClick = {
+                                scope.launch {
+                                    actionBusy = true
+                                    runCatching {
+                                        orderedMessages.filter { it.id in selectedMessageIds }.forEach { source ->
+                                            repository.forwardMessage(
+                                                source, target.id, userId,
+                                                if (source.senderId == userId) "Вы" else chat.title
+                                            )
+                                        }
+                                    }.onSuccess {
+                                        Toast.makeText(context, "Сообщения пересланы", Toast.LENGTH_SHORT).show()
+                                        selectedMessageIds = emptySet()
+                                        showForwardPicker = false
+                                    }.onFailure { errorMessage = it.message ?: "Не удалось переслать сообщения." }
+                                    actionBusy = false
+                                }
+                            }, enabled = !actionBusy) { Text(target.title, color = MainText) }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showForwardPicker = false }) { Text("Закрыть") } }
+            )
+        }
+
         if (errorMessage != null) {
             Text(errorMessage.orEmpty(), color = Color(0xFFC97888), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -1872,7 +1937,11 @@ private fun MessageBubble(
                         bottom = if (showTime) 4.dp else 7.dp
                     )
                 ) {
-                    if (replyPreview != null) {
+                    if (message.forwardedFromName != null) {
+                        Text("Переслано от: ${message.forwardedFromName}", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(3.dp))
+                    }
+                    if (replyPreview != null && !message.isDeleted) {
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
