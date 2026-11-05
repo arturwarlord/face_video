@@ -103,7 +103,16 @@ private data class HiddenMessage(@SerialName("user_id") val userId: String, @Ser
 private data class HiddenChat(@SerialName("user_id") val userId: String, @SerialName("chat_id") val chatId: String)
 
 @Serializable
-private data class DeletedMessage(@SerialName("deleted_at") val deletedAt: String, @SerialName("deleted_by") val deletedBy: String, val body: String)
+private data class DeletedMessage(
+    @SerialName("deleted_at") val deletedAt: String,
+    @SerialName("deleted_by") val deletedBy: String,
+    val body: String,
+    @SerialName("attachment_path") val attachmentPath: String? = null,
+    @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
+    @SerialName("attachment_file_name") val attachmentFileName: String? = null,
+    @SerialName("attachment_size") val attachmentSize: Long? = null,
+    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+)
 
 @Serializable
 private data class NewMessage(
@@ -217,23 +226,27 @@ class SupabaseChatRepository(
             }
             .decodeList<FaceVideoMessage>()
 
-    suspend fun hideMessagesForMe(messageIds: List<String>) {
+    suspend fun hideMessagesForMe(messageIds: List<String>, userId: String) {
         messageIds.distinct().forEach { id ->
             client.from("face_video_hidden_messages").upsert(
-                HiddenMessage(userId = currentUserId(), messageId = id)
+                HiddenMessage(userId = userId, messageId = id)
             )
         }
     }
 
-    suspend fun hideChatForMe(chatId: String) {
+    suspend fun hideChatForMe(chatId: String, userId: String) {
         client.from("face_video_hidden_chats").upsert(
-            HiddenChat(userId = currentUserId(), chatId = chatId)
+            HiddenChat(userId = userId, chatId = chatId)
         )
     }
 
-    suspend fun deleteMessageForEveryone(messageId: String) {
+    suspend fun deleteMessageForEveryone(messageId: String, userId: String) {
         client.from("face_video_messages").update(
-            DeletedMessage(deletedAt = java.time.Instant.now().toString(), deletedBy = currentUserId(), body = "Это сообщение удалено")
+            DeletedMessage(
+                deletedAt = java.time.Instant.now().toString(),
+                deletedBy = userId,
+                body = "Это сообщение удалено"
+            )
         ) {
             filter { eq("id", messageId) }
         }
@@ -271,9 +284,6 @@ class SupabaseChatRepository(
             )
         ) { select() }.decodeSingle<FaceVideoMessage>()
     }
-
-    private fun currentUserId(): String =
-        client.auth.currentUserOrNull()?.id ?: error("Необходима авторизация.")
 
     /** Returns unread counts and the newest incoming unread message for every chat. */
     suspend fun getUnreadSummaries(): Map<String, FaceVideoChatUnreadSummary> {
