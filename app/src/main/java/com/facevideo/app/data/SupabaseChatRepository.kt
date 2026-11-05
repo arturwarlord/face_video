@@ -228,14 +228,14 @@ class SupabaseChatRepository(
 
     suspend fun hideMessagesForMe(messageIds: List<String>, userId: String) {
         messageIds.distinct().forEach { id ->
-            client.from("face_video_hidden_messages").upsert(
+            client.from("face_video_hidden_messages").insert(
                 HiddenMessage(userId = userId, messageId = id)
             )
         }
     }
 
     suspend fun hideChatForMe(chatId: String, userId: String) {
-        client.from("face_video_hidden_chats").upsert(
+        client.from("face_video_hidden_chats").insert(
             HiddenChat(userId = userId, chatId = chatId)
         )
     }
