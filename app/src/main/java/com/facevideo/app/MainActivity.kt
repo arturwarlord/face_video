@@ -943,7 +943,14 @@ private fun LiveChatListScreen(
                     LiveChatRow(
                         chat = chat,
                         unreadSummary = unreadSummaries[chat.id],
-                        onClick = { onOpenChat(chat) }
+                        onClick = { onOpenChat(chat) },
+                        onDelete = {
+                            scope.launch {
+                                runCatching { repository.hideChatForMe(chat.id, userId) }
+                                    .onSuccess { reloadKey++ }
+                                    .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
+                            }
+                        }
                     )
                 }
             }
