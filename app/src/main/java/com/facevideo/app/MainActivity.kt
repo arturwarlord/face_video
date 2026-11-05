@@ -483,8 +483,7 @@ private fun FaceVideoApp(
                     repository = repository,
                     call = call,
                     currentUserId = currentUser,
-                    scope = scope,
-                    onStatus = { callStatus = it },
+                                        onStatus = { callStatus = it },
                     onError = { callError = it }
                 )
                 callClient = client
