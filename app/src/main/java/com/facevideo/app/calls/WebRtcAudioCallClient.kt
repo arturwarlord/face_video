@@ -308,7 +308,7 @@ class WebRtcAudioCallClient(
      */
     private fun observeSignals() {
         signalJob?.cancel()
-        signalJob = scope.launch {
+        signalJob = callScope.launch {
             launch {
                 runCatching {
                     repository.observeSignals(call.id, currentUserId).collect { signals ->
@@ -436,7 +436,7 @@ class WebRtcAudioCallClient(
         signalType: String,
         fallbackDescription: SessionDescription
     ) {
-        scope.launch {
+        callScope.launch {
             setStatus(
                 if (restartAttempted.get()) {
                     "Согласуем новый сетевой маршрут…"
@@ -591,7 +591,7 @@ class WebRtcAudioCallClient(
      */
     private fun scheduleIceRecovery(reason: String, delayMs: Long) {
         recoveryJob?.cancel()
-        recoveryJob = scope.launch {
+        recoveryJob = callScope.launch {
             delay(delayMs)
             val state = lastIceConnectionState
             if (state != PeerConnection.IceConnectionState.DISCONNECTED &&
@@ -610,7 +610,7 @@ class WebRtcAudioCallClient(
     private fun sendIceRestartRequest(reason: String) {
         if (!restartRequestSent.compareAndSet(false, true)) return
         restartAttempted.set(true)
-        scope.launch {
+        callScope.launch {
             runCatching {
                 repository.sendSignal(
                     callId = call.id,
@@ -641,7 +641,7 @@ class WebRtcAudioCallClient(
 
         recoveryJob?.cancel()
         connectionTimeoutJob?.cancel()
-        scope.launch {
+        callScope.launch {
             val connection = peerConnection
             if (connection == null || closed.get()) {
                 reportDirectConnectionFailure("Нет активного PeerConnection для ICE restart")
@@ -680,7 +680,7 @@ class WebRtcAudioCallClient(
 
     private fun scheduleDirectConnectionTimeout() {
         connectionTimeoutJob?.cancel()
-        connectionTimeoutJob = scope.launch {
+        connectionTimeoutJob = callScope.launch {
             delay(DIRECT_P2P_TIMEOUT_MS)
             val state = lastIceConnectionState
             if (state == PeerConnection.IceConnectionState.NEW ||
@@ -693,13 +693,13 @@ class WebRtcAudioCallClient(
     }
 
     private fun setStatus(message: String) {
-        scope.launch(Dispatchers.Main) {
+        callScope.launch(Dispatchers.Main) {
             if (!closed.get()) onStatus(message)
         }
     }
 
     private fun reportError(message: String) {
-        scope.launch(Dispatchers.Main) {
+        callScope.launch(Dispatchers.Main) {
             if (!closed.get()) onError(message)
         }
     }
@@ -707,7 +707,7 @@ class WebRtcAudioCallClient(
     private fun fail(error: Throwable) {
         Log.e(TAG, "WebRTC audio call failed", error)
         val message = error.message ?: "Не удалось запустить звонок."
-        scope.launch(Dispatchers.Main) {
+        callScope.launch(Dispatchers.Main) {
             if (!closed.get()) {
                 onError(message)
                 end()
