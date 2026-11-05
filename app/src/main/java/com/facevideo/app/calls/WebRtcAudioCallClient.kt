@@ -107,6 +107,7 @@ class WebRtcAudioCallClient(
         }
         try {
             prepareConnection()
+            if (closed.get()) return
             observeSignals()
             setStatus("Подключаем аудио…")
         } catch (error: Exception) {
