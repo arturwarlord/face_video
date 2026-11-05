@@ -967,13 +967,16 @@ private fun LiveChatListScreen(
 private fun LiveChatRow(
     chat: FaceVideoChatSummary,
     unreadSummary: FaceVideoChatUnreadSummary?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var showMenu by remember(chat.id) { mutableStateOf(false) }
+    var confirmDelete by remember(chat.id) { mutableStateOf(false) }
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
             .background(Color(0xFFF4F1F8)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1011,6 +1014,19 @@ private fun LiveChatRow(
                 }
             }
         }
+        Text("⋮", color = Muted, fontSize = 20.sp, modifier = Modifier.clickable { showMenu = true }.padding(start = 8.dp))
+    }
+    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+        DropdownMenuItem(text = { Text("Удалить чат") }, onClick = { showMenu = false; confirmDelete = true })
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Удалить чат?") },
+            text = { Text("Переписка исчезнет только из вашего списка. У второго участника чат останется.") },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Удалить", color = Color(0xFFC97888)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } }
+        )
     }
 }
 
