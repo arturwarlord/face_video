@@ -1347,7 +1347,7 @@ private fun LiveChatScreen(
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
-                        onToggleSelection = if (message.deletedAt == null) ({ selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id }) else null,
+                        onToggleSelection = if (message.deletedAt == null && selectedMessageIds.isNotEmpty()) ({ selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id }) else null,
                         showTime = shouldShowChatMessageTime(orderedMessages, index),
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
@@ -1945,7 +1945,7 @@ private fun MessageBubble(
                     .widthIn(max = 300.dp)
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
-                        onClick = { if (selected) onToggleSelection?.invoke() },
+                        onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
                         onLongClick = { if (onSelect != null) onSelect() else showActions = true }
                     ),
                 color = if (selected) Color(0xFFC7E8E0) else if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
