@@ -1149,6 +1149,11 @@ private fun LiveChatScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var showDeleteSelection by remember { mutableStateOf(false) }
+    var showForwardPicker by remember { mutableStateOf(false) }
+    var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
+    var actionBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -1239,26 +1244,44 @@ private fun LiveChatScreen(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
-            Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
-                Text(
-                    when {
-                        chat.isGroup -> "Групповой чат"
-                        !presenceAvailable -> "Статус недоступен"
-                        peerUserId == null -> "Проверяем статус…"
-                        peerIsOnline -> "В сети"
-                        else -> "Не в сети"
-                    },
-                    color = if (peerIsOnline) Mint else Muted,
-                    fontSize = 10.sp
-                )
+            if (selectedMessageIds.isNotEmpty()) {
+                Text("×", color = Mint, fontSize = 30.sp, modifier = Modifier.clickable { selectedMessageIds = emptySet() }.padding(horizontal = 8.dp))
+                Text("${selectedMessageIds.size} выбрано", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("Копировать", color = Mint, fontSize = 11.sp, modifier = Modifier.clickable {
+                    val selectedText = orderedMessages.filter { it.id in selectedMessageIds }.joinToString("\n") { it.body }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", selectedText))
+                    selectedMessageIds = emptySet()
+                }.padding(5.dp))
+                Text("Переслать", color = Mint, fontSize = 11.sp, modifier = Modifier.clickable {
+                    scope.launch {
+                        forwardTargets = runCatching { repository.listMyChats().filter { it.id != chat.id } }.getOrDefault(emptyList())
+                        showForwardPicker = true
+                    }
+                }.padding(5.dp))
+                Text("Удалить", color = Color(0xFFC97888), fontSize = 11.sp, modifier = Modifier.clickable { showDeleteSelection = true }.padding(5.dp))
+            } else {
+                Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+                Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
+                    Text(
+                        when {
+                            chat.isGroup -> "Групповой чат"
+                            !presenceAvailable -> "Статус недоступен"
+                            peerUserId == null -> "Проверяем статус…"
+                            peerIsOnline -> "В сети"
+                            else -> "Не в сети"
+                        },
+                        color = if (peerIsOnline) Mint else Muted,
+                        fontSize = 10.sp
+                    )
+                }
+                Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
+                Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
             }
-            Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
-            Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE4DFEC)))
 
@@ -1289,20 +1312,23 @@ private fun LiveChatScreen(
                     MessageBubble(
                         message = ChatMessage(
                             id = message.id,
-                            text = message.body,
+                            text = if (message.deletedAt != null) "Это сообщение удалено" else message.body,
                             time = formatChatMessageTime(message.createdAt),
                             isMine = message.senderId == userId,
-                            deliveryStatus = if (message.senderId == userId) {
-                                resolveMessageDeliveryStatus(message.id, receipts)
-                            } else null
+                            deliveryStatus = if (message.senderId == userId && message.deletedAt == null) resolveMessageDeliveryStatus(message.id, receipts) else null,
+                            forwardedFromName = message.forwardedFromName,
+                            isDeleted = message.deletedAt != null
                         ),
+                        selected = message.id in selectedMessageIds,
+                        onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
+                        onToggleSelection = { selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id },
                         showTime = shouldShowChatMessageTime(orderedMessages, index),
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
-                        attachmentPath = message.attachmentPath,
+                        attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
-                        onReply = { replyingTo = message },
+                        onReply = if (message.deletedAt == null) ({ replyingTo = message }) else null,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
@@ -1770,7 +1796,10 @@ private fun MessageBubble(
     attachmentRepository: SupabaseChatRepository? = null,
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
-    onReplyPreviewClick: (() -> Unit)? = null
+    onReplyPreviewClick: (() -> Unit)? = null,
+    selected: Boolean = false,
+    onSelect: (() -> Unit)? = null,
+    onToggleSelection: (() -> Unit)? = null
 ) {
     var showActions by remember(message.id) { mutableStateOf(false) }
     val deliveryTicks = if (message.isMine && showTime) {
@@ -1824,11 +1853,11 @@ private fun MessageBubble(
                 modifier = Modifier
                     .widthIn(max = 300.dp)
                     .combinedClickable(
-                        enabled = onReply != null || onCopy != null,
-                        onClick = {},
-                        onLongClick = { showActions = true }
+                        enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
+                        onClick = { if (selected) onToggleSelection?.invoke() },
+                        onLongClick = { if (onSelect != null) onSelect() else showActions = true }
                     ),
-                color = if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
+                color = if (selected) Color(0xFFC7E8E0) else if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
                 shape = RoundedCornerShape(
                     topStart = 18.dp, topEnd = 18.dp,
                     bottomStart = if (message.isMine) 18.dp else 5.dp,
