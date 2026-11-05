@@ -42,7 +42,11 @@ data class FaceVideoMessage(
     @SerialName("attachment_path") val attachmentPath: String? = null,
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
-    @SerialName("attachment_size") val attachmentSize: Long? = null
+    @SerialName("attachment_size") val attachmentSize: Long? = null,
+    @SerialName("deleted_at") val deletedAt: String? = null,
+    @SerialName("deleted_by") val deletedBy: String? = null,
+    @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
+    @SerialName("forwarded_from_name") val forwardedFromName: String? = null
 )
 
 @Serializable
@@ -93,6 +97,15 @@ private data class CreateChatArguments(
 )
 
 @Serializable
+private data class HiddenMessage(@SerialName("user_id") val userId: String, @SerialName("message_id") val messageId: String)
+
+@Serializable
+private data class HiddenChat(@SerialName("user_id") val userId: String, @SerialName("chat_id") val chatId: String)
+
+@Serializable
+private data class DeletedMessage(@SerialName("deleted_at") val deletedAt: String, @SerialName("deleted_by") val deletedBy: String, val body: String)
+
+@Serializable
 private data class NewMessage(
     @SerialName("chat_id") val chatId: String,
     val body: String,
@@ -100,7 +113,9 @@ private data class NewMessage(
     @SerialName("attachment_path") val attachmentPath: String? = null,
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
-    @SerialName("attachment_size") val attachmentSize: Long? = null
+    @SerialName("attachment_size") val attachmentSize: Long? = null,
+    @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
+    @SerialName("forwarded_from_name") val forwardedFromName: String? = null
 )
 
 @Serializable
@@ -201,6 +216,64 @@ class SupabaseChatRepository(
                 order("created_at", Order.ASCENDING)
             }
             .decodeList<FaceVideoMessage>()
+
+    suspend fun hideMessagesForMe(messageIds: List<String>) {
+        messageIds.distinct().forEach { id ->
+            client.from("face_video_hidden_messages").upsert(
+                HiddenMessage(userId = currentUserId(), messageId = id)
+            )
+        }
+    }
+
+    suspend fun hideChatForMe(chatId: String) {
+        client.from("face_video_hidden_chats").upsert(
+            HiddenChat(userId = currentUserId(), chatId = chatId)
+        )
+    }
+
+    suspend fun deleteMessageForEveryone(messageId: String) {
+        client.from("face_video_messages").update(
+            DeletedMessage(deletedAt = java.time.Instant.now().toString(), deletedBy = currentUserId(), body = "Это сообщение удалено")
+        ) {
+            filter { eq("id", messageId) }
+        }
+    }
+
+    suspend fun forwardMessage(
+        source: FaceVideoMessage,
+        targetChatId: String,
+        senderId: String,
+        sourceName: String
+    ): FaceVideoMessage {
+        if (source.deletedAt != null) throw IllegalArgumentException("Удалённое сообщение нельзя переслать.")
+        if (source.attachmentPath != null) {
+            val bytes = downloadChatAttachment(source.attachmentPath)
+            val newPath = uploadChatImage(targetChatId, senderId, bytes)
+            return client.from("face_video_messages").insert(
+                NewMessage(
+                    chatId = targetChatId,
+                    body = source.body,
+                    attachmentPath = newPath,
+                    attachmentMimeType = source.attachmentMimeType,
+                    attachmentFileName = source.attachmentFileName,
+                    attachmentSize = source.attachmentSize,
+                    forwardedFromSenderId = source.senderId,
+                    forwardedFromName = sourceName
+                )
+            ) { select() }.decodeSingle<FaceVideoMessage>()
+        }
+        return client.from("face_video_messages").insert(
+            NewMessage(
+                chatId = targetChatId,
+                body = source.body,
+                forwardedFromSenderId = source.senderId,
+                forwardedFromName = sourceName
+            )
+        ) { select() }.decodeSingle<FaceVideoMessage>()
+    }
+
+    private fun currentUserId(): String =
+        client.auth.currentUserOrNull()?.id ?: error("Необходима авторизация.")
 
     /** Returns unread counts and the newest incoming unread message for every chat. */
     suspend fun getUnreadSummaries(): Map<String, FaceVideoChatUnreadSummary> {
