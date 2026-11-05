@@ -22,7 +22,9 @@ data class ChatMessage(
     val text: String,
     val time: String,
     val isMine: Boolean,
-    val deliveryStatus: MessageDeliveryStatus? = null
+    val deliveryStatus: MessageDeliveryStatus? = null,
+    val forwardedFromName: String? = null,
+    val isDeleted: Boolean = false
 )
 
 fun filterChats(chats: List<ChatSummary>, query: String): List<ChatSummary> {
