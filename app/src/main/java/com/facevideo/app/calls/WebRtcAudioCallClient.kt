@@ -8,6 +8,8 @@ import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -42,10 +44,10 @@ class WebRtcAudioCallClient(
     private val repository: SupabaseCallRepository,
     private val call: FaceVideoCall,
     private val currentUserId: String,
-    private val scope: CoroutineScope,
     private val onStatus: (String) -> Unit,
     private val onError: (String) -> Unit
 ) {
+    private val callScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
@@ -89,6 +91,7 @@ class WebRtcAudioCallClient(
         }
         try {
             prepareConnection()
+            if (closed.get()) return
             observeSignals()
             createOffer()
             setStatus("Вызов собеседника…")
@@ -112,16 +115,20 @@ class WebRtcAudioCallClient(
     }
 
     fun setMuted(muted: Boolean) {
-        localAudioTrack?.setEnabled(!muted)
+        if (!closed.get()) runCatching { localAudioTrack?.setEnabled(!muted) }
     }
 
     fun setSpeakerEnabled(enabled: Boolean) {
-        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.isSpeakerphoneOn = enabled
+        if (closed.get()) return
+        runCatching {
+            val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = enabled
+        }.onFailure { Log.w(TAG, "Could not change speaker state", it) }
     }
 
     fun end() {
         if (!closed.compareAndSet(false, true)) return
+        callScope.cancel()
         signalJob?.cancel()
         connectionTimeoutJob?.cancel()
         recoveryJob?.cancel()
@@ -133,9 +140,13 @@ class WebRtcAudioCallClient(
         localAudioTrack = null
         audioSource = null
 
-        val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.isSpeakerphoneOn = previousSpeakerState
-        audioManager.mode = previousAudioMode
+        runCatching {
+            val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            audioManager.isSpeakerphoneOn = previousSpeakerState
+            audioManager.mode = previousAudioMode
+        }.onFailure {
+            Log.w(TAG, "Could not restore audio mode after call", it)
+        }
     }
 
     /**
@@ -247,7 +258,7 @@ class WebRtcAudioCallClient(
                         "P2P ICE candidate gathered: type=$candidateType, " +
                             "mid=${candidate.sdpMid}, line=${candidate.sdpMLineIndex}"
                     )
-                    scope.launch {
+                    callScope.launch {
                         runCatching {
                             repository.sendSignal(
                                 callId = call.id,
