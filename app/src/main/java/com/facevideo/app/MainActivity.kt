@@ -503,7 +503,6 @@ private fun FaceVideoApp(
                     repository = repository,
                     call = action.call.copy(status = "accepted"),
                     currentUserId = currentUser,
-                    scope = scope,
                     onStatus = { callStatus = it },
                     onError = { callError = it }
                 )
