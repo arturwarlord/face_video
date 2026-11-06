@@ -42,10 +42,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-private val AuthBackground = Color(0xFF0A1020)
-private val AuthMint = Color(0xFF65E6D2)
-private val AuthMuted = Color(0xFF91A0BA)
-private val AuthText = Color(0xFFF4F6FC)
+private val AuthBackground = Color(0xFFF4E9E5)
+private val AuthAccent = Color(0xFF5D6C84)
+private val AuthMuted = Color(0xFF68758A)
+private val AuthText = Color(0xFF344052)
 
 @Composable
 fun SupabaseAuthGate(
@@ -69,7 +69,7 @@ fun SupabaseAuthGate(
                 Modifier.fillMaxSize().background(AuthBackground),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = AuthMint)
+                CircularProgressIndicator(color = AuthAccent)
             }
         }
         is SessionStatus.Authenticated -> {
@@ -117,7 +117,7 @@ private fun SupabaseSignInScreen(
 
     Box(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(AuthBackground, Color(0xFF14223A), AuthBackground))
+            Brush.verticalGradient(listOf(AuthBackground, Color(0xFFE5EAF0), AuthBackground))
         ),
         contentAlignment = Alignment.Center
     ) {
@@ -128,7 +128,7 @@ private fun SupabaseSignInScreen(
         ) {
             Text(
                 "ARTURCHAT",
-                color = AuthMint,
+                color = AuthAccent,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 3.sp
@@ -178,7 +178,7 @@ private fun SupabaseSignInScreen(
 
             if (message != null) {
                 Spacer(Modifier.height(12.dp))
-                Text(message.orEmpty(), color = Color(0xFFFFA5B5), fontSize = 12.sp)
+                Text(message.orEmpty(), color = Color(0xFFA85F6E), fontSize = 12.sp)
             }
 
             Spacer(Modifier.height(20.dp))
@@ -218,8 +218,8 @@ private fun SupabaseSignInScreen(
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(15.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = AuthMint,
-                    contentColor = AuthBackground
+                    containerColor = AuthAccent,
+                    contentColor = Color.White
                 )
             ) {
                 Text(
@@ -238,7 +238,7 @@ private fun SupabaseSignInScreen(
             }) {
                 Text(
                     if (isRegistration) "Уже есть аккаунт? Войти" else "Создать новый аккаунт",
-                    color = AuthMint
+                    color = AuthAccent
                 )
             }
             Spacer(Modifier.height(8.dp))
@@ -253,11 +253,11 @@ private fun SupabaseSignInScreen(
 
 @Composable
 private fun authFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = AuthMint,
-    unfocusedBorderColor = Color(0xFF35445E),
-    focusedLabelColor = AuthMint,
+    focusedBorderColor = AuthAccent,
+    unfocusedBorderColor = Color(0xFF9EAFC5),
+    focusedLabelColor = AuthAccent,
     unfocusedLabelColor = AuthMuted,
     focusedTextColor = AuthText,
     unfocusedTextColor = AuthText,
-    cursorColor = AuthMint
+    cursorColor = AuthAccent
 )
