@@ -472,9 +472,8 @@ private fun FaceVideoApp(
                 initialSnapshotReceived = true
                 // Warm recent-message caches for every chat from the realtime snapshot
                 // already being loaded for notifications; do not issue extra per-chat queries.
-                val messagesByChat = messages.groupBy { it.chatId }
                 launch(Dispatchers.IO) {
-                    messagesByChat.forEach { (chatId, chatMessages) ->
+                    messages.groupBy { it.chatId }.forEach { (chatId, chatMessages) ->
                         localCache.seedMessagesIfMissing(currentUserId, chatId, chatMessages)
                     }
                 }
