@@ -191,8 +191,8 @@ class WebRtcAudioCallClient(
         runCatching { videoCapturer?.stopCapture() }
             .onFailure { Log.w(TAG, "Could not stop camera capture", it) }
         runCatching { videoCapturer?.dispose() }
-        runCatching { localVideoTrack?.removeSink(localVideoRenderer) }
-        runCatching { remoteVideoTrack?.removeSink(remoteVideoRenderer) }
+        runCatching { localVideoRenderer?.let { renderer -> localVideoTrack?.removeSink(renderer) } }
+        runCatching { remoteVideoRenderer?.let { renderer -> remoteVideoTrack?.removeSink(renderer) } }
         runCatching { localVideoTrack?.dispose() }
         runCatching { videoSource?.dispose() }
         runCatching { surfaceTextureHelper?.dispose() }
