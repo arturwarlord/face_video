@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.9 moves compact delivery indicators beside message timestamps.
+# Build signed candidate for ArturChat 0.6.10 fixes image decoding and private Storage uploads.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.9"
-          -PAPP_VERSION_CODE="6009"
+          -PAPP_VERSION_NAME="0.6.10"
+          -PAPP_VERSION_CODE="6010"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.9"
-          -PAPP_VERSION_CODE="6009"
+          -PAPP_VERSION_NAME="0.6.10"
+          -PAPP_VERSION_CODE="6010"
 
       - name: Verify APK signature
         shell: bash
