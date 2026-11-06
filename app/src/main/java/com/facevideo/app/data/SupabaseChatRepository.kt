@@ -162,6 +162,12 @@ class SupabaseChatRepository(
             .decodeList<FaceVideoProfile>()
             .firstOrNull()
 
+    suspend fun getProfile(userId: String): FaceVideoProfile? =
+        client.from("face_video_profiles")
+            .select { filter { eq("id", userId) } }
+            .decodeList<FaceVideoProfile>()
+            .firstOrNull()
+
     suspend fun updateMyProfile(
         userId: String,
         username: String,
