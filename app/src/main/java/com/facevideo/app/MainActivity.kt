@@ -158,49 +158,63 @@ private data class PreparedChatImage(
 )
 
 /**
- * Decodes a picked image, downsizes it to a chat-friendly resolution and
- * re-encodes it as JPEG so uploads stay small and Storage accepts one format.
+ * Decodes modern formats through ImageDecoder (including HEIF/HEIC on supported
+ * Android versions), scales before allocating large bitmaps, then normalizes
+ * every selected image to JPEG for the private chat bucket.
  */
 private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
     val resolver = context.contentResolver
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, bounds)
-    } ?: throw IllegalArgumentException("Не удалось открыть выбранное фото.")
 
-    require(bounds.outWidth > 0 && bounds.outHeight > 0) {
-        "Выбранный файл не является поддерживаемым изображением."
-    }
+    val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val source = android.graphics.ImageDecoder.createSource(resolver, uri)
+        android.graphics.ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            val width = info.size.width
+            val height = info.size.height
+            require(width > 0 && height > 0) {
+                "Не удалось определить размер выбранного изображения."
+            }
+            val longestSide = maxOf(width, height)
+            if (longestSide > 1920) {
+                val scale = 1920f / longestSide
+                decoder.setTargetSize(
+                    (width * scale).toInt().coerceAtLeast(1),
+                    (height * scale).toInt().coerceAtLeast(1)
+                )
+            }
+            decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.isMutableRequired = true
+        }
+    } else {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, bounds)
+        } ?: throw IllegalArgumentException("Не удалось открыть выбранное фото.")
 
-    var sampleSize = 1
-    while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1920) {
-        sampleSize *= 2
-    }
-    val options = BitmapFactory.Options().apply {
-        inSampleSize = sampleSize
-        inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
-    }
-    val decoded = resolver.openInputStream(uri)?.use { input ->
-        BitmapFactory.decodeStream(input, null, options)
-    } ?: throw IllegalArgumentException("Не удалось прочитать выбранное фото.")
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+            "Выбранный файл не является поддерживаемым изображением."
+        }
 
-    val scaled = if (maxOf(decoded.width, decoded.height) > 1920) {
-        val scale = 1920f / maxOf(decoded.width, decoded.height)
-        android.graphics.Bitmap.createScaledBitmap(
-            decoded,
-            (decoded.width * scale).toInt().coerceAtLeast(1),
-            (decoded.height * scale).toInt().coerceAtLeast(1),
-            true
-        )
-    } else decoded
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1920) {
+            sampleSize *= 2
+        }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+            inMutable = true
+        }
+        resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, options)
+        } ?: throw IllegalArgumentException("Не удалось прочитать выбранное фото.")
+    } ?: throw IllegalArgumentException("Не удалось декодировать выбранное изображение.")
 
     try {
         val output = java.io.ByteArrayOutputStream()
         var encoded = false
         for (quality in listOf(85, 75, 65)) {
             output.reset()
-            if (!scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)) {
-                throw IllegalStateException("Не удалось подготовить фото к отправке.")
+            if (!decoded.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)) {
+                throw IllegalStateException("Не удалось преобразовать фото в JPEG.")
             }
             if (output.size() <= 10 * 1024 * 1024) {
                 encoded = true
@@ -211,14 +225,15 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
             "Фото слишком большое. Выбери изображение поменьше."
         }
 
-        val originalName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (index >= 0) cursor.getString(index) else null
-                } else null
-            }
-            .orEmpty()
+        val originalName = runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0) cursor.getString(index) else null
+                    } else null
+                }
+        }.getOrNull().orEmpty()
         val baseName = originalName.substringBeforeLast('.', originalName)
             .replace(Regex("[^A-Za-zА-Яа-я0-9 _-]"), "_")
             .trim()
@@ -230,7 +245,6 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
             fileName = "$baseName.jpg"
         )
     } finally {
-        if (scaled !== decoded) scaled.recycle()
         decoded.recycle()
     }
 }
@@ -1226,15 +1240,18 @@ private fun LiveChatScreen(
         scope.launch {
             isSending = true
             errorMessage = null
+            var stage = "Подготовка выбранного изображения"
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     prepareChatImage(context, uri)
                 }
+                stage = "Загрузка изображения в защищённое хранилище"
                 val path = repository.uploadChatImage(
                     chatId = chat.id,
                     senderId = userId,
                     bytes = prepared.bytes
                 )
+                stage = "Сохранение сообщения в переписке"
                 val persistedMessage = repository.sendImage(
                     chatId = chat.id,
                     imagePath = path,
@@ -1247,8 +1264,10 @@ private fun LiveChatScreen(
                     listOf(persistedMessage)
                 )
                 replyingTo = null
+                Toast.makeText(context, "Фото отправлено", Toast.LENGTH_SHORT).show()
             } catch (error: Exception) {
-                errorMessage = error.message ?: "Не удалось отправить фото."
+                android.util.Log.e("ArturChatMedia", "Image send failed at stage: $stage", error)
+                errorMessage = "$stage: ${error.message ?: error.javaClass.simpleName}"
             } finally {
                 isSending = false
             }
