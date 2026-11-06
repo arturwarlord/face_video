@@ -1030,7 +1030,7 @@ private fun LiveChatRow(
                 Surface(color = AccentSlate, shape = CircleShape) {
                     Text(
                         badgeText,
-                        color = MainText,
+                        color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
@@ -1746,7 +1746,7 @@ private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
             if (chat.unreadCount > 0) {
                 Spacer(Modifier.height(7.dp))
                 Box(Modifier.size(21.dp).clip(CircleShape).background(AccentSlate), contentAlignment = Alignment.Center) {
-                    Text(chat.unreadCount.toString(), color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(chat.unreadCount.toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
