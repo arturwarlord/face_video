@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
@@ -431,22 +432,30 @@ private fun FaceVideoApp(
         }
     }
 
-    LaunchedEffect(liveRepository, userId, openedLiveChat?.id, unreadRefreshKey) {
+    val currentOpenedLiveChatId by rememberUpdatedState(openedLiveChat?.id)
+
+    // Unread summaries refresh independently from the long-lived realtime subscription.
+    LaunchedEffect(liveRepository, userId, unreadRefreshKey) {
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
+        runCatching { repository.getUnreadSummaries() }
+            .onSuccess { summaries ->
+                unreadSummaries = summaries
+                withContext(Dispatchers.IO) {
+                    localCache.saveUnreadSummaries(currentUserId, summaries)
+                }
+            }
+            .onFailure {
+                android.util.Log.w("ArturChatUnread", "Could not refresh unread summaries", it)
+            }
+    }
 
-        suspend fun refreshUnreadSummaries() {
-            runCatching { repository.getUnreadSummaries() }
-                .onSuccess { summaries ->
-                    unreadSummaries = summaries
-                    withContext(Dispatchers.IO) {
-                        localCache.saveUnreadSummaries(currentUserId, summaries)
-                    }
-                }
-                .onFailure {
-                    android.util.Log.w("ArturChatUnread", "Could not refresh unread summaries", it)
-                }
-        }
+    // Keep one realtime listener for the whole signed-in session; screen navigation
+    // must not tear it down and reload the entire message snapshot.
+    LaunchedEffect(liveRepository, userId) {
+        val repository = liveRepository ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+        val chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
 
         suspend fun markIncomingMessagesDelivered(messages: List<com.facevideo.app.data.FaceVideoMessage>) {
             val incomingIds = messages
@@ -460,9 +469,6 @@ private fun FaceVideoApp(
             }
         }
 
-        // Start background refreshes without delaying the realtime message subscription.
-        launch { refreshUnreadSummaries() }
-        val chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
         val knownMessageIds = mutableSetOf<String>()
         var initialSnapshotReceived = false
 
@@ -470,8 +476,7 @@ private fun FaceVideoApp(
             if (!initialSnapshotReceived) {
                 knownMessageIds.addAll(messages.map { it.id })
                 initialSnapshotReceived = true
-                // Warm recent-message caches for every chat from the realtime snapshot
-                // already being loaded for notifications; do not issue extra per-chat queries.
+                // Warm all per-chat caches from this snapshot without additional chat queries.
                 launch(Dispatchers.IO) {
                     messages.groupBy { it.chatId }.forEach { (chatId, chatMessages) ->
                         localCache.seedMessagesIfMissing(currentUserId, chatId, chatMessages)
@@ -483,7 +488,7 @@ private fun FaceVideoApp(
 
             val newMessages = messages.filter { knownMessageIds.add(it.id) }
             newMessages
-                .filter { it.senderId != currentUserId && it.chatId != openedLiveChat?.id }
+                .filter { it.senderId != currentUserId && it.chatId != currentOpenedLiveChatId }
                 .forEach { message ->
                     appNotifications.showMessage(
                         notificationId = message.id,
@@ -491,6 +496,10 @@ private fun FaceVideoApp(
                         body = message.body
                     )
                 }
+
+            if (newMessages.any { it.senderId != currentUserId }) {
+                unreadRefreshKey += 1
+            }
 
             if (newMessages.isNotEmpty()) {
                 val changedChatIds = newMessages.map { it.chatId }.distinct()
@@ -505,7 +514,6 @@ private fun FaceVideoApp(
                 }
             }
             markIncomingMessagesDelivered(newMessages)
-            refreshUnreadSummaries()
         }
     }
 
