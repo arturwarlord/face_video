@@ -1381,7 +1381,13 @@ private fun LiveChatScreen(
                 )
             } else {
                 Text("‹", color = AccentSlate, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
-                Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
+                Avatar(
+                    chat.title.take(2).uppercase(),
+                    chat.id.hashCode().ushr(1) % 4,
+                    Modifier.size(43.dp).clickable(enabled = peerUserId != null && !chat.isGroup) {
+                        peerUserId?.let(onOpenProfile)
+                    }
+                )
                 Spacer(Modifier.width(10.dp))
                 Column(
                     Modifier.weight(1f).clickable(enabled = peerUserId != null && !chat.isGroup) {
