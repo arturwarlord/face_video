@@ -1861,7 +1861,7 @@ private fun ChatScreen(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Text("➤", color = AppBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
