@@ -462,19 +462,7 @@ private fun FaceVideoApp(
 
         // Start background refreshes without delaying the realtime message subscription.
         launch { refreshUnreadSummaries() }
-        var chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
-        launch {
-            runCatching { repository.listMyChats() }
-                .onSuccess { refreshedChats ->
-                    chatTitles = refreshedChats.associate { it.id to it.title }
-                    withContext(Dispatchers.IO) {
-                        localCache.saveChats(currentUserId, refreshedChats)
-                    }
-                }
-                .onFailure {
-                    android.util.Log.w("ArturChatCache", "Could not refresh chat titles", it)
-                }
-        }
+        val chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
         val knownMessageIds = mutableSetOf<String>()
         var initialSnapshotReceived = false
 
@@ -483,7 +471,6 @@ private fun FaceVideoApp(
                 knownMessageIds.addAll(messages.map { it.id })
                 initialSnapshotReceived = true
                 markIncomingMessagesDelivered(messages)
-                refreshUnreadSummaries()
                 return@collect
             }
 
@@ -765,6 +752,7 @@ private fun FaceVideoApp(
                             if (liveRepository != null && userId != null) {
                                 LiveChatListScreen(
                                     repository = liveRepository,
+                                    cache = localCache,
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
                                     onOpenChat = { openedLiveChat = it }
@@ -778,6 +766,7 @@ private fun FaceVideoApp(
                             if (liveRepository != null && userId != null) {
                                 LiveChatListScreen(
                                     repository = liveRepository,
+                                    cache = localCache,
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
                                     onOpenChat = { openedLiveChat = it },
