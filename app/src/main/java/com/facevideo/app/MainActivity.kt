@@ -470,6 +470,16 @@ private fun FaceVideoApp(
             if (!initialSnapshotReceived) {
                 knownMessageIds.addAll(messages.map { it.id })
                 initialSnapshotReceived = true
+                // Warm recent-message caches for every chat from the realtime snapshot
+                // already being loaded for notifications; do not issue extra per-chat queries.
+                val messagesByChat = messages.groupBy { it.chatId }
+                launch(Dispatchers.IO) {
+                    messagesByChat.forEach { (chatId, chatMessages) ->
+                        if (localCache.readMessages(currentUserId, chatId).isEmpty()) {
+                            localCache.saveMessages(currentUserId, chatId, chatMessages)
+                        }
+                    }
+                }
                 markIncomingMessagesDelivered(messages)
                 return@collect
             }
@@ -485,6 +495,18 @@ private fun FaceVideoApp(
                     )
                 }
 
+            if (newMessages.isNotEmpty()) {
+                val changedChatIds = newMessages.map { it.chatId }.distinct()
+                launch(Dispatchers.IO) {
+                    changedChatIds.forEach { chatId ->
+                        localCache.saveMessages(
+                            currentUserId,
+                            chatId,
+                            messages.filter { it.chatId == chatId }
+                        )
+                    }
+                }
+            }
             markIncomingMessagesDelivered(newMessages)
             refreshUnreadSummaries()
         }
