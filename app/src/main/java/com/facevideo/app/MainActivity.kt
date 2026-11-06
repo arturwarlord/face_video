@@ -744,11 +744,17 @@ private fun FaceVideoApp(
                 },
                 onEnd = { finishCall() }
             )
-        } else if (openedProfileUserId != null && liveRepository != null) {
+        } else if (openedProfileUserId != null && liveRepository != null && userId != null) {
             UserProfileScreen(
                 userId = openedProfileUserId!!,
+                currentUserId = userId,
                 repository = liveRepository,
-                onBack = { openedProfileUserId = null }
+                onlineUserIds = onlineUserIds,
+                onBack = { openedProfileUserId = null },
+                onOpenChat = { chat ->
+                    openedProfileUserId = null
+                    openedLiveChat = chat
+                }
             )
         } else if (openedLiveChat != null && liveRepository != null && userId != null) {
             val currentChat = openedLiveChat!!
@@ -799,13 +805,12 @@ private fun FaceVideoApp(
                         MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
                         MainTab.CONTACTS -> {
                             if (liveRepository != null && userId != null) {
-                                LiveChatListScreen(
+                                FriendsScreen(
                                     repository = liveRepository,
-                                    cache = localCache,
                                     userId = userId,
-                                    unreadSummaries = unreadSummaries,
+                                    onlineUserIds = onlineUserIds,
                                     onOpenChat = { openedLiveChat = it },
-                                    contactsMode = true
+                                    onOpenProfile = { openedProfileUserId = it }
                                 )
                             } else {
                                 ContactsScreen(onOpenChat = { openedChat = it })
@@ -2368,6 +2373,397 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
     }
 }
 
+private enum class FriendsSection { FRIENDS, REQUESTS }
+
+@Composable
+private fun FriendsScreen(
+    repository: SupabaseChatRepository,
+    userId: String,
+    onlineUserIds: Set<String>,
+    onOpenChat: (FaceVideoChatSummary) -> Unit,
+    onOpenProfile: (String) -> Unit
+) {
+    var relationships by remember(userId) { mutableStateOf<List<com.facevideo.app.data.FaceVideoFriendship>>(emptyList()) }
+    var people by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
+    var isLoading by remember(userId) { mutableStateOf(true) }
+    var refreshKey by remember(userId) { mutableStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var selectedSection by remember { mutableStateOf(FriendsSection.FRIENDS) }
+    var showAddFriend by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var busyUserId by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, userId, refreshKey) {
+        isLoading = true
+        errorMessage = null
+        runCatching {
+            val loaded = repository.listMyFriendships(userId)
+            val relatedIds = loaded.map { row ->
+                if (row.userLow == userId) row.userHigh else row.userLow
+            }.distinct()
+            val loadedProfiles = mutableMapOf<String, FaceVideoProfile>()
+            relatedIds.forEach { id ->
+                repository.getProfile(id)?.let { loadedProfiles[id] = it }
+            }
+            relationships = loaded
+            people = loadedProfiles
+        }.onFailure {
+            errorMessage = it.message ?: "Не удалось загрузить друзей."
+        }
+        isLoading = false
+    }
+
+    fun relatedUserId(row: com.facevideo.app.data.FaceVideoFriendship): String =
+        if (row.userLow == userId) row.userHigh else row.userLow
+
+    val friends = relationships.filter { it.status == "accepted" }
+        .mapNotNull { row -> people[relatedUserId(row)] }
+        .filter { profile ->
+            query.isBlank() ||
+                profile.displayName.contains(query.trim(), ignoreCase = true) ||
+                profile.username.contains(query.trim().removePrefix("@"), ignoreCase = true)
+        }
+        .sortedBy { it.displayName.ifBlank { it.username }.lowercase() }
+
+    val incoming = relationships.filter { it.status == "pending" && it.requestedBy != userId }
+    val outgoing = relationships.filter { it.status == "pending" && it.requestedBy == userId }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 18.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                Text("Люди, с которыми вы взаимно подружились", color = Muted, fontSize = 11.sp)
+            }
+            TextButton(onClick = { refreshKey++ }) { Text("Обновить", color = AccentSlate, fontSize = 11.sp) }
+        }
+        Spacer(Modifier.height(18.dp))
+        Button(onClick = { showAddFriend = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("＋ Добавить друга")
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Surface(
+                color = if (selectedSection == FriendsSection.FRIENDS) AccentSlate else PanelLight,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f).clickable { selectedSection = FriendsSection.FRIENDS }
+            ) {
+                Text(
+                    "Друзья · ${friends.size}",
+                    color = if (selectedSection == FriendsSection.FRIENDS) Color.White else MainText,
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            Surface(
+                color = if (selectedSection == FriendsSection.REQUESTS) AccentSlate else PanelLight,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f).clickable { selectedSection = FriendsSection.REQUESTS }
+            ) {
+                Text(
+                    "Заявки · ${incoming.size + outgoing.size}",
+                    color = if (selectedSection == FriendsSection.REQUESTS) Color.White else MainText,
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        if (isLoading) {
+            Box(Modifier.fillMaxWidth().padding(36.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+            }
+        } else if (errorMessage != null) {
+            Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 12.sp)
+            TextButton(onClick = { refreshKey++ }) { Text("Повторить", color = AccentSlate) }
+        } else if (selectedSection == FriendsSection.FRIENDS) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Найти среди друзей") }
+            )
+            Spacer(Modifier.height(12.dp))
+            if (friends.isEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Avatar("♡", 2, Modifier.size(64.dp))
+                    Spacer(Modifier.height(14.dp))
+                    Text(if (query.isBlank()) "Пока нет друзей" else "Ничего не найдено", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (query.isBlank()) "Найди человека по псевдониму и отправь заявку. Он появится здесь после принятия."
+                        else "Попробуй изменить поисковый запрос.",
+                        color = Muted, fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            } else {
+                friends.forEach { friend ->
+                    FriendDirectoryRow(
+                        profile = friend,
+                        status = if (friend.id in onlineUserIds) "В сети" else friend.statusText.ifBlank { "Не в сети" },
+                        actionLabel = "Написать",
+                        actionEnabled = busyUserId != friend.id,
+                        onProfile = { onOpenProfile(friend.id) },
+                        onAction = {
+                            scope.launch {
+                                busyUserId = friend.id
+                                runCatching { repository.getOrCreateDirectChat(friend.id, userId) }
+                                    .onSuccess { chat ->
+                                        if (chat != null) onOpenChat(chat)
+                                        else errorMessage = "Не удалось открыть переписку."
+                                    }
+                                    .onFailure { errorMessage = it.message ?: "Не удалось открыть переписку." }
+                                busyUserId = null
+                            }
+                        }
+                    )
+                }
+            }
+        } else {
+            Text("ВХОДЯЩИЕ ЗАЯВКИ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Spacer(Modifier.height(8.dp))
+            if (incoming.isEmpty()) {
+                Text("Новых заявок пока нет.", color = Muted, fontSize = 12.sp)
+            } else {
+                incoming.forEach { row ->
+                    val personId = relatedUserId(row)
+                    val person = people[personId]
+                    if (person != null) {
+                        FriendDirectoryRow(
+                            profile = person,
+                            status = "Хочет добавить вас в друзья",
+                            actionLabel = "Принять",
+                            actionEnabled = busyUserId != personId,
+                            onProfile = { onOpenProfile(personId) },
+                            onAction = {
+                                scope.launch {
+                                    busyUserId = personId
+                                    runCatching { repository.respondToFriendRequest(personId, true) }
+                                        .onSuccess { refreshKey++ }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось принять заявку." }
+                                    busyUserId = null
+                                }
+                            },
+                            secondaryActionLabel = "Отклонить",
+                            onSecondaryAction = {
+                                scope.launch {
+                                    busyUserId = personId
+                                    runCatching { repository.respondToFriendRequest(personId, false) }
+                                        .onSuccess { refreshKey++ }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось отклонить заявку." }
+                                    busyUserId = null
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(18.dp))
+            Text("ОТПРАВЛЕННЫЕ ЗАЯВКИ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+            Spacer(Modifier.height(8.dp))
+            if (outgoing.isEmpty()) {
+                Text("Вы пока никому не отправляли заявки.", color = Muted, fontSize = 12.sp)
+            } else {
+                outgoing.forEach { row ->
+                    val personId = relatedUserId(row)
+                    val person = people[personId]
+                    if (person != null) {
+                        FriendDirectoryRow(
+                            profile = person,
+                            status = "Ожидает подтверждения",
+                            actionLabel = "Отменить",
+                            actionEnabled = busyUserId != personId,
+                            onProfile = { onOpenProfile(personId) },
+                            onAction = {
+                                scope.launch {
+                                    busyUserId = personId
+                                    runCatching { repository.cancelFriendRequest(personId) }
+                                        .onSuccess { refreshKey++ }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось отменить заявку." }
+                                    busyUserId = null
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+
+    if (showAddFriend) {
+        AddFriendDialog(
+            repository = repository,
+            currentUserId = userId,
+            onDismiss = { showAddFriend = false },
+            onChanged = {
+                showAddFriend = false
+                refreshKey++
+            }
+        )
+    }
+}
+
+@Composable
+private fun FriendDirectoryRow(
+    profile: FaceVideoProfile,
+    status: String,
+    actionLabel: String,
+    actionEnabled: Boolean,
+    onProfile: () -> Unit,
+    onAction: () -> Unit,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
+) {
+    Surface(
+        color = Panel,
+        shape = RoundedCornerShape(17.dp),
+        border = BorderStroke(1.dp, PaletteMist),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Avatar(
+                profile.displayName.ifBlank { profile.username }.take(1).uppercase(),
+                profile.id.hashCode().ushr(1) % 4,
+                Modifier.size(47.dp).clickable(onClick = onProfile),
+                imageUrl = profile.avatarUrl
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f).clickable(onClick = onProfile)) {
+                Text(profile.displayName.ifBlank { profile.username }, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text("@${profile.username}", color = Muted, fontSize = 10.sp, maxLines = 1)
+                Text(status, color = AccentSlate, fontSize = 10.sp, maxLines = 1)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onAction, enabled = actionEnabled) {
+                    Text(actionLabel, color = AccentSlate, fontSize = 10.sp)
+                }
+                if (secondaryActionLabel != null && onSecondaryAction != null) {
+                    TextButton(onClick = onSecondaryAction, enabled = actionEnabled) {
+                        Text(secondaryActionLabel, color = Color(0xFFA85F6E), fontSize = 9.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddFriendDialog(
+    repository: SupabaseChatRepository,
+    currentUserId: String,
+    onDismiss: () -> Unit,
+    onChanged: () -> Unit
+) {
+    var username by remember { mutableStateOf("") }
+    var foundProfile by remember { mutableStateOf<FaceVideoProfile?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PanelLight,
+        title = { Text("Добавить друга", color = MainText, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("Найди человека по уникальному псевдониму ArturChat.", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = {
+                        username = it.lowercase().filter { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == '_' }.take(24)
+                        foundProfile = null
+                        message = null
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingIcon = { Text("@", color = AccentSlate) },
+                    label = { Text("Псевдоним пользователя") }
+                )
+                if (foundProfile != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Avatar(
+                            foundProfile!!.displayName.ifBlank { foundProfile!!.username }.take(1).uppercase(),
+                            2, Modifier.size(42.dp), imageUrl = foundProfile!!.avatarUrl
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(foundProfile!!.displayName.ifBlank { foundProfile!!.username }, color = MainText, fontWeight = FontWeight.SemiBold)
+                            Text("@${foundProfile!!.username}", color = Muted, fontSize = 11.sp)
+                        }
+                    }
+                }
+                if (message != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(message.orEmpty(), color = if (message.orEmpty().contains("отправлена") || message.orEmpty().contains("друзья")) AccentSlate else Color(0xFFA85F6E), fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !busy && username.length >= 3,
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        message = null
+                        try {
+                            val candidate = foundProfile
+                            if (candidate == null) {
+                                val found = repository.findUser(username)
+                                when {
+                                    found == null -> message = "Пользователь не найден."
+                                    found.id == currentUserId -> message = "Нельзя добавить самого себя."
+                                    else -> foundProfile = found
+                                }
+                            } else {
+                                val result = repository.sendFriendRequest(candidate.id)
+                                message = when (result) {
+                                    "accepted" -> "Теперь вы друзья!"
+                                    else -> "Заявка отправлена."
+                                }
+                                onChanged()
+                            }
+                        } catch (error: Exception) {
+                            message = error.message ?: "Не удалось отправить заявку."
+                        } finally {
+                            busy = false
+                        }
+                    }
+                }
+            ) {
+                Text(
+                    when {
+                        busy -> "Подождите…"
+                        foundProfile != null -> "Отправить заявку"
+                        else -> "Найти"
+                    },
+                    color = AccentSlate
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Закрыть", color = Muted) }
+        }
+    )
+}
+
 @Composable
 private fun ProfileScreen(
     userEmail: String?,
@@ -2555,36 +2951,158 @@ private fun ProfileScreen(
 @Composable
 private fun UserProfileScreen(
     userId: String,
+    currentUserId: String,
     repository: SupabaseChatRepository,
-    onBack: () -> Unit
+    onlineUserIds: Set<String>,
+    onBack: () -> Unit,
+    onOpenChat: (FaceVideoChatSummary) -> Unit
 ) {
     var profile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
+    var friendship by remember(userId, currentUserId) { mutableStateOf<com.facevideo.app.data.FaceVideoFriendship?>(null) }
     var isLoading by remember(userId) { mutableStateOf(true) }
-    LaunchedEffect(repository, userId) {
-        profile = runCatching { repository.getProfile(userId) }.getOrNull()
+    var isBusy by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showRemoveFriend by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, userId, currentUserId) {
+        isLoading = true
+        runCatching {
+            profile = repository.getProfile(userId)
+            friendship = repository.getFriendshipWith(currentUserId, userId)
+        }.onFailure {
+            errorMessage = it.message ?: "Не удалось загрузить профиль."
+        }
         isLoading = false
     }
+
+    fun refreshFriendship() {
+        scope.launch {
+            isBusy = true
+            runCatching { repository.getFriendshipWith(currentUserId, userId) }
+                .onSuccess { friendship = it }
+                .onFailure { errorMessage = it.message ?: "Не удалось обновить статус дружбы." }
+            isBusy = false
+        }
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("‹ Назад", color = AccentSlate, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
         if (isLoading) {
             Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
-                Text("Загружаем профиль…", color = Muted)
+                androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
             }
         } else if (profile != null) {
             val p = profile!!
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(22.dp))
                 Avatar(p.displayName.ifBlank { p.username }.take(1).uppercase(), 2, Modifier.size(124.dp), imageUrl = p.avatarUrl)
                 Spacer(Modifier.height(16.dp))
                 Text(p.displayName.ifBlank { p.username }, color = MainText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Text("@${p.username}", color = Muted, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                Text(if (userId in onlineUserIds) "В сети" else "Не в сети", color = if (userId in onlineUserIds) AccentSlate else Muted, fontSize = 11.sp)
                 if (p.statusText.isNotBlank()) {
                     Spacer(Modifier.height(12.dp))
                     Surface(color = PaletteBlush, shape = RoundedCornerShape(18.dp)) {
                         Text(p.statusText, color = MainText, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), fontSize = 12.sp)
                     }
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(18.dp))
+
+                when {
+                    userId == currentUserId -> {
+                        Text("Это ваш профиль.", color = Muted, fontSize = 12.sp)
+                    }
+                    friendship?.status == "accepted" -> {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.getOrCreateDirectChat(userId, currentUserId) }
+                                        .onSuccess { chat ->
+                                            if (chat != null) onOpenChat(chat)
+                                            else errorMessage = "Не удалось открыть переписку."
+                                        }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось открыть переписку." }
+                                    isBusy = false
+                                }
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (isBusy) "Открываем…" else "Написать") }
+                        TextButton(onClick = { showRemoveFriend = true }, enabled = !isBusy) {
+                            Text("Удалить из друзей", color = Color(0xFFA85F6E), fontSize = 11.sp)
+                        }
+                    }
+                    friendship?.status == "pending" && friendship?.requestedBy == currentUserId -> {
+                        Surface(color = PanelLight, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                            Text("Заявка отправлена", color = AccentSlate, fontSize = 13.sp, modifier = Modifier.padding(14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.cancelFriendRequest(userId) }
+                                        .onSuccess { friendship = null }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось отменить заявку." }
+                                    isBusy = false
+                                }
+                            },
+                            enabled = !isBusy
+                        ) { Text("Отменить заявку", color = Muted, fontSize = 11.sp) }
+                    }
+                    friendship?.status == "pending" -> {
+                        Text("Этот пользователь отправил вам заявку в друзья.", color = Muted, fontSize = 12.sp)
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.respondToFriendRequest(userId, true) }
+                                        .onSuccess { refreshFriendship() }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось принять заявку." }
+                                    isBusy = false
+                                }
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Принять заявку") }
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.respondToFriendRequest(userId, false) }
+                                        .onSuccess { friendship = null }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось отклонить заявку." }
+                                    isBusy = false
+                                }
+                            },
+                            enabled = !isBusy
+                        ) { Text("Отклонить", color = Color(0xFFA85F6E)) }
+                    }
+                    else -> {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.sendFriendRequest(userId) }
+                                        .onSuccess { refreshFriendship() }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось отправить заявку." }
+                                    isBusy = false
+                                }
+                            },
+                            enabled = !isBusy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (isBusy) "Отправляем…" else "＋ Добавить в друзья") }
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
+                }
+
+                Spacer(Modifier.height(20.dp))
                 Surface(color = Panel, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, PaletteMist), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
                         Text("О СЕБЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
@@ -2594,8 +3112,29 @@ private fun UserProfileScreen(
                 }
             }
         } else {
-            Text("Не удалось загрузить профиль пользователя.", color = Muted)
+            Text(errorMessage ?: "Не удалось загрузить профиль пользователя.", color = Muted)
         }
+    }
+
+    if (showRemoveFriend) {
+        AlertDialog(
+            onDismissRequest = { showRemoveFriend = false },
+            title = { Text("Удалить из друзей?") },
+            text = { Text("Вы больше не будете отображаться друг у друга в списке друзей.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRemoveFriend = false
+                    scope.launch {
+                        isBusy = true
+                        runCatching { repository.removeFriend(userId) }
+                            .onSuccess { friendship = null }
+                            .onFailure { errorMessage = it.message ?: "Не удалось удалить друга." }
+                        isBusy = false
+                    }
+                }) { Text("Удалить", color = Color(0xFFA85F6E)) }
+            },
+            dismissButton = { TextButton(onClick = { showRemoveFriend = false }) { Text("Отмена") } }
+        )
     }
 }
 
