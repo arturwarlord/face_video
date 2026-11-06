@@ -97,6 +97,7 @@ import com.facevideo.app.data.SupabaseCallRepository
 import com.facevideo.app.data.DemoData
 import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatLocalCache
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.FaceVideoPresence
