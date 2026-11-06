@@ -2466,10 +2466,10 @@ private fun BottomNavigation(
                         if (tab == MainTab.CHATS) {
                             formatUnreadBadge(unreadChatsCount)?.let { badgeText ->
                                 Spacer(Modifier.width(5.dp))
-                                Surface(color = Color(0xFFF5D2D0), shape = CircleShape) {
+                                Surface(color = PaletteBlush, shape = CircleShape) {
                                     Text(
                                         badgeText,
-                                        color = Color.White,
+                                        color = MainText,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
