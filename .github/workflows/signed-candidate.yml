@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.12 adds instant local-first chat and message loading.
+# Build signed candidate for ArturChat 0.6.13 adds instant local-first chat and message loading.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.12"
-          -PAPP_VERSION_CODE="6012"
+          -PAPP_VERSION_NAME="0.6.13"
+          -PAPP_VERSION_CODE="6013"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.12"
-          -PAPP_VERSION_CODE="6012"
+          -PAPP_VERSION_NAME="0.6.13"
+          -PAPP_VERSION_CODE="6013"
 
       - name: Verify APK signature
         shell: bash
