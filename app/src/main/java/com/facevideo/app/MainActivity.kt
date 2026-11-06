@@ -2098,7 +2098,7 @@ private fun LiveChatScreen(
                         imeAction = ImeAction.Send
                     ),
                     keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                    textStyle = TextStyle(color = MainText, fontSize = 14.sp),
+                    textStyle = TextStyle(color = MainText, fontSize = if (compact) 13.sp else 14.sp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
                     decorationBox = { inner ->
                         Box {
