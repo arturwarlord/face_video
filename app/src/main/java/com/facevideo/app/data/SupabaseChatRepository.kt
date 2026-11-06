@@ -11,6 +11,7 @@ import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -43,6 +44,38 @@ data class FaceVideoFriendship(
     val status: String,
     @SerialName("created_at") val createdAt: String
 )
+
+@Serializable
+data class FaceVideoStory(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("media_path") val mediaPath: String,
+    val caption: String = "",
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("expires_at") val expiresAt: String
+)
+
+data class FaceVideoStoryCard(
+    val storyId: String,
+    val userId: String,
+    val username: String,
+    val displayName: String,
+    val avatarUrl: String?,
+    val mediaUrl: String,
+    val caption: String,
+    val createdAt: String,
+    val expiresAt: String
+)
+
+@Serializable
+private data class NewFaceVideoStory(
+    val id: String,
+    @SerialName("user_id") val userId: String,
+    @SerialName("media_path") val mediaPath: String,
+    val caption: String,
+    @SerialName("expires_at") val expiresAt: String
+)
+
 
 
 @Serializable
@@ -176,6 +209,10 @@ private data class NewFaceVideoPushToken(
 class SupabaseChatRepository(
     private val client: SupabaseClient
 ) {
+    companion object {
+        private const val STORIES_BUCKET = "face-video-stories"
+    }
+
 
     suspend fun getMyProfile(userId: String): FaceVideoProfile? =
         client.from("face_video_profiles")
@@ -233,6 +270,85 @@ class SupabaseChatRepository(
             "face_video_remove_friend",
             FriendTargetArguments(targetUserId)
         ).decodeAs<Boolean>()
+
+    /**
+     * Story rows are filtered by RLS: only the author and their accepted friends
+     * can receive them, and expired entries are never returned.
+     */
+    suspend fun listVisibleStories(): List<FaceVideoStoryCard> {
+        val rows = client.from("face_video_stories").select {
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoStory>()
+        if (rows.isEmpty()) return emptyList()
+
+        val profileCache = mutableMapOf<String, FaceVideoProfile?>()
+        return rows.mapNotNull { story ->
+            val profile = profileCache.getOrPut(story.userId) { getProfile(story.userId) } ?: return@mapNotNull null
+            val signedUrl = client.storage.from(STORIES_BUCKET).createSignedUrl(
+                path = story.mediaPath,
+                expiresIn = 3.minutes
+            )
+            FaceVideoStoryCard(
+                storyId = story.id,
+                userId = story.userId,
+                username = profile.username,
+                displayName = profile.displayName,
+                avatarUrl = profile.avatarUrl,
+                mediaUrl = signedUrl,
+                caption = story.caption,
+                createdAt = story.createdAt,
+                expiresAt = story.expiresAt
+            )
+        }
+    }
+
+    /** Publishes a JPEG photo story. The database enforces a 24-hour lifetime. */
+    suspend fun publishStory(userId: String, bytes: ByteArray, caption: String): FaceVideoStoryCard {
+        require(bytes.isNotEmpty() && bytes.size <= 10 * 1024 * 1024) {
+            "Фото для истории должно быть не больше 10 МБ."
+        }
+        val cleanCaption = caption.trim().take(500)
+        val storyId = UUID.randomUUID().toString()
+        val path = "$userId/$storyId.jpg"
+        client.storage.from(STORIES_BUCKET).upload(path = path, data = bytes) {
+            contentType = ContentType.Image.JPEG
+        }
+
+        val row = client.from("face_video_stories").insert(
+            NewFaceVideoStory(
+                id = storyId,
+                userId = userId,
+                mediaPath = path,
+                caption = cleanCaption,
+                // Trigger overwrites this with server time + 24 hours.
+                expiresAt = java.time.Instant.now().plusSeconds(24 * 60 * 60).toString()
+            )
+        ) { select() }.decodeSingle<FaceVideoStory>()
+
+        val profile = getProfile(userId) ?: throw IllegalStateException("Профиль пользователя не найден.")
+        val signedUrl = client.storage.from(STORIES_BUCKET).createSignedUrl(
+            path = row.mediaPath,
+            expiresIn = 3.minutes
+        )
+        return FaceVideoStoryCard(
+            storyId = row.id,
+            userId = userId,
+            username = profile.username,
+            displayName = profile.displayName,
+            avatarUrl = profile.avatarUrl,
+            mediaUrl = signedUrl,
+            caption = row.caption,
+            createdAt = row.createdAt,
+            expiresAt = row.expiresAt
+        )
+    }
+
+    suspend fun deleteStory(storyId: String, mediaPath: String) {
+        client.from("face_video_stories").delete {
+            filter { eq("id", storyId) }
+        }
+        client.storage.from(STORIES_BUCKET).delete(mediaPath)
+    }
 
     suspend fun updateMyProfile(
         userId: String,
