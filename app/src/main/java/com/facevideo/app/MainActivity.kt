@@ -91,6 +91,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.facevideo.app.calls.WebRtcAudioCallClient
 import com.facevideo.app.data.FaceVideoCall
@@ -324,7 +325,10 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed interface PendingCallAction {
-    data class Outgoing(val chat: FaceVideoChatSummary) : PendingCallAction
+    data class Outgoing(
+        val chat: FaceVideoChatSummary,
+        val mediaType: String = "audio"
+    ) : PendingCallAction
     data class Incoming(val call: FaceVideoCall) : PendingCallAction
 }
 
@@ -411,6 +415,7 @@ private fun FaceVideoApp(
     var callStatus by remember { mutableStateOf("Подготовка звонка…") }
     var callError by remember { mutableStateOf<String?>(null) }
     var callMuted by remember { mutableStateOf(false) }
+    var callCameraEnabled by remember { mutableStateOf(true) }
     var callClient by remember { mutableStateOf<WebRtcAudioCallClient?>(null) }
     var pendingCallAction by remember { mutableStateOf<PendingCallAction?>(null) }
 
@@ -526,11 +531,12 @@ private fun FaceVideoApp(
         when (action) {
             is PendingCallAction.Outgoing -> {
                 callError = null
-                val call = repository.startDirectCall(action.chat.id, currentUser, "audio")
+                val call = repository.startDirectCall(action.chat.id, currentUser, action.mediaType)
                 activeCall = call
                 activeCallTitle = action.chat.title
                 activeCallIsOutgoing = true
-                callStatus = "Вызов собеседника…"
+                callCameraEnabled = true
+                callStatus = if (call.mediaType == "video") "Вызов видеосвязи…" else "Вызов собеседника…"
                 val client = WebRtcAudioCallClient(
                     context = context,
                     repository = repository,
@@ -550,7 +556,8 @@ private fun FaceVideoApp(
                 activeCall = action.call.copy(status = "accepted")
                 activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
                 activeCallIsOutgoing = false
-                callStatus = "Подключаем аудио…"
+                callCameraEnabled = true
+                callStatus = if (action.call.mediaType == "video") "Подключаем видео…" else "Подключаем аудио…"
                 val client = WebRtcAudioCallClient(
                     context = context,
                     repository = repository,
@@ -580,15 +587,54 @@ private fun FaceVideoApp(
         }
     }
 
-    fun requestCallPermission(action: PendingCallAction) {
-        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+    val videoPermissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        val action = pendingCallAction
+        pendingCallAction = null
+        val microphoneGranted =
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val cameraGranted =
+            context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (action != null && microphoneGranted && cameraGranted) {
             scope.launch {
                 runCatching { performCallAction(action) }
-                    .onFailure { callError = it.message ?: "Не удалось начать звонок." }
+                    .onFailure { callError = it.message ?: "Не удалось начать видеозвонок." }
             }
         } else {
-            pendingCallAction = action
-            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            callError = "Для видеозвонка нужны разрешения на микрофон и камеру."
+        }
+    }
+
+    fun requestCallPermission(action: PendingCallAction) {
+        val needsVideo = when (action) {
+            is PendingCallAction.Outgoing -> action.mediaType == "video"
+            is PendingCallAction.Incoming -> action.call.mediaType == "video"
+        }
+        val microphoneGranted =
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val cameraGranted =
+            context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+        when {
+            needsVideo && (!microphoneGranted || !cameraGranted) -> {
+                pendingCallAction = action
+                val missingPermissions = buildList {
+                    if (!microphoneGranted) add(Manifest.permission.RECORD_AUDIO)
+                    if (!cameraGranted) add(Manifest.permission.CAMERA)
+                }.toTypedArray()
+                videoPermissionsLauncher.launch(missingPermissions)
+            }
+            !microphoneGranted -> {
+                pendingCallAction = action
+                microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            }
+            else -> {
+                scope.launch {
+                    runCatching { performCallAction(action) }
+                        .onFailure { callError = it.message ?: "Не удалось начать звонок." }
+                }
+            }
         }
     }
 
@@ -624,6 +670,7 @@ private fun FaceVideoApp(
         callClient = null
         activeCall = null
         callMuted = false
+        callCameraEnabled = true
         runCatching { clientToClose?.end() }
             .onFailure {
                 android.util.Log.w("ArturChatCall", "Could not close local call resources", it)
@@ -669,7 +716,11 @@ private fun FaceVideoApp(
             }
             when (latest.status) {
                 "accepted" -> if (activeCallIsOutgoing && callStatus.startsWith("Вызов")) {
-                    callStatus = "Собеседник ответил. Подключаем аудио…"
+                    callStatus = if (call.mediaType == "video") {
+                        "Собеседник ответил. Подключаем видео…"
+                    } else {
+                        "Собеседник ответил. Подключаем аудио…"
+                    }
                 }
                 "declined" -> {
                     callStatus = "Собеседник отклонил вызов."
@@ -735,17 +786,38 @@ private fun FaceVideoApp(
         )
     ) {
         if (activeCall != null) {
-            ActiveAudioCallScreen(
-                peerName = activeCallTitle,
-                status = callStatus,
-                error = callError,
-                muted = callMuted,
-                onToggleMute = {
-                    callMuted = !callMuted
-                    callClient?.setMuted(callMuted)
-                },
-                onEnd = { finishCall() }
-            )
+            if (activeCall?.mediaType == "video" && callClient != null) {
+                ActiveVideoCallScreen(
+                    peerName = activeCallTitle,
+                    status = callStatus,
+                    error = callError,
+                    muted = callMuted,
+                    cameraEnabled = callCameraEnabled,
+                    client = callClient!!,
+                    onToggleMute = {
+                        callMuted = !callMuted
+                        callClient?.setMuted(callMuted)
+                    },
+                    onToggleCamera = {
+                        callCameraEnabled = !callCameraEnabled
+                        callClient?.setCameraEnabled(callCameraEnabled)
+                    },
+                    onSwitchCamera = { callClient?.switchCamera() },
+                    onEnd = { finishCall() }
+                )
+            } else {
+                ActiveAudioCallScreen(
+                    peerName = activeCallTitle,
+                    status = callStatus,
+                    error = callError,
+                    muted = callMuted,
+                    onToggleMute = {
+                        callMuted = !callMuted
+                        callClient?.setMuted(callMuted)
+                    },
+                    onEnd = { finishCall() }
+                )
+            }
         } else if (openedStoriesUserId != null && liveRepository != null && userId != null) {
             StoryViewerScreen(
                 storyOwnerId = openedStoriesUserId!!,
@@ -778,12 +850,12 @@ private fun FaceVideoApp(
                 onMarkedRead = { unreadRefreshKey += 1 },
                 onOpenProfile = { profileUserId -> openedProfileUserId = profileUserId },
                 onCall = { isVideo ->
-                    if (isVideo) {
-                        callInfoMessage = "Видеозвонки ещё разрабатываются. Сейчас уже можно звонить голосом."
-                        showCallInfo = true
-                    } else {
-                        requestCallPermission(PendingCallAction.Outgoing(currentChat))
-                    }
+                    requestCallPermission(
+                        PendingCallAction.Outgoing(
+                            currentChat,
+                            if (isVideo) "video" else "audio"
+                        )
+                    )
                 }
             )
         } else if (openedChat != null) {
@@ -860,7 +932,13 @@ private fun FaceVideoApp(
                 scope.launch { runCatching { callRepository?.declineCall(incomingCall.id) } }
             },
             containerColor = PanelLight,
-            title = { Text("Входящий аудиозвонок", color = MainText, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    if (incomingCall.mediaType == "video") "Входящий видеозвонок" else "Входящий аудиозвонок",
+                    color = MainText,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Column {
                     Text(
@@ -869,7 +947,11 @@ private fun FaceVideoApp(
                         color = MainText,
                         fontWeight = FontWeight.SemiBold
                     )
-                    Text("ArturChat · голосовой вызов", color = Muted, fontSize = 12.sp)
+                    Text(
+                        if (incomingCall.mediaType == "video") "ArturChat · видеовызов" else "ArturChat · голосовой вызов",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
                     if (callError != null) {
                         Spacer(Modifier.height(8.dp))
                         Text(callError.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
@@ -2744,6 +2826,131 @@ private fun ActiveAudioCallScreen(
 }
 
 @Composable
+private fun ActiveVideoCallScreen(
+    peerName: String,
+    status: String,
+    error: String?,
+    muted: Boolean,
+    cameraEnabled: Boolean,
+    client: WebRtcAudioCallClient,
+    onToggleMute: () -> Unit,
+    onToggleCamera: () -> Unit,
+    onSwitchCamera: () -> Unit,
+    onEnd: () -> Unit
+) {
+    val remoteRenderer = client.remoteVideoRenderer
+    val localRenderer = client.localVideoRenderer
+
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF171B22))
+    ) {
+        if (remoteRenderer != null) {
+            AndroidView(
+                factory = { remoteRenderer },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Подготавливаем видеосвязь…", color = Color.White, fontSize = 14.sp)
+            }
+        }
+
+        if (localRenderer != null) {
+            AndroidView(
+                factory = { localRenderer },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 42.dp, end = 16.dp)
+                    .size(width = 112.dp, height = 156.dp)
+                    .clip(RoundedCornerShape(18.dp))
+            )
+        }
+
+        Column(
+            Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .padding(start = 18.dp, top = 18.dp, end = 142.dp)
+        ) {
+            Text(peerName, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            Text(status, color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
+            if (error != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(error, color = Color(0xFFFFB8C1), fontSize = 11.sp)
+            }
+        }
+
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 28.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            VideoCallControlButton(
+                label = if (muted) "Микрофон выкл." else "Микрофон",
+                active = !muted,
+                onClick = onToggleMute
+            )
+            VideoCallControlButton(
+                label = if (cameraEnabled) "Камера" else "Камера выкл.",
+                active = cameraEnabled,
+                onClick = onToggleCamera
+            )
+            VideoCallControlButton(
+                label = "Сменить",
+                active = true,
+                onClick = onSwitchCamera
+            )
+            VideoCallControlButton(
+                label = "Завершить",
+                active = false,
+                destructive = true,
+                onClick = onEnd
+            )
+        }
+
+        Text(
+            "ARTURCHAT · ПРЯМОЕ СОЕДИНЕНИЕ",
+            color = Color.White.copy(alpha = 0.62f),
+            fontSize = 9.sp,
+            letterSpacing = 1.2.sp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun VideoCallControlButton(
+    label: String,
+    active: Boolean,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = when {
+            destructive -> Color(0xFFA85F6E)
+            active -> Color(0xFF394451).copy(alpha = 0.94f)
+            else -> Color(0xFF69717C).copy(alpha = 0.94f)
+        },
+        shape = CircleShape,
+        modifier = Modifier.size(72.dp).clickable(onClick = onClick)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                label,
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 5.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun CallsScreen(onCall: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
         Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
@@ -2752,11 +2959,11 @@ private fun CallsScreen(onCall: () -> Unit) {
         Spacer(Modifier.height(22.dp))
         Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFFC9D3DF))) {
             Column(Modifier.fillMaxWidth().padding(19.dp)) {
-                Text("Голосовая связь уже доступна", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Голосовые и видеозвонки", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                Text("Открой личную переписку и нажми на значок телефонной трубки. Входящий вызов появится прямо в приложении.", color = Muted, fontSize = 13.sp)
+                Text("Открой личную переписку и выбери значок трубки или камеры. Входящий вызов появится прямо в приложении.", color = Muted, fontSize = 13.sp)
                 Spacer(Modifier.height(17.dp))
-                Text("Видеозвонки и групповые вызовы — следующий этап.", color = AccentSlate, fontSize = 12.sp)
+                Text("Видеосвязь работает напрямую между устройствами через WebRTC, без TURN-реле.", color = AccentSlate, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(25.dp))
