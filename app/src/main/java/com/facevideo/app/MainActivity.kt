@@ -2098,7 +2098,7 @@ private fun LiveChatScreen(
                         imeAction = ImeAction.Send
                     ),
                     keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                    textStyle = TextStyle(color = MainText, fontSize = if (compact) 13.sp else 14.sp),
+                    textStyle = TextStyle(color = MainText, fontSize = 14.sp),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
                     decorationBox = { inner ->
                         Box {
@@ -2216,7 +2216,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit, compact:
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            textStyle = TextStyle(color = MainText, fontSize = 14.sp),
+            textStyle = TextStyle(color = MainText, fontSize = if (compact) 13.sp else 14.sp),
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = if (compact) 13.dp else 15.dp,
                 vertical = if (compact) 10.dp else 14.dp
