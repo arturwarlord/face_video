@@ -1,6 +1,7 @@
 package com.facevideo.app.calls
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
@@ -24,6 +25,15 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
+import org.webrtc.Camera1Enumerator
+import org.webrtc.Camera2Enumerator
+import org.webrtc.CameraEnumerator
+import org.webrtc.CameraVideoCapturer
+import org.webrtc.EglBase
+import org.webrtc.SurfaceTextureHelper
+import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoSource
+import org.webrtc.VideoTrack
 import org.webrtc.CandidatePairChangeEvent
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
@@ -51,6 +61,8 @@ class WebRtcAudioCallClient(
     private val appContext = context.applicationContext
     private val isCaller = call.callerId == currentUserId
     private val peerUserId = if (isCaller) call.calleeId else call.callerId
+    // Video is strictly opt-in per call row. Audio calls retain the old media path.
+    private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
     @Volatile private var iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
@@ -81,6 +93,18 @@ class WebRtcAudioCallClient(
     private var peerConnection: PeerConnection? = null
     private var audioSource: AudioSource? = null
     private var localAudioTrack: AudioTrack? = null
+    private var videoSource: VideoSource? = null
+    private var videoCapturer: CameraVideoCapturer? = null
+    private var localVideoTrack: VideoTrack? = null
+    private var remoteVideoTrack: VideoTrack? = null
+    private var surfaceTextureHelper: SurfaceTextureHelper? = null
+    private var videoEglBase: EglBase? = null
+    private val remoteVideoTrackLock = Any()
+
+    var localVideoRenderer: SurfaceViewRenderer? = null
+        private set
+    var remoteVideoRenderer: SurfaceViewRenderer? = null
+        private set
     private var previousAudioMode: Int = AudioManager.MODE_NORMAL
     private var previousSpeakerState: Boolean = false
 
@@ -109,7 +133,7 @@ class WebRtcAudioCallClient(
             prepareConnection()
             if (closed.get()) return
             observeSignals()
-            setStatus("Подключаем аудио…")
+            setStatus(if (videoEnabled) "Подключаем видео…" else "Подключаем аудио…")
         } catch (error: Exception) {
             fail(error)
         }
@@ -127,6 +151,30 @@ class WebRtcAudioCallClient(
         }.onFailure { Log.w(TAG, "Could not change speaker state", it) }
     }
 
+    fun setCameraEnabled(enabled: Boolean) {
+        if (!closed.get() && videoEnabled) {
+            runCatching { localVideoTrack?.setEnabled(enabled) }
+                .onFailure { Log.w(TAG, "Could not change camera state", it) }
+        }
+    }
+
+    fun switchCamera() {
+        if (closed.get() || !videoEnabled) return
+        val capturer = videoCapturer ?: return
+        runCatching {
+            capturer.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
+                override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                    localVideoRenderer?.setMirror(isFrontCamera)
+                    Log.i(TAG, "Camera switched; front=$isFrontCamera")
+                }
+
+                override fun onCameraSwitchError(errorDescription: String) {
+                    reportError("Не удалось переключить камеру: $errorDescription")
+                }
+            })
+        }.onFailure { reportError("Не удалось переключить камеру: ${it.message}") }
+    }
+
     fun end() {
         if (!closed.compareAndSet(false, true)) return
         callScope.cancel()
@@ -137,9 +185,32 @@ class WebRtcAudioCallClient(
         runCatching { peerConnection?.dispose() }
         runCatching { localAudioTrack?.dispose() }
         runCatching { audioSource?.dispose() }
+
+        // Video resources exist only for calls whose media_type is "video".
+        // Stop capture before releasing renderers and EGL to avoid camera leaks.
+        runCatching { videoCapturer?.stopCapture() }
+            .onFailure { Log.w(TAG, "Could not stop camera capture", it) }
+        runCatching { videoCapturer?.dispose() }
+        runCatching { localVideoTrack?.removeSink(localVideoRenderer) }
+        runCatching { remoteVideoTrack?.removeSink(remoteVideoRenderer) }
+        runCatching { localVideoTrack?.dispose() }
+        runCatching { videoSource?.dispose() }
+        runCatching { surfaceTextureHelper?.dispose() }
+        runCatching { localVideoRenderer?.release() }
+        runCatching { remoteVideoRenderer?.release() }
+        runCatching { videoEglBase?.release() }
+
         peerConnection = null
         localAudioTrack = null
         audioSource = null
+        localVideoTrack = null
+        remoteVideoTrack = null
+        videoSource = null
+        videoCapturer = null
+        surfaceTextureHelper = null
+        localVideoRenderer = null
+        remoteVideoRenderer = null
+        videoEglBase = null
 
         runCatching {
             val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -285,7 +356,19 @@ class WebRtcAudioCallClient(
                 override fun onAddTrack(
                     receiver: org.webrtc.RtpReceiver,
                     mediaStreams: Array<org.webrtc.MediaStream>
-                ) = Unit
+                ) {
+                    if (!videoEnabled) return
+                    val videoTrack = receiver.track() as? VideoTrack ?: return
+                    val renderer = remoteVideoRenderer ?: return
+                    synchronized(remoteVideoTrackLock) {
+                        if (remoteVideoTrack !== videoTrack) {
+                            remoteVideoTrack?.removeSink(renderer)
+                            remoteVideoTrack = videoTrack
+                            videoTrack.addSink(renderer)
+                            Log.i(TAG, "Remote video track attached to renderer")
+                        }
+                    }
+                }
             }
         ) ?: error("WebRTC не смог создать соединение.")
 
@@ -299,6 +382,71 @@ class WebRtcAudioCallClient(
         check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) != null) {
             "Не удалось подключить микрофон."
         }
+
+        // Keep the existing audio track and signaling flow; add a camera track
+        // only for video calls. Audio-only calls never initialize camera APIs.
+        if (videoEnabled) prepareVideo(factory)
+    }
+
+    private fun prepareVideo(factory: PeerConnectionFactory) {
+        check(
+            appContext.checkSelfPermission(android.Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        ) { "Для видеозвонка разреши ArturChat доступ к камере." }
+
+        val egl = EglBase.create()
+        videoEglBase = egl
+        val localRenderer = SurfaceViewRenderer(appContext).apply {
+            init(egl.eglBaseContext, null)
+            setEnableHardwareScaler(true)
+            setMirror(true)
+        }
+        val remoteRenderer = SurfaceViewRenderer(appContext).apply {
+            init(egl.eglBaseContext, null)
+            setEnableHardwareScaler(true)
+            setMirror(false)
+        }
+        localVideoRenderer = localRenderer
+        remoteVideoRenderer = remoteRenderer
+
+        val source = factory.createVideoSource(false)
+        videoSource = source
+        val textureHelper = SurfaceTextureHelper.create(
+            "ArturChatCamera-${call.id}",
+            egl.eglBaseContext
+        ) ?: error("Не удалось подготовить видеопоток.")
+        surfaceTextureHelper = textureHelper
+
+        val capturer = createCameraCapturer(appContext)
+            ?: error("Не удалось найти доступную камеру на устройстве.")
+        videoCapturer = capturer
+        capturer.initialize(textureHelper, appContext, source.capturerObserver)
+
+        val track = factory.createVideoTrack("arturchat-video-${call.id}", source)
+        localVideoTrack = track
+        track.setEnabled(true)
+        track.addSink(localRenderer)
+        check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) != null) {
+            "Не удалось добавить видеопоток в WebRTC."
+        }
+
+        // Conservative starting profile for mobile networks and mid-range phones.
+        capturer.startCapture(640, 480, 24)
+        Log.i(TAG, "Local camera started: 640x480@24fps")
+    }
+
+    private fun createCameraCapturer(context: Context): CameraVideoCapturer? {
+        val enumerator: CameraEnumerator =
+            if (Camera2Enumerator.isSupported(context)) {
+                Camera2Enumerator(context)
+            } else {
+                Camera1Enumerator(true)
+            }
+        val names = enumerator.deviceNames
+        val selectedName = names.firstOrNull { enumerator.isFrontFacing(it) }
+            ?: names.firstOrNull()
+            ?: return null
+        return enumerator.createCapturer(selectedName, null)
     }
 
     /**
