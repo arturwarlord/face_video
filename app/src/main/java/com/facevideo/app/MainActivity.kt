@@ -1128,6 +1128,19 @@ private fun StoriesStrip(
 
     Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)) {
         Row(
+            Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("ИСТОРИИ", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Обновить",
+                color = Muted,
+                fontSize = 9.sp,
+                modifier = Modifier.clickable { refreshKey++ }.padding(4.dp)
+            )
+        }
+        Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 15.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.Top
@@ -1343,7 +1356,7 @@ private fun StoryViewerScreen(
             Text("‹", color = Color.White, fontSize = 30.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    current?.displayName?.ifBlank { current.username } ?: "История",
+                    current?.let { it.displayName.ifBlank { it.username } } ?: "История",
                     color = Color.White,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
