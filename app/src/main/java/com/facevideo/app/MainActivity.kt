@@ -1338,7 +1338,7 @@ private fun StoryViewerScreen(
             stories = repository.listVisibleStories()
                 .filter { it.userId == storyOwnerId }
                 .sortedBy { it.createdAt }
-            index = (stories.size - 1).coerceAtLeast(0)
+            index = 0
         }.onFailure {
             errorMessage = it.message ?: "Не удалось загрузить историю."
         }
