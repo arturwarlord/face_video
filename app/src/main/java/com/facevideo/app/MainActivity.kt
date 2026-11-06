@@ -1270,20 +1270,12 @@ private fun LiveChatScreen(
         ) {
             if (selectedMessageIds.isNotEmpty()) {
                 Text("×", color = Mint, fontSize = 30.sp, modifier = Modifier.clickable { selectedMessageIds = emptySet() }.padding(horizontal = 8.dp))
-                Text("${selectedMessageIds.size} выбрано", color = MainText, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                Text("Копировать", color = Mint, fontSize = 11.sp, modifier = Modifier.clickable {
-                    val selectedText = orderedMessages.filter { it.id in selectedMessageIds }.joinToString("\n") { it.body }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", selectedText))
-                    selectedMessageIds = emptySet()
-                }.padding(5.dp))
-                Text("Переслать", color = Mint, fontSize = 11.sp, modifier = Modifier.clickable {
-                    scope.launch {
-                        forwardTargets = runCatching { repository.listMyChats().filter { it.id != chat.id } }.getOrDefault(emptyList())
-                        showForwardPicker = true
-                    }
-                }.padding(5.dp))
-                Text("Удалить", color = Color(0xFFC97888), fontSize = 11.sp, modifier = Modifier.clickable { showDeleteSelection = true }.padding(5.dp))
+                Text(
+                    "${selectedMessageIds.size} выбрано",
+                    color = MainText,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
             } else {
                 Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
                 Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
@@ -1438,6 +1430,70 @@ private fun LiveChatScreen(
 
         if (errorMessage != null) {
             Text(errorMessage.orEmpty(), color = Color(0xFFC97888), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+
+        if (selectedMessageIds.isNotEmpty()) {
+            val selectedRows = orderedMessages.filter { it.id in selectedMessageIds }
+            Surface(
+                color = PanelLight,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, Color(0xFFE1DCE9)),
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (selectedRows.size == 1) {
+                        SelectionActionButton(
+                            icon = "↩",
+                            label = "Ответить",
+                            color = Mint,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            replyingTo = selectedRows.single()
+                            selectedMessageIds = emptySet()
+                        }
+                    }
+                    SelectionActionButton(
+                        icon = "▢",
+                        label = "Копировать",
+                        color = Mint,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        val selectedText = selectedRows.joinToString("\n") { it.body }
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", selectedText))
+                        Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
+                        selectedMessageIds = emptySet()
+                    }
+                    SelectionActionButton(
+                        icon = "➦",
+                        label = "Переслать",
+                        color = Mint,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        scope.launch {
+                            actionBusy = true
+                            forwardTargets = runCatching {
+                                repository.listMyChats().filter { it.id != chat.id }
+                            }.getOrDefault(emptyList())
+                            actionBusy = false
+                            showForwardPicker = true
+                        }
+                    }
+                    SelectionActionButton(
+                        icon = "⌫",
+                        label = "Удалить",
+                        color = Color(0xFFC97888),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        showDeleteSelection = true
+                    }
+                }
+            }
         }
 
         if (replyingTo != null) {
@@ -1874,6 +1930,35 @@ private fun ChatImagePreview(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SelectionActionButton(
+    icon: String,
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 2.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(icon, color = color, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            color = color,
+            fontSize = 9.sp,
+            maxLines = 1,
+            softWrap = false,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
 @Composable
 private fun MessageBubble(
     message: ChatMessage,
