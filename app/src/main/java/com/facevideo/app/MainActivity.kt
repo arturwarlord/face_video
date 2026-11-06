@@ -150,7 +150,7 @@ private val AvatarColors = listOf(
 private enum class MainTab(val title: String, val symbol: String) {
     CHATS("Чаты", "✉"),
     CALLS("Звонки", "◉"),
-    CONTACTS("Контакты", "◎"),
+    CONTACTS("Друзья", "◎"),
     PROFILE("Профиль", "◌")
 }
 
@@ -2349,31 +2349,21 @@ private fun CallsScreen(onCall: () -> Unit) {
 
 @Composable
 private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
-        Text("Контакты", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text("Ваши контакты появятся после регистрации и синхронизации.", color = Muted, fontSize = 12.sp)
-        Spacer(Modifier.height(20.dp))
-        DemoData.chats.forEach { chat ->
-            Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onOpenChat(chat) }.padding(vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Avatar(chat.initials, chat.avatarStyle, Modifier.size(48.dp), chat.online)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Text(if (chat.online) "В сети" else "Не в сети", color = Muted, fontSize = 11.sp)
-                }
-                Text("Сообщение  ›", color = AccentSlate, fontSize = 11.sp)
-            }
-        }
+        Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Войдите в аккаунт ArturChat, чтобы отправлять и принимать заявки в друзья.",
+            color = Muted, fontSize = 12.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
-
-private enum class FriendsSection { FRIENDS, REQUESTS }
 
 @Composable
 private fun FriendsScreen(
