@@ -18,6 +18,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -48,8 +49,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -78,12 +77,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.Placeholder
-import androidx.compose.ui.text.PlaceholderVerticalAlign
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -1978,37 +1976,13 @@ private fun MessageBubble(
     var showActions by remember(message.id) { mutableStateOf(false) }
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
-            MessageDeliveryStatus.SENT -> "✓" to Muted
-            MessageDeliveryStatus.DELIVERED -> "✓✓" to Muted
-            MessageDeliveryStatus.READ -> "✓✓" to Color(0xFF579BCB)
+            MessageDeliveryStatus.SENT -> 1 to Muted
+            MessageDeliveryStatus.DELIVERED -> 2 to Muted
+            MessageDeliveryStatus.READ -> 2 to Color(0xFF579BCB)
             null -> null
         }
     } else null
-    val messageText = buildAnnotatedString {
-        append(message.text)
-        if (deliveryTicks != null) {
-            append(" ")
-            appendInlineContent("message_delivery_ticks", "✓✓")
-        }
-    }
-    val inlineTicks = if (deliveryTicks != null) {
-        mapOf(
-            "message_delivery_ticks" to InlineTextContent(
-                Placeholder(
-                    width = 22.sp,
-                    height = 12.sp,
-                    placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
-                )
-            ) {
-                Text(
-                    deliveryTicks.first,
-                    color = deliveryTicks.second,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        )
-    } else emptyMap()
+    val messageText = message.text
 
     Row(
         Modifier.fillMaxWidth().padding(
@@ -2085,17 +2059,51 @@ private fun MessageBubble(
                     }
                     Text(
                         text = messageText,
-                        inlineContent = inlineTicks,
                         color = MainText,
                         fontSize = 14.sp
                     )
                     if (showTime) {
-                        Text(
-                            message.time,
-                            modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
-                            color = Muted,
-                            fontSize = 9.sp
-                        )
+                        Row(
+                            modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(
+                                message.time,
+                                color = Muted,
+                                fontSize = 9.sp
+                            )
+                            deliveryTicks?.let { (count, tickColor) ->
+                                Canvas(
+                                    modifier = Modifier
+                                        .padding(start = 1.dp, end = 1.dp)
+                                        .size(width = if (count == 1) 8.dp else 13.dp, height = 9.dp)
+                                ) {
+                                    val unit = 4.dp.toPx()
+                                    val arm = 2.2.dp.toPx()
+                                    val rise = 6.2.dp.toPx()
+                                    val stroke = 1.25.dp.toPx()
+                                    repeat(count) { index ->
+                                        val x = index * unit
+                                        val joint = Offset(x + arm, size.height * 0.72f)
+                                        drawLine(
+                                            color = tickColor,
+                                            start = Offset(x, size.height * 0.48f),
+                                            end = joint,
+                                            strokeWidth = stroke,
+                                            cap = StrokeCap.Round
+                                        )
+                                        drawLine(
+                                            color = tickColor,
+                                            start = joint,
+                                            end = Offset(x + rise, size.height * 0.2f),
+                                            strokeWidth = stroke,
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
