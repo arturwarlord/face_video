@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.8 restores message replies and improves selection actions.
+# Build signed candidate for ArturChat 0.6.9 moves compact delivery indicators beside message timestamps.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.8"
-          -PAPP_VERSION_CODE="6008"
+          -PAPP_VERSION_NAME="0.6.9"
+          -PAPP_VERSION_CODE="6009"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.8"
-          -PAPP_VERSION_CODE="6008"
+          -PAPP_VERSION_NAME="0.6.9"
+          -PAPP_VERSION_CODE="6009"
 
       - name: Verify APK signature
         shell: bash
