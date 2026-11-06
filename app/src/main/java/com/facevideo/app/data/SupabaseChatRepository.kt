@@ -323,6 +323,19 @@ class SupabaseChatRepository(
             .firstOrNull()
     }
 
+    /** Reuse an existing direct conversation before creating a new one. */
+    suspend fun getOrCreateDirectChat(
+        otherUserId: String,
+        currentUserId: String
+    ): FaceVideoChatSummary? {
+        val existing = listMyChats().firstOrNull { chat ->
+            !chat.isGroup && getDirectChatPeerId(chat.id, currentUserId) == otherUserId
+        }
+        if (existing != null) return existing
+        val chatId = createDirectChat(otherUserId)
+        return getChat(chatId)
+    }
+
     suspend fun createDirectChat(otherUserId: String): String {
         val result = client.postgrest.rpc(
             "face_video_create_chat",
