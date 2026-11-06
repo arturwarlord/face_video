@@ -35,6 +35,17 @@ data class FaceVideoProfile(
 )
 
 @Serializable
+data class FaceVideoFriendship(
+    val id: String,
+    @SerialName("user_low") val userLow: String,
+    @SerialName("user_high") val userHigh: String,
+    @SerialName("requested_by") val requestedBy: String,
+    val status: String,
+    @SerialName("created_at") val createdAt: String
+)
+
+
+@Serializable
 data class FaceVideoMessage(
     val id: String,
     @SerialName("chat_id") val chatId: String,
@@ -106,6 +117,18 @@ private data class HiddenMessage(@SerialName("user_id") val userId: String, @Ser
 private data class HiddenChat(@SerialName("user_id") val userId: String, @SerialName("chat_id") val chatId: String)
 
 @Serializable
+private data class FriendTargetArguments(
+    @SerialName("p_target_user_id") val targetUserId: String
+)
+
+@Serializable
+private data class RespondFriendRequestArguments(
+    @SerialName("p_target_user_id") val targetUserId: String,
+    @SerialName("p_accept") val accept: Boolean
+)
+
+
+@Serializable
 private data class DeletedMessage(
     @SerialName("deleted_at") val deletedAt: String,
     @SerialName("deleted_by") val deletedBy: String,
@@ -167,6 +190,49 @@ class SupabaseChatRepository(
             .select { filter { eq("id", userId) } }
             .decodeList<FaceVideoProfile>()
             .firstOrNull()
+
+    /** Lists relationships visible to this user (accepted friends and pending requests). */
+    suspend fun listMyFriendships(userId: String): List<FaceVideoFriendship> {
+        val asLow = client.from("face_video_friendships").select {
+            filter { eq("user_low", userId) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoFriendship>()
+        val asHigh = client.from("face_video_friendships").select {
+            filter { eq("user_high", userId) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoFriendship>()
+        return (asLow + asHigh).distinctBy { it.id }
+    }
+
+    suspend fun getFriendshipWith(userId: String, targetUserId: String): FaceVideoFriendship? =
+        listMyFriendships(userId).firstOrNull { row ->
+            (row.userLow == userId && row.userHigh == targetUserId) ||
+                (row.userHigh == userId && row.userLow == targetUserId)
+        }
+
+    suspend fun sendFriendRequest(targetUserId: String): String =
+        client.postgrest.rpc(
+            "face_video_send_friend_request",
+            FriendTargetArguments(targetUserId)
+        ).decodeAs<String>()
+
+    suspend fun respondToFriendRequest(targetUserId: String, accept: Boolean): String =
+        client.postgrest.rpc(
+            "face_video_respond_friend_request",
+            RespondFriendRequestArguments(targetUserId, accept)
+        ).decodeAs<String>()
+
+    suspend fun cancelFriendRequest(targetUserId: String): Boolean =
+        client.postgrest.rpc(
+            "face_video_cancel_friend_request",
+            FriendTargetArguments(targetUserId)
+        ).decodeAs<Boolean>()
+
+    suspend fun removeFriend(targetUserId: String): Boolean =
+        client.postgrest.rpc(
+            "face_video_remove_friend",
+            FriendTargetArguments(targetUserId)
+        ).decodeAs<Boolean>()
 
     suspend fun updateMyProfile(
         userId: String,
