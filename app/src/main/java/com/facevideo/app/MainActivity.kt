@@ -129,15 +129,20 @@ import io.github.jan.supabase.realtime.presenceDataFlow
 import io.github.jan.supabase.realtime.track
 import io.github.jan.supabase.realtime.realtime
 
-private val Night = Color(0xFFF7F5FA)
-private val Panel = Color(0xFFFFFFFF)
-private val PanelLight = Color(0xFFF0EDF6)
-private val IncomingMessage = Color(0xFFE2E4E8)
-private val Mint = Color(0xFF78BFB2)
-private val MainText = Color(0xFF343246)
-private val Muted = Color(0xFF858397)
+// ArturChat palette inspired by the supplied pastel sky reference.
+private val AppBackground = Color(0xFFF4E9E5)
+private val Panel = Color(0xFFFFFCFA)
+private val PanelLight = Color(0xFFE5EAF0)
+private val IncomingMessage = Color(0xFFE5EAF0)
+private val AccentSlate = Color(0xFF5D6C84)
+private val MainText = Color(0xFF344052)
+private val Muted = Color(0xFF68758A)
+private val PaletteBlush = Color(0xFFF5D2D0)
+private val PaletteSlate = Color(0xFF7987A1)
+private val PaletteBlueGray = Color(0xFF9EAFC5)
+private val PaletteMist = Color(0xFFC9D3DF)
 private val AvatarColors = listOf(
-    Color(0xFF9BCFC9), Color(0xFFB9AEDC), Color(0xFFE3C2B2), Color(0xFFAFCBE0)
+    PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist
 )
 
 private enum class MainTab(val title: String, val symbol: String) {
@@ -264,10 +269,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
-                    primary = Mint,
-                    background = Night,
+                    primary = AccentSlate,
+                    background = AppBackground,
                     surface = Panel,
-                    onPrimary = Night,
+                    onPrimary = Color.White,
                     onBackground = MainText,
                     onSurface = MainText
                 )
@@ -690,7 +695,7 @@ private fun FaceVideoApp(
 
     Box(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(Night, Color(0xFFF1EEF7), Night))
+            Brush.verticalGradient(listOf(AppBackground, Color(0xFFE5EAF0), AppBackground))
         )
     ) {
         if (activeCall != null) {
@@ -808,13 +813,13 @@ private fun FaceVideoApp(
                     Text("ArturChat · голосовой вызов", color = Muted, fontSize = 12.sp)
                     if (callError != null) {
                         Spacer(Modifier.height(8.dp))
-                        Text(callError.orEmpty(), color = Color(0xFFC97888), fontSize = 11.sp)
+                        Text(callError.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { requestCallPermission(PendingCallAction.Incoming(incomingCall)) }) {
-                    Text("Принять", color = Mint, fontWeight = FontWeight.Bold)
+                    Text("Принять", color = AccentSlate, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -836,7 +841,7 @@ private fun FaceVideoApp(
             text = { Text(callInfoMessage, color = Muted) },
             confirmButton = {
                 TextButton(onClick = { showCallInfo = false }) {
-                    Text("Понятно", color = Mint)
+                    Text("Понятно", color = AccentSlate)
                 }
             }
         )
@@ -885,19 +890,19 @@ private fun LiveChatListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text(if (contactsMode) "Контакты" else "Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
             Surface(
-                color = Color(0xFFE3F2EE),
+                color = Color(0xFFE5EAF0),
                 shape = RoundedCornerShape(50),
-                border = BorderStroke(1.dp, Color(0xFFB7DCD3))
+                border = BorderStroke(1.dp, Color(0xFF9EAFC5))
             ) {
                 Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(Mint))
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(AccentSlate))
                     Spacer(Modifier.width(7.dp))
-                    Text("ONLINE", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("ONLINE", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 }
             }
         }
@@ -924,7 +929,7 @@ private fun LiveChatListScreen(
 
         if (isLoading) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(color = Mint)
+                androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
             }
         } else if (loadError != null) {
             Column(Modifier.weight(1f).fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -932,7 +937,7 @@ private fun LiveChatListScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(loadError.orEmpty(), color = Muted, fontSize = 11.sp)
                 Spacer(Modifier.height(14.dp))
-                TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = Mint) }
+                TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = AccentSlate) }
             }
         } else if (visibleChats.isEmpty()) {
             Column(Modifier.weight(1f).fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -942,7 +947,7 @@ private fun LiveChatListScreen(
                 Spacer(Modifier.height(8.dp))
                 Text("Нажми «Новый чат», чтобы найти человека по псевдониму.", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(15.dp))
-                TextButton(onClick = { showNewChat = true }) { Text("Найти пользователя", color = Mint) }
+                TextButton(onClick = { showNewChat = true }) { Text("Найти пользователя", color = AccentSlate) }
             }
         } else {
             LazyColumn(
@@ -996,7 +1001,7 @@ private fun LiveChatRow(
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
-            .background(Color(0xFFF4F1F8)).padding(horizontal = 11.dp, vertical = 13.dp),
+            .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Avatar(initials, chat.id.hashCode().ushr(1) % 4, Modifier.size(53.dp))
@@ -1017,15 +1022,15 @@ private fun LiveChatRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 preview.timestamp?.let { formatChatMessageTime(it) }.orEmpty(),
-                color = if (unreadCount > 0) Mint else Muted,
+                color = if (unreadCount > 0) AccentSlate else Muted,
                 fontSize = 10.sp
             )
             formatUnreadBadge(unreadCount)?.let { badgeText ->
                 Spacer(Modifier.height(6.dp))
-                Surface(color = Mint, shape = CircleShape) {
+                Surface(color = AccentSlate, shape = CircleShape) {
                     Text(
                         badgeText,
-                        color = Night,
+                        color = MainText,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
@@ -1043,7 +1048,7 @@ private fun LiveChatRow(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Удалить чат?") },
             text = { Text("Переписка исчезнет только из вашего списка. У второго участника чат останется.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Удалить", color = Color(0xFFC97888)) } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) { Text("Удалить", color = Color(0xFFA85F6E)) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Отмена") } }
         )
     }
@@ -1083,11 +1088,11 @@ private fun NewChatDialog(
                 )
                 if (result != null) {
                     Spacer(Modifier.height(12.dp))
-                    Text("@${result!!.username} · ${result!!.displayName}", color = Mint, fontWeight = FontWeight.SemiBold)
+                    Text("@${result!!.username} · ${result!!.displayName}", color = AccentSlate, fontWeight = FontWeight.SemiBold)
                 }
                 if (message != null) {
                     Spacer(Modifier.height(10.dp))
-                    Text(message.orEmpty(), color = Color(0xFFC97888), fontSize = 11.sp)
+                    Text(message.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
                 }
             }
         },
@@ -1132,7 +1137,7 @@ private fun NewChatDialog(
                         result != null -> "Начать переписку"
                         else -> "Найти"
                     },
-                    color = Mint
+                    color = AccentSlate
                 )
             }
         },
@@ -1286,7 +1291,7 @@ private fun LiveChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selectedMessageIds.isNotEmpty()) {
-                Text("×", color = Mint, fontSize = 30.sp, modifier = Modifier.clickable { selectedMessageIds = emptySet() }.padding(horizontal = 8.dp))
+                Text("×", color = AccentSlate, fontSize = 30.sp, modifier = Modifier.clickable { selectedMessageIds = emptySet() }.padding(horizontal = 8.dp))
                 Text(
                     "${selectedMessageIds.size} выбрано",
                     color = MainText,
@@ -1294,7 +1299,7 @@ private fun LiveChatScreen(
                     modifier = Modifier.weight(1f)
                 )
             } else {
-                Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+                Text("‹", color = AccentSlate, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
                 Avatar(chat.title.take(2).uppercase(), chat.id.hashCode().ushr(1) % 4, Modifier.size(43.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -1308,15 +1313,15 @@ private fun LiveChatScreen(
                             peerIsOnline -> "В сети"
                             else -> "Не в сети"
                         },
-                        color = if (peerIsOnline) Mint else Muted,
+                        color = if (peerIsOnline) AccentSlate else Muted,
                         fontSize = 10.sp
                     )
                 }
-                Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
-                Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
+                Text("☎", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
+                Text("▣", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE4DFEC)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFC9D3DF)))
 
         if (orderedMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1397,7 +1402,7 @@ private fun LiveChatScreen(
                                     .onFailure { errorMessage = it.message ?: "Не удалось удалить сообщения." }
                                 actionBusy = false
                             }
-                        }, enabled = !actionBusy) { Text("Удалить у меня", color = Mint) }
+                        }, enabled = !actionBusy) { Text("Удалить у меня", color = AccentSlate) }
                         if (allMine) TextButton(onClick = {
                             scope.launch {
                                 actionBusy = true
@@ -1406,7 +1411,7 @@ private fun LiveChatScreen(
                                     .onFailure { errorMessage = it.message ?: "Не удалось удалить у всех." }
                                 actionBusy = false
                             }
-                        }, enabled = !actionBusy) { Text("Удалить у всех", color = Color(0xFFC97888)) }
+                        }, enabled = !actionBusy) { Text("Удалить у всех", color = Color(0xFFA85F6E)) }
                     }
                 },
                 dismissButton = { TextButton(onClick = { showDeleteSelection = false }) { Text("Отмена") } }
@@ -1446,7 +1451,7 @@ private fun LiveChatScreen(
         }
 
         if (errorMessage != null) {
-            Text(errorMessage.orEmpty(), color = Color(0xFFC97888), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
+            Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
 
         if (selectedMessageIds.isNotEmpty()) {
@@ -1454,7 +1459,7 @@ private fun LiveChatScreen(
             Surface(
                 color = PanelLight,
                 shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, Color(0xFFE1DCE9)),
+                border = BorderStroke(1.dp, Color(0xFFC9D3DF)),
                 shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
@@ -1467,7 +1472,7 @@ private fun LiveChatScreen(
                         SelectionActionButton(
                             icon = "↩",
                             label = "Ответить",
-                            color = Mint,
+                            color = AccentSlate,
                             modifier = Modifier.weight(1f)
                         ) {
                             replyingTo = selectedRows.single()
@@ -1477,7 +1482,7 @@ private fun LiveChatScreen(
                     SelectionActionButton(
                         icon = "▢",
                         label = "Копировать",
-                        color = Mint,
+                        color = AccentSlate,
                         modifier = Modifier.weight(1f)
                     ) {
                         val selectedText = selectedRows.joinToString("\n") { it.body }
@@ -1489,7 +1494,7 @@ private fun LiveChatScreen(
                     SelectionActionButton(
                         icon = "➦",
                         label = "Переслать",
-                        color = Mint,
+                        color = AccentSlate,
                         modifier = Modifier.weight(1f)
                     ) {
                         scope.launch {
@@ -1504,7 +1509,7 @@ private fun LiveChatScreen(
                     SelectionActionButton(
                         icon = "⌫",
                         label = "Удалить",
-                        color = Color(0xFFC97888),
+                        color = Color(0xFFA85F6E),
                         modifier = Modifier.weight(1f)
                     ) {
                         showDeleteSelection = true
@@ -1521,13 +1526,13 @@ private fun LiveChatScreen(
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(Mint))
+                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(AccentSlate))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (selectedReply.senderId == userId) "Ответ себе"
                         else "Ответ: " + if (chat.isGroup) "участнику" else chat.title,
-                        color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold
+                        color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold
                     )
                     Text(selectedReply.body, color = MainText, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
@@ -1561,7 +1566,7 @@ private fun LiveChatScreen(
                 }
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text("+", color = Mint, fontSize = 25.sp)
+                    Text("+", color = AccentSlate, fontSize = 25.sp)
                 }
             }
             Spacer(Modifier.width(9.dp))
@@ -1569,7 +1574,7 @@ private fun LiveChatScreen(
                 Modifier.weight(1f),
                 color = Panel,
                 shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFDCD6E7))
+                border = BorderStroke(1.dp, Color(0xFFC9D3DF))
             ) {
                 BasicTextField(
                     value = draft,
@@ -1593,11 +1598,11 @@ private fun LiveChatScreen(
             }
             Spacer(Modifier.width(9.dp))
             Box(
-                Modifier.size(43.dp).clip(CircleShape).background(if (isSending) Muted else Mint)
+                Modifier.size(43.dp).clip(CircleShape).background(if (isSending) Muted else AccentSlate)
                     .clickable(enabled = !isSending) { sendMessage() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("➤", color = Night, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1617,19 +1622,19 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text("Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
             Surface(
-                color = Color(0xFFE3F2EE),
+                color = Color(0xFFE5EAF0),
                 shape = RoundedCornerShape(50),
-                border = BorderStroke(1.dp, Color(0xFFB7DCD3))
+                border = BorderStroke(1.dp, Color(0xFF9EAFC5))
             ) {
                 Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(Mint))
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(AccentSlate))
                     Spacer(Modifier.width(7.dp))
-                    Text("DEMO", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("DEMO", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 }
             }
         }
@@ -1693,7 +1698,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
         Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         color = Panel,
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2DDEB))
+        border = BorderStroke(1.dp, Color(0xFFC9D3DF))
     ) {
         BasicTextField(
             value = value,
@@ -1703,7 +1708,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("⌕", color = Mint, fontSize = 22.sp)
+                    Text("⌕", color = AccentSlate, fontSize = 22.sp)
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f)) {
                         if (value.isEmpty()) Text("Поиск по чатам", color = Muted, fontSize = 14.sp)
@@ -1719,7 +1724,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
 private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
-            .background(Color(0xFFF4F1F8)).padding(horizontal = 11.dp, vertical = 13.dp),
+            .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Avatar(chat.initials, chat.avatarStyle, Modifier.size(53.dp), highlighted = chat.online)
@@ -1729,7 +1734,7 @@ private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
                 Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 if (chat.online) {
                     Spacer(Modifier.width(6.dp))
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(Mint))
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(AccentSlate))
                 }
             }
             Spacer(Modifier.height(5.dp))
@@ -1740,8 +1745,8 @@ private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
             Text(chat.time, color = Muted, fontSize = 10.sp)
             if (chat.unreadCount > 0) {
                 Spacer(Modifier.height(7.dp))
-                Box(Modifier.size(21.dp).clip(CircleShape).background(Mint), contentAlignment = Alignment.Center) {
-                    Text(chat.unreadCount.toString(), color = Night, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Box(Modifier.size(21.dp).clip(CircleShape).background(AccentSlate), contentAlignment = Alignment.Center) {
+                    Text(chat.unreadCount.toString(), color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1763,7 +1768,7 @@ private fun Avatar(
     ) {
         Text(initials, color = MainText, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         if (highlighted) {
-            Box(Modifier.align(Alignment.BottomEnd).padding(1.dp).size(10.dp).clip(CircleShape).background(Mint))
+            Box(Modifier.align(Alignment.BottomEnd).padding(1.dp).size(10.dp).clip(CircleShape).background(AccentSlate))
         }
     }
 }
@@ -1781,17 +1786,17 @@ private fun ChatScreen(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("‹", color = Mint, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+            Text("‹", color = AccentSlate, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
             Avatar(chat.initials, chat.avatarStyle, Modifier.size(43.dp), highlighted = chat.online)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                Text(if (chat.online) "в сети" else "был(а) недавно", color = if (chat.online) Mint else Muted, fontSize = 11.sp)
+                Text(if (chat.online) "в сети" else "был(а) недавно", color = if (chat.online) AccentSlate else Muted, fontSize = 11.sp)
             }
-            Text("☎", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
-            Text("▣", color = Mint, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+            Text("☎", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+            Text("▣", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE4DFEC)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFC9D3DF)))
 
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
@@ -1816,14 +1821,14 @@ private fun ChatScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(color = PanelLight, shape = CircleShape, modifier = Modifier.size(42.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text("+", color = Mint, fontSize = 25.sp) }
+                Box(contentAlignment = Alignment.Center) { Text("+", color = AccentSlate, fontSize = 25.sp) }
             }
             Spacer(Modifier.width(9.dp))
             Surface(
                 Modifier.weight(1f),
                 color = Panel,
                 shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFDCD6E7))
+                border = BorderStroke(1.dp, Color(0xFFC9D3DF))
             ) {
                 BasicTextField(
                     value = draft,
@@ -1848,7 +1853,7 @@ private fun ChatScreen(
             }
             Spacer(Modifier.width(9.dp))
             Box(
-                Modifier.size(43.dp).clip(CircleShape).background(Mint).clickable {
+                Modifier.size(43.dp).clip(CircleShape).background(AccentSlate).clickable {
                     if (draft.isNotBlank()) {
                         messages.add(ChatMessage(UUID.randomUUID().toString(), draft.trim(), "сейчас", true))
                         draft = ""
@@ -1856,7 +1861,7 @@ private fun ChatScreen(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Text("➤", color = Night, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("➤", color = AppBackground, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1934,7 +1939,7 @@ private fun ChatImagePreview(
                 .fillMaxWidth()
                 .height(120.dp)
                 .clip(RoundedCornerShape(11.dp))
-                .background(if (failed) Color(0xFFEADDE1) else Color(0xFFEAE7EF)),
+                .background(if (failed) Color(0xFFF5D2D0) else Color(0xFFE5EAF0)),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -1997,7 +2002,7 @@ private fun MessageBubble(
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
             MessageDeliveryStatus.DELIVERED -> 2 to Muted
-            MessageDeliveryStatus.READ -> 2 to Color(0xFF579BCB)
+            MessageDeliveryStatus.READ -> 2 to Color(0xFF5D6C84)
             null -> null
         }
     } else null
@@ -2024,7 +2029,7 @@ private fun MessageBubble(
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
                         onLongClick = { if (onSelect != null) onSelect() else showActions = true }
                     ),
-                color = if (selected) Color(0xFFC7E8E0) else if (message.isMine) Color(0xFFD9EFE9) else IncomingMessage,
+                color = if (selected) Color(0xFFD5DDE8) else if (message.isMine) Color(0xFFF5D2D0) else IncomingMessage,
                 shape = RoundedCornerShape(
                     topStart = 18.dp, topEnd = 18.dp,
                     bottomStart = if (message.isMine) 18.dp else 5.dp,
@@ -2040,24 +2045,24 @@ private fun MessageBubble(
                     )
                 ) {
                     if (message.forwardedFromName != null) {
-                        Text("Переслано от: ${message.forwardedFromName}", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Переслано от: ${message.forwardedFromName}", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(3.dp))
                     }
                     if (replyPreview != null && !message.isDeleted) {
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (message.isMine) Color(0xFFD0E9E2) else Color(0xFFD5D8DE))
+                                .background(if (message.isMine) Color(0xFFEEDBDA) else Color(0xFFD3DCE7))
                                 .clickable(enabled = onReplyPreviewClick != null) {
                                     onReplyPreviewClick?.invoke()
                                 }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(Mint))
+                            Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(AccentSlate))
                             Spacer(Modifier.width(7.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(replyPreview.sender, color = Mint, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                Text(replyPreview.sender, color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     replyPreview.text,
                                     color = MainText,
@@ -2168,16 +2173,16 @@ private fun ActiveAudioCallScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(Modifier.height(34.dp))
-        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.weight(1f))
         Avatar(peerName.take(2).uppercase(), peerName.hashCode().ushr(1) % 4, Modifier.size(116.dp))
         Spacer(Modifier.height(24.dp))
         Text(peerName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
-        Text(status, color = Mint, fontSize = 14.sp)
+        Text(status, color = AccentSlate, fontSize = 14.sp)
         if (error != null) {
             Spacer(Modifier.height(12.dp))
-            Text(error, color = Color(0xFFC97888), fontSize = 12.sp)
+            Text(error, color = Color(0xFFA85F6E), fontSize = 12.sp)
         }
         Spacer(Modifier.weight(1f))
         Row(
@@ -2186,7 +2191,7 @@ private fun ActiveAudioCallScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                color = if (muted) Color(0xFFE6E0ED) else PanelLight,
+                color = if (muted) Color(0xFFC9D3DF) else PanelLight,
                 shape = CircleShape,
                 modifier = Modifier.size(62.dp).clickable(onClick = onToggleMute)
             ) {
@@ -2195,7 +2200,7 @@ private fun ActiveAudioCallScreen(
                 }
             }
             Surface(
-                color = Color(0xFFE7AEB8),
+                color = Color(0xFFA86F7A),
                 shape = CircleShape,
                 modifier = Modifier.size(72.dp).clickable(onClick = onEnd)
             ) {
@@ -2212,17 +2217,17 @@ private fun ActiveAudioCallScreen(
 @Composable
 private fun CallsScreen(onCall: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
-        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(22.dp))
-        Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFFE1DCE9))) {
+        Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFFC9D3DF))) {
             Column(Modifier.fillMaxWidth().padding(19.dp)) {
                 Text("Голосовая связь уже доступна", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 Text("Открой личную переписку и нажми на значок телефонной трубки. Входящий вызов появится прямо в приложении.", color = Muted, fontSize = 13.sp)
                 Spacer(Modifier.height(17.dp))
-                Text("Видеозвонки и групповые вызовы — следующий этап.", color = Mint, fontSize = 12.sp)
+                Text("Видеозвонки и групповые вызовы — следующий этап.", color = AccentSlate, fontSize = 12.sp)
             }
         }
         Spacer(Modifier.height(25.dp))
@@ -2235,7 +2240,7 @@ private fun CallsScreen(onCall: () -> Unit) {
 @Composable
 private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
-        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Контакты", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
@@ -2252,7 +2257,7 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
                     Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Text(if (chat.online) "В сети" else "Не в сети", color = Muted, fontSize = 11.sp)
                 }
-                Text("Сообщение  ›", color = Mint, fontSize = 11.sp)
+                Text("Сообщение  ›", color = AccentSlate, fontSize = 11.sp)
             }
         }
     }
@@ -2294,7 +2299,7 @@ private fun ProfileScreen(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("ARTURCHAT", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(26.dp))
         val avatarInitials = (displayName.ifBlank { username }.ifBlank { userEmail ?: "A" })
             .trim().take(1).uppercase()
@@ -2312,7 +2317,7 @@ private fun ProfileScreen(
             Text("Загружаем профиль…", color = Muted, fontSize = 12.sp)
         } else if (repository != null && userId != null && profile != null) {
             Column(Modifier.fillMaxWidth()) {
-                Text("ЛИЧНЫЕ ДАННЫЕ", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                Text("ЛИЧНЫЕ ДАННЫЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = displayName,
@@ -2333,7 +2338,7 @@ private fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text("Уникальный псевдоним") },
-                    leadingIcon = { Text("@", color = Mint) },
+                    leadingIcon = { Text("@", color = AccentSlate) },
                     supportingText = { Text("3–24 символа: a–z, 0–9 и _") }
                 )
                 Spacer(Modifier.height(5.dp))
@@ -2341,11 +2346,11 @@ private fun ProfileScreen(
                 Text(userEmail.orEmpty(), color = MainText, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
 
                 if (errorMessage != null) {
-                    Text(errorMessage.orEmpty(), color = Color(0xFFC97888), fontSize = 11.sp)
+                    Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                 }
                 if (successMessage != null) {
-                    Text(successMessage.orEmpty(), color = Mint, fontSize = 11.sp)
+                    Text(successMessage.orEmpty(), color = AccentSlate, fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                 }
                 Button(
@@ -2402,7 +2407,7 @@ private fun ProfileScreen(
                 Column(Modifier.weight(1f)) {
                     Text(
                         "ВЕРСИЯ ПРИЛОЖЕНИЯ",
-                        color = Mint,
+                        color = AccentSlate,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.2.sp
@@ -2422,13 +2427,13 @@ private fun ProfileScreen(
         Spacer(Modifier.height(24.dp))
         if (userEmail != null) {
             Surface(
-                color = Color(0xFFF7E7EA),
+                color = Color(0xFFF5D2D0),
                 shape = RoundedCornerShape(15.dp),
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)
             ) {
                 Text(
                     "Выйти из аккаунта",
-                    color = Color(0xFFC97888),
+                    color = Color(0xFFA85F6E),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(16.dp)
@@ -2445,7 +2450,7 @@ private fun BottomNavigation(
     unreadChatsCount: Int,
     onSelect: (MainTab) -> Unit
 ) {
-    Surface(color = Color(0xFFFAF8FC), shadowElevation = 12.dp) {
+    Surface(color = Color(0xFFFFFCFA), shadowElevation = 12.dp) {
         Row(
             Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -2457,11 +2462,11 @@ private fun BottomNavigation(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(tab.symbol, color = if (selected) Mint else Muted, fontSize = 20.sp)
+                        Text(tab.symbol, color = if (selected) AccentSlate else Muted, fontSize = 20.sp)
                         if (tab == MainTab.CHATS) {
                             formatUnreadBadge(unreadChatsCount)?.let { badgeText ->
                                 Spacer(Modifier.width(5.dp))
-                                Surface(color = Color(0xFFE9A8B4), shape = CircleShape) {
+                                Surface(color = Color(0xFFF5D2D0), shape = CircleShape) {
                                     Text(
                                         badgeText,
                                         color = Color.White,
@@ -2476,7 +2481,7 @@ private fun BottomNavigation(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         tab.title,
-                        color = if (selected) Mint else Muted,
+                        color = if (selected) AccentSlate else Muted,
                         fontSize = 10.sp,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
                     )
