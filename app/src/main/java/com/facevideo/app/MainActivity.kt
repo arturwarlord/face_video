@@ -475,9 +475,7 @@ private fun FaceVideoApp(
                 val messagesByChat = messages.groupBy { it.chatId }
                 launch(Dispatchers.IO) {
                     messagesByChat.forEach { (chatId, chatMessages) ->
-                        if (localCache.readMessages(currentUserId, chatId).isEmpty()) {
-                            localCache.saveMessages(currentUserId, chatId, chatMessages)
-                        }
+                        localCache.seedMessagesIfMissing(currentUserId, chatId, chatMessages)
                     }
                 }
                 markIncomingMessagesDelivered(messages)
@@ -916,7 +914,7 @@ private fun LiveChatListScreen(
 
     fun openCachedChat(chat: FaceVideoChatSummary) {
         chats = (chats.filterNot { it.id == chat.id } + chat)
-        scope.launch(Dispatchers.IO) { cache.saveChats(userId, chats) }
+        cache.saveChats(userId, chats)
         onOpenChat(chat)
     }
 
