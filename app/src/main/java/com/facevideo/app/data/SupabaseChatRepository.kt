@@ -8,6 +8,7 @@ import io.github.jan.supabase.postgrest.rpc
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.selectAsFlow
 import io.github.jan.supabase.storage.storage
+import io.ktor.http.ContentType
 import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import kotlinx.serialization.SerialName
@@ -355,7 +356,9 @@ class SupabaseChatRepository(
         client.storage.from(CHAT_ATTACHMENTS_BUCKET).upload(
             path = path,
             data = bytes
-        )
+        ) {
+            contentType = ContentType.Image.JPEG
+        }
         return path
     }
 
