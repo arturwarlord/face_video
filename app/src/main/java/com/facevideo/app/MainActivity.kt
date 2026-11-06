@@ -338,12 +338,15 @@ private fun FaceVideoApp(
     var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
-    var unreadSummaries by remember(userId) { mutableStateOf<Map<String, FaceVideoChatUnreadSummary>>(emptyMap()) }
+    val context = LocalContext.current
+    val localCache = remember(context) { ArturChatLocalCache(context) }
+    var unreadSummaries by remember(userId, localCache) {
+        mutableStateOf(userId?.let(localCache::readUnreadSummaries) ?: emptyMap())
+    }
     var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
     var showCallInfo by remember { mutableStateOf(false) }
     var callInfoMessage by remember { mutableStateOf("Видеозвонки будут подключены следующим этапом. Сейчас доступны персональные аудиозвонки.") }
 
-    val context = LocalContext.current
     val supabase = SupabaseClientProvider.client
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
     val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
@@ -433,7 +436,12 @@ private fun FaceVideoApp(
 
         suspend fun refreshUnreadSummaries() {
             runCatching { repository.getUnreadSummaries() }
-                .onSuccess { unreadSummaries = it }
+                .onSuccess { summaries ->
+                    unreadSummaries = summaries
+                    withContext(Dispatchers.IO) {
+                        localCache.saveUnreadSummaries(currentUserId, summaries)
+                    }
+                }
                 .onFailure {
                     android.util.Log.w("ArturChatUnread", "Could not refresh unread summaries", it)
                 }
@@ -451,11 +459,21 @@ private fun FaceVideoApp(
             }
         }
 
-        refreshUnreadSummaries()
-
-        val chatTitles = runCatching {
-            repository.listMyChats().associate { it.id to it.title }
-        }.getOrDefault(emptyMap())
+        // Start background refreshes without delaying the realtime message subscription.
+        launch { refreshUnreadSummaries() }
+        var chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
+        launch {
+            runCatching { repository.listMyChats() }
+                .onSuccess { refreshedChats ->
+                    chatTitles = refreshedChats.associate { it.id to it.title }
+                    withContext(Dispatchers.IO) {
+                        localCache.saveChats(currentUserId, refreshedChats)
+                    }
+                }
+                .onFailure {
+                    android.util.Log.w("ArturChatCache", "Could not refresh chat titles", it)
+                }
+        }
         val knownMessageIds = mutableSetOf<String>()
         var initialSnapshotReceived = false
 
@@ -715,6 +733,7 @@ private fun FaceVideoApp(
             LiveChatScreen(
                 chat = currentChat,
                 repository = liveRepository,
+                cache = localCache,
                 userId = userId,
                 onlineUserIds = onlineUserIds,
                 presenceAvailable = presenceAvailable,
@@ -851,29 +870,42 @@ private fun FaceVideoApp(
 @Composable
 private fun LiveChatListScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     unreadSummaries: Map<String, FaceVideoChatUnreadSummary>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     contactsMode: Boolean = false
 ) {
-    var chats by remember { mutableStateOf<List<FaceVideoChatSummary>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    val cachedChats = remember(cache, userId) { cache.readChats(userId) }
+    var chats by remember(cache, userId) { mutableStateOf(cachedChats) }
+    var isLoading by remember(cache, userId) { mutableStateOf(cachedChats.isEmpty()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var showNewChat by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(repository, reloadKey) {
-        isLoading = true
+    LaunchedEffect(repository, reloadKey, userId) {
+        if (chats.isEmpty()) isLoading = true
         loadError = null
         try {
-            chats = repository.listMyChats()
+            val refreshedChats = repository.listMyChats()
+            chats = refreshedChats
+            withContext(Dispatchers.IO) {
+                cache.saveChats(userId, refreshedChats)
+            }
         } catch (error: Exception) {
             loadError = error.message ?: "Не удалось загрузить переписки."
+            android.util.Log.w("ArturChatCache", "Keeping cached chat list after refresh failure", error)
         } finally {
             isLoading = false
         }
+    }
+
+    fun openCachedChat(chat: FaceVideoChatSummary) {
+        chats = (chats.filterNot { it.id == chat.id } + chat)
+        scope.launch(Dispatchers.IO) { cache.saveChats(userId, chats) }
+        onOpenChat(chat)
     }
 
     val visibleChats = remember(chats, query, unreadSummaries) {
@@ -927,11 +959,11 @@ private fun LiveChatListScreen(
             }
         }
 
-        if (isLoading) {
+        if (isLoading && chats.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
             }
-        } else if (loadError != null) {
+        } else if (visibleChats.isEmpty() && loadError != null) {
             Column(Modifier.weight(1f).fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Не удалось подключиться к перепискам", color = MainText, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
@@ -950,7 +982,16 @@ private fun LiveChatListScreen(
                 TextButton(onClick = { showNewChat = true }) { Text("Найти пользователя", color = AccentSlate) }
             }
         } else {
-            LazyColumn(
+            Column(Modifier.weight(1f)) {
+                if (loadError != null) {
+                    Text(
+                        "Нет соединения — показаны сохранённые переписки",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp)
+                    )
+                }
+                LazyColumn(
                 Modifier.weight(1f),
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp)
@@ -959,15 +1000,20 @@ private fun LiveChatListScreen(
                     LiveChatRow(
                         chat = chat,
                         unreadSummary = unreadSummaries[chat.id],
-                        onClick = { onOpenChat(chat) },
+                        onClick = { openCachedChat(chat) },
                         onDelete = {
                             scope.launch {
                                 runCatching { repository.hideChatForMe(chat.id, userId) }
-                                    .onSuccess { reloadKey++ }
+                                    .onSuccess {
+                                        chats = chats.filterNot { it.id == chat.id }
+                                        withContext(Dispatchers.IO) { cache.saveChats(userId, chats) }
+                                        reloadKey++
+                                    }
                                     .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
                             }
                         }
                     )
+                }
                 }
             }
         }
@@ -980,7 +1026,7 @@ private fun LiveChatListScreen(
             onDismiss = { showNewChat = false },
             onOpenChat = { chat ->
                 showNewChat = false
-                onOpenChat(chat)
+                openCachedChat(chat)
             }
         )
     }
@@ -1151,6 +1197,7 @@ private fun NewChatDialog(
 private fun LiveChatScreen(
     chat: FaceVideoChatSummary,
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     onlineUserIds: Set<String>,
     presenceAvailable: Boolean,
@@ -1158,8 +1205,11 @@ private fun LiveChatScreen(
     onMarkedRead: () -> Unit,
     onCall: (Boolean) -> Unit
 ) {
+    val cachedMessages = remember(cache, userId, chat.id) {
+        cache.readMessages(userId, chat.id)
+    }
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
-    val messages by messagesFlow.collectAsState(initial = emptyList())
+    val messages by messagesFlow.collectAsState(initial = cachedMessages)
     var peerUserId by remember(repository, chat.id, userId) { mutableStateOf<String?>(null) }
     LaunchedEffect(repository, chat.id, userId, chat.isGroup) {
         peerUserId = if (chat.isGroup) {
@@ -1186,6 +1236,11 @@ private fun LiveChatScreen(
     // Always render the timeline chronologically so every new message stays at the bottom.
     val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds) {
         mergeChatMessageSnapshots(messages, locallySentMessages).filterNot { it.id in hiddenMessageIds }
+    }
+    LaunchedEffect(userId, chat.id, orderedMessages) {
+        withContext(Dispatchers.IO) {
+            cache.saveMessages(userId, chat.id, orderedMessages)
+        }
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var draft by remember { mutableStateOf("") }
