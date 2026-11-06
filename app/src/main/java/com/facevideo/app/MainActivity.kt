@@ -959,46 +959,34 @@ private fun LiveChatListScreen(
 
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 16.dp),
+            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 15.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Spacer(Modifier.height(5.dp))
-                Text(if (contactsMode) "Контакты" else "Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-            }
+            Text(
+                "ARTURCHAT",
+                color = AccentSlate,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                modifier = Modifier.weight(1f)
+            )
             Surface(
                 color = Color(0xFFE5EAF0),
                 shape = RoundedCornerShape(50),
                 border = BorderStroke(1.dp, Color(0xFF9EAFC5))
             ) {
-                Row(Modifier.padding(horizontal = 11.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(AccentSlate))
-                    Spacer(Modifier.width(7.dp))
-                    Text("ONLINE", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Row(
+                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(AccentSlate))
+                    Spacer(Modifier.width(6.dp))
+                    Text("ONLINE", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
                 }
             }
         }
 
-        SearchField(value = query, onValueChange = { query = it })
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(if (contactsMode) "НАЙТИ ПОЛЬЗОВАТЕЛЯ" else "ВАШИ ДИАЛОГИ", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                Text(
-                    if (contactsMode) "Поиск по псевдониму" else "${visibleChats.size} диалогов",
-                    color = MainText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Button(onClick = { showNewChat = true }) {
-                Text("＋ Новый чат")
-            }
-        }
+        SearchField(value = query, onValueChange = { query = it }, compact = true)
 
         if (!contactsMode) {
             StoriesStrip(
@@ -1008,61 +996,95 @@ private fun LiveChatListScreen(
             )
         }
 
-        if (isLoading && chats.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
-            }
-        } else if (visibleChats.isEmpty() && loadError != null) {
-            Column(Modifier.weight(1f).fillMaxWidth().padding(26.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Не удалось подключиться к перепискам", color = MainText, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(loadError.orEmpty(), color = Muted, fontSize = 11.sp)
-                Spacer(Modifier.height(14.dp))
-                TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = AccentSlate) }
-            }
-        } else if (visibleChats.isEmpty()) {
-            Column(Modifier.weight(1f).fillMaxWidth().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Avatar("FV", 1, Modifier.size(68.dp))
-                Spacer(Modifier.height(18.dp))
-                Text(if (query.isBlank()) "Пока нет переписок" else "Ничего не найдено", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text("Нажми «Новый чат», чтобы найти человека по псевдониму.", color = Muted, fontSize = 12.sp)
-                Spacer(Modifier.height(15.dp))
-                TextButton(onClick = { showNewChat = true }) { Text("Найти пользователя", color = AccentSlate) }
-            }
-        } else {
-            Column(Modifier.weight(1f)) {
-                if (loadError != null) {
-                    Text(
-                        "Нет соединения — показаны сохранённые переписки",
-                        color = Muted,
-                        fontSize = 10.sp,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp)
-                    )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when {
+                isLoading && chats.isEmpty() -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+                    }
                 }
-                LazyColumn(
-                Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                items(visibleChats, key = { it.id }) { chat ->
-                    LiveChatRow(
-                        chat = chat,
-                        unreadSummary = unreadSummaries[chat.id],
-                        onClick = { openCachedChat(chat) },
-                        onDelete = {
-                            scope.launch {
-                                runCatching { repository.hideChatForMe(chat.id, userId) }
-                                    .onSuccess {
-                                        chats = chats.filterNot { it.id == chat.id }
-                                        withContext(Dispatchers.IO) { cache.saveChats(userId, chats) }
-                                        reloadKey++
+                visibleChats.isEmpty() && loadError != null -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(26.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("Не удалось подключиться к перепискам", color = MainText, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(8.dp))
+                        Text(loadError.orEmpty(), color = Muted, fontSize = 11.sp)
+                        Spacer(Modifier.height(14.dp))
+                        TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = AccentSlate) }
+                    }
+                }
+                visibleChats.isEmpty() -> {
+                    Column(
+                        Modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Avatar("FV", 1, Modifier.size(68.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(if (query.isBlank()) "Пока нет переписок" else "Ничего не найдено", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            if (query.isBlank()) "Начни переписку с другом — нажми кнопку создания чата внизу."
+                            else "Попробуй изменить поисковый запрос.",
+                            color = Muted,
+                            fontSize = 11.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+                else -> {
+                    Column(Modifier.fillMaxSize()) {
+                        if (loadError != null) {
+                            Text(
+                                "Нет соединения — показаны сохранённые переписки",
+                                color = Muted,
+                                fontSize = 10.sp,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp)
+                            )
+                        }
+                        LazyColumn(
+                            Modifier.weight(1f),
+                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 5.dp, bottom = 86.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            items(visibleChats, key = { it.id }) { chat ->
+                                LiveChatRow(
+                                    chat = chat,
+                                    unreadSummary = unreadSummaries[chat.id],
+                                    onClick = { openCachedChat(chat) },
+                                    onDelete = {
+                                        scope.launch {
+                                            runCatching { repository.hideChatForMe(chat.id, userId) }
+                                                .onSuccess {
+                                                    chats = chats.filterNot { it.id == chat.id }
+                                                    withContext(Dispatchers.IO) { cache.saveChats(userId, chats) }
+                                                    reloadKey++
+                                                }
+                                                .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
+                                        }
                                     }
-                                    .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
+                                )
                             }
                         }
-                    )
+                    }
                 }
+            }
+
+            Surface(
+                color = AccentSlate,
+                shape = CircleShape,
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = 18.dp)
+                    .size(56.dp)
+                    .clickable { showNewChat = true }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("✎", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -2183,11 +2205,11 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
 }
 
 @Composable
-private fun SearchField(value: String, onValueChange: (String) -> Unit) {
+private fun SearchField(value: String, onValueChange: (String) -> Unit, compact: Boolean = false) {
     Surface(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = if (compact) 2.dp else 0.dp),
         color = Panel,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(if (compact) 13.dp else 16.dp),
         border = BorderStroke(1.dp, Color(0xFFC9D3DF))
     ) {
         BasicTextField(
@@ -2195,13 +2217,16 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit) {
             onValueChange = onValueChange,
             singleLine = true,
             textStyle = TextStyle(color = MainText, fontSize = 14.sp),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = if (compact) 13.dp else 15.dp,
+                vertical = if (compact) 10.dp else 14.dp
+            ),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("⌕", color = AccentSlate, fontSize = 22.sp)
-                    Spacer(Modifier.width(10.dp))
+                    Text("⌕", color = AccentSlate, fontSize = if (compact) 19.sp else 22.sp)
+                    Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
                     Box(Modifier.weight(1f)) {
-                        if (value.isEmpty()) Text("Поиск по чатам", color = Muted, fontSize = 14.sp)
+                        if (value.isEmpty()) Text("Поиск по чатам", color = Muted, fontSize = if (compact) 12.sp else 14.sp)
                         inner()
                     }
                 }
