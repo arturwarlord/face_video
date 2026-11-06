@@ -29,7 +29,9 @@ data class FaceVideoProfile(
     val id: String,
     val username: String,
     @SerialName("display_name") val displayName: String,
-    @SerialName("avatar_url") val avatarUrl: String? = null
+    @SerialName("avatar_url") val avatarUrl: String? = null,
+    @SerialName("status_text") val statusText: String = "",
+    val about: String = ""
 )
 
 @Serializable
@@ -131,7 +133,10 @@ private data class NewMessage(
 @Serializable
 private data class UpdateFaceVideoProfile(
     val username: String,
-    @SerialName("display_name") val displayName: String
+    @SerialName("display_name") val displayName: String,
+    @SerialName("status_text") val statusText: String,
+    val about: String,
+    @SerialName("avatar_url") val avatarUrl: String?
 )
 
 @Serializable
@@ -160,23 +165,58 @@ class SupabaseChatRepository(
     suspend fun updateMyProfile(
         userId: String,
         username: String,
-        displayName: String
+        displayName: String,
+        statusText: String = "",
+        about: String = "",
+        avatarUrl: String? = null
     ): FaceVideoProfile {
         val cleanUsername = username.trim().removePrefix("@").lowercase()
         val cleanDisplayName = displayName.trim()
+        val cleanStatusText = statusText.trim()
+        val cleanAbout = about.trim()
         require(cleanUsername.matches(Regex("^[a-z0-9_]{3,24}$"))) {
             "Псевдоним должен содержать 3–24 символа: латинские буквы, цифры или _."
         }
         require(cleanDisplayName.length <= 48) {
             "Имя должно содержать не более 48 символов."
         }
+        require(cleanStatusText.length <= 80) { "Статус должен содержать не более 80 символов." }
+        require(cleanAbout.length <= 500) { "Раздел «О себе» должен содержать не более 500 символов." }
+        val existing = getMyProfile(userId)
         return client.from("face_video_profiles")
-            .update(UpdateFaceVideoProfile(username = cleanUsername, displayName = cleanDisplayName)) {
+            .update(UpdateFaceVideoProfile(
+                username = cleanUsername,
+                displayName = cleanDisplayName,
+                statusText = cleanStatusText,
+                about = cleanAbout,
+                avatarUrl = avatarUrl ?: existing?.avatarUrl
+            )) {
                 select()
                 filter { eq("id", userId) }
             }
             .decodeSingle<FaceVideoProfile>()
     }
+    /** Uploads a profile avatar to the user's own Storage folder and returns its public URL. */
+    suspend fun uploadProfileAvatar(userId: String, bytes: ByteArray, mimeType: String = "image/jpeg"): String {
+        require(bytes.isNotEmpty() && bytes.size <= 5 * 1024 * 1024) {
+            "Фото профиля должно быть не больше 5 МБ."
+        }
+        require(mimeType in setOf("image/jpeg", "image/png", "image/webp")) {
+            "Поддерживаются JPEG, PNG и WebP."
+        }
+        val extension = when (mimeType) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            else -> "jpg"
+        }
+        val path = "$userId/avatar.$extension"
+        client.storage.from("arturchat-avatars").upload(path = path, data = bytes) {
+            contentType = ContentType.parse(mimeType)
+            upsert = true
+        }
+        return client.storage.from("arturchat-avatars").publicUrl(path)
+    }
+
     suspend fun listMyChats(): List<FaceVideoChatSummary> =
         client.from("face_video_chat_summaries")
             .select()
