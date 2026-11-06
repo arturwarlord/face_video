@@ -2365,6 +2365,8 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
     }
 }
 
+private enum class FriendsSection { FRIENDS, REQUESTS }
+
 @Composable
 private fun FriendsScreen(
     repository: SupabaseChatRepository,
