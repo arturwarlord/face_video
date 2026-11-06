@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.7 hardens WebRTC call cancellation and resource cleanup.
+# Build signed candidate for ArturChat 0.6.8 restores message replies and improves selection actions.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.7"
-          -PAPP_VERSION_CODE="6007"
+          -PAPP_VERSION_NAME="0.6.8"
+          -PAPP_VERSION_CODE="6008"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.7"
-          -PAPP_VERSION_CODE="6007"
+          -PAPP_VERSION_NAME="0.6.8"
+          -PAPP_VERSION_CODE="6008"
 
       - name: Verify APK signature
         shell: bash
