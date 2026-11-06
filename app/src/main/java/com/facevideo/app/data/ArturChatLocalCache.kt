@@ -42,17 +42,29 @@ class ArturChatLocalCache(context: Context) {
             .apply()
     }
 
+    @Synchronized
     fun readMessages(userId: String, chatId: String): List<FaceVideoMessage> {
         val preferences = chatPreferences(userId, chatId)
         return readList(preferences.getString(KEY_MESSAGES, null))
     }
 
+    @Synchronized
     fun saveMessages(userId: String, chatId: String, messages: List<FaceVideoMessage>) {
         val recent = sortChatMessagesChronologically(messages)
             .takeLast(MAX_CACHED_MESSAGES)
         chatPreferences(userId, chatId).edit()
             .putString(KEY_MESSAGES, json.encodeToString(recent))
             .apply()
+    }
+
+    /** Seeds a chat only when this device has no timeline cached yet. */
+    @Synchronized
+    fun seedMessagesIfMissing(userId: String, chatId: String, messages: List<FaceVideoMessage>) {
+        val preferences = chatPreferences(userId, chatId)
+        if (preferences.getString(KEY_MESSAGES, null).isNullOrBlank() && messages.isNotEmpty()) {
+            val recent = sortChatMessagesChronologically(messages).takeLast(MAX_CACHED_MESSAGES)
+            preferences.edit().putString(KEY_MESSAGES, json.encodeToString(recent)).apply()
+        }
     }
 
     private inline fun <reified T> readList(raw: String?): List<T> {
