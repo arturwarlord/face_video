@@ -101,6 +101,7 @@ import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.ArturChatLocalCache
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.data.FaceVideoStoryCard
 import com.facevideo.app.data.FaceVideoPresence
 import com.facevideo.app.data.FaceVideoChatUnreadSummary
 import com.facevideo.app.data.formatChatMessageTime
@@ -341,6 +342,7 @@ private fun FaceVideoApp(
     var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
     var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
     var openedProfileUserId by remember { mutableStateOf<String?>(null) }
+    var openedStoriesUserId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val localCache = remember(context) { ArturChatLocalCache(context) }
     var unreadSummaries by remember(userId, localCache) {
@@ -744,6 +746,13 @@ private fun FaceVideoApp(
                 },
                 onEnd = { finishCall() }
             )
+        } else if (openedStoriesUserId != null && liveRepository != null && userId != null) {
+            StoryViewerScreen(
+                storyOwnerId = openedStoriesUserId!!,
+                currentUserId = userId,
+                repository = liveRepository,
+                onBack = { openedStoriesUserId = null }
+            )
         } else if (openedProfileUserId != null && liveRepository != null && userId != null) {
             UserProfileScreen(
                 userId = openedProfileUserId!!,
@@ -796,7 +805,8 @@ private fun FaceVideoApp(
                                     cache = localCache,
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
-                                    onOpenChat = { openedLiveChat = it }
+                                    onOpenChat = { openedLiveChat = it },
+                                    onOpenStories = { openedStoriesUserId = it }
                                 )
                             } else {
                                 ChatListScreen(onOpenChat = { openedChat = it })
@@ -904,6 +914,7 @@ private fun LiveChatListScreen(
     userId: String,
     unreadSummaries: Map<String, FaceVideoChatUnreadSummary>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
+    onOpenStories: (String) -> Unit,
     contactsMode: Boolean = false
 ) {
     val cachedChats = remember(cache, userId) { cache.readChats(userId) }
@@ -989,6 +1000,14 @@ private fun LiveChatListScreen(
             }
         }
 
+        if (!contactsMode) {
+            StoriesStrip(
+                repository = repository,
+                userId = userId,
+                onOpenStories = onOpenStories
+            )
+        }
+
         if (isLoading && chats.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
@@ -1061,6 +1080,368 @@ private fun LiveChatListScreen(
         )
     }
 }
+
+@Composable
+private fun StoriesStrip(
+    repository: SupabaseChatRepository,
+    userId: String,
+    onOpenStories: (String) -> Unit
+) {
+    var stories by remember(userId) { mutableStateOf<List<FaceVideoStoryCard>>(emptyList()) }
+    var myProfile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
+    var loadError by remember(userId) { mutableStateOf<String?>(null) }
+    var refreshKey by remember(userId) { mutableStateOf(0) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var caption by remember { mutableStateOf("") }
+    var showComposer by remember { mutableStateOf(false) }
+    var isPublishing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    LaunchedEffect(repository, userId, refreshKey) {
+        loadError = null
+        runCatching {
+            val visible = repository.listVisibleStories()
+            val own = repository.getMyProfile(userId)
+            stories = visible
+            myProfile = own
+        }.onFailure {
+            loadError = it.message ?: "Не удалось загрузить истории."
+        }
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            selectedUri = uri
+            caption = ""
+            showComposer = true
+        }
+    }
+
+    val ownStories = stories.filter { it.userId == userId }
+    val friendGroups = stories
+        .filter { it.userId != userId }
+        .groupBy { it.userId }
+        .values
+        .map { group -> group.sortedByDescending { it.createdAt }.first() }
+        .sortedByDescending { it.createdAt }
+
+    Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 15.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(66.dp).clickable {
+                    if (ownStories.isNotEmpty()) onOpenStories(userId) else imagePicker.launch("image/*")
+                }
+            ) {
+                Box(contentAlignment = Alignment.BottomEnd) {
+                    Box(
+                        Modifier.size(58.dp).background(
+                            Brush.linearGradient(listOf(PaletteBlush, PaletteBlueGray)),
+                            CircleShape
+                        ).padding(3.dp)
+                    ) {
+                        Avatar(
+                            myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }?.take(1)?.uppercase() ?: "Я",
+                            0,
+                            Modifier.fillMaxSize(),
+                            imageUrl = myProfile?.avatarUrl
+                        )
+                    }
+                    Surface(
+                        color = AccentSlate,
+                        shape = CircleShape,
+                        border = BorderStroke(2.dp, AppBackground),
+                        modifier = Modifier.size(22.dp).clickable { imagePicker.launch("image/*") }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("+", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Моя история", color = MainText, fontSize = 10.sp, maxLines = 1)
+            }
+
+            friendGroups.forEach { story ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.width(66.dp).clickable { onOpenStories(story.userId) }
+                ) {
+                    Box(
+                        Modifier.size(58.dp).background(
+                            Brush.linearGradient(listOf(PaletteBlush, PaletteSlate, PaletteBlueGray)),
+                            CircleShape
+                        ).padding(3.dp)
+                    ) {
+                        Avatar(
+                            story.displayName.ifBlank { story.username }.take(1).uppercase(),
+                            story.userId.hashCode().ushr(1) % 4,
+                            Modifier.fillMaxSize(),
+                            highlighted = true,
+                            imageUrl = story.avatarUrl
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        story.displayName.ifBlank { story.username },
+                        color = MainText,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        if (loadError != null) {
+            Text(
+                loadError.orEmpty(),
+                color = Muted,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(start = 18.dp, top = 4.dp)
+            )
+        }
+    }
+
+    if (showComposer && selectedUri != null) {
+        AlertDialog(
+            onDismissRequest = { if (!isPublishing) showComposer = false },
+            containerColor = PanelLight,
+            title = { Text("Новая история", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Фото будет видно только вашим друзьям и автоматически исчезнет через 24 часа.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = caption,
+                        onValueChange = { caption = it.take(500) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4,
+                        label = { Text("Подпись к истории") },
+                        supportingText = { Text("${caption.length}/500") }
+                    )
+                    if (isPublishing) {
+                        Spacer(Modifier.height(8.dp))
+                        androidx.compose.material3.LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = AccentSlate
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isPublishing,
+                    onClick = {
+                        val uri = selectedUri ?: return@TextButton
+                        scope.launch {
+                            isPublishing = true
+                            runCatching {
+                                val prepared = withContext(Dispatchers.IO) {
+                                    prepareChatImage(context, uri)
+                                }
+                                repository.publishStory(userId, prepared.bytes, caption)
+                            }.onSuccess { published ->
+                                stories = listOf(published) + stories
+                                showComposer = false
+                                selectedUri = null
+                                Toast.makeText(context, "История опубликована", Toast.LENGTH_SHORT).show()
+                            }.onFailure { error ->
+                                Toast.makeText(
+                                    context,
+                                    error.message ?: "Не удалось опубликовать историю.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            isPublishing = false
+                        }
+                    }
+                ) { Text(if (isPublishing) "Публикуем…" else "Опубликовать", color = AccentSlate) }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!isPublishing) showComposer = false }) {
+                    Text("Отмена", color = Muted)
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun StoryImage(
+    url: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    var bitmap by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(url) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                java.net.URL(url).openStream().use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = "История",
+            modifier = modifier,
+            contentScale = contentScale
+        )
+    } else {
+        Box(modifier.background(Color(0xFF293444)), contentAlignment = Alignment.Center) {
+            androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun StoryViewerScreen(
+    storyOwnerId: String,
+    currentUserId: String,
+    repository: SupabaseChatRepository,
+    onBack: () -> Unit
+) {
+    var stories by remember(storyOwnerId) { mutableStateOf<List<FaceVideoStoryCard>>(emptyList()) }
+    var index by remember(storyOwnerId) { mutableStateOf(0) }
+    var isLoading by remember(storyOwnerId) { mutableStateOf(true) }
+    var errorMessage by remember(storyOwnerId) { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, storyOwnerId) {
+        isLoading = true
+        runCatching {
+            stories = repository.listVisibleStories()
+                .filter { it.userId == storyOwnerId }
+                .sortedBy { it.createdAt }
+            index = (stories.size - 1).coerceAtLeast(0)
+        }.onFailure {
+            errorMessage = it.message ?: "Не удалось загрузить историю."
+        }
+        isLoading = false
+    }
+
+    val current = stories.getOrNull(index)
+    Column(
+        Modifier.fillMaxSize().background(Color(0xFF202A38)).padding(14.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("‹", color = Color.White, fontSize = 30.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    current?.displayName?.ifBlank { current.username } ?: "История",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(current?.let { storyTimeLabel(it.createdAt) }.orEmpty(), color = Color.LightGray, fontSize = 10.sp)
+            }
+            if (current?.userId == currentUserId) {
+                TextButton(onClick = { showDeleteConfirmation = true }, enabled = !deleting) {
+                    Text("Удалить", color = Color.White, fontSize = 11.sp)
+                }
+            }
+        }
+
+        if (isLoading) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+            }
+        } else if (current != null) {
+            Box(
+                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(18.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                StoryImage(current.mediaUrl, Modifier.fillMaxSize(), ContentScale.Fit)
+                if (current.caption.isNotBlank()) {
+                    Surface(
+                        color = Color(0xCC202A38),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)
+                    ) {
+                        Text(
+                            current.caption,
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(13.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                TextButton(
+                    onClick = { index = (index - 1).coerceAtLeast(0) },
+                    enabled = index > 0
+                ) { Text("Назад", color = Color.White) }
+                Text("${index + 1} / ${stories.size}", color = Color.LightGray, fontSize = 11.sp)
+                TextButton(
+                    onClick = {
+                        if (index < stories.lastIndex) index++ else onBack()
+                    }
+                ) { Text("Следующая", color = Color.White) }
+            }
+        } else {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text(errorMessage ?: "Истории пока нет или срок её действия истёк.", color = Color.White, fontSize = 13.sp)
+            }
+        }
+    }
+
+    if (showDeleteConfirmation && current != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Удалить историю?") },
+            text = { Text("История исчезнет у всех друзей.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirmation = false
+                    scope.launch {
+                        deleting = true
+                        runCatching { repository.deleteStory(current.storyId, "${current.userId}/${current.storyId}.jpg") }
+                            .onSuccess {
+                                stories = stories.filterNot { it.storyId == current.storyId }
+                                index = (index - 1).coerceAtLeast(0)
+                                if (stories.isEmpty()) onBack()
+                            }
+                            .onFailure { errorMessage = it.message ?: "Не удалось удалить историю." }
+                        deleting = false
+                    }
+                }) { Text("Удалить", color = Color(0xFFA85F6E)) }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text("Отмена") } }
+        )
+    }
+}
+
+private fun storyTimeLabel(value: String): String = runCatching {
+    val created = java.time.Instant.parse(value)
+    val minutes = java.time.Duration.between(created, java.time.Instant.now()).toMinutes().coerceAtLeast(0)
+    when {
+        minutes < 1 -> "только что"
+        minutes < 60 -> "${minutes} мин. назад"
+        minutes < 24 * 60 -> "${minutes / 60} ч. назад"
+        else -> "более суток назад"
+    }
+}.getOrDefault("История")
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
