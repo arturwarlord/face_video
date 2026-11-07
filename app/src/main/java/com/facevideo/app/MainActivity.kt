@@ -715,9 +715,19 @@ private fun FaceVideoApp(
         }
     }
 
-    BackHandler(enabled = activeCall != null || openedLiveChat != null || openedChat != null) {
+    // Back navigation follows the visible screen stack. A profile is shown
+    // on top of the existing chat, so dismiss it first and keep that chat open.
+    BackHandler(
+        enabled = activeCall != null ||
+            openedProfileUserId != null ||
+            openedStoriesUserId != null ||
+            openedLiveChat != null ||
+            openedChat != null
+    ) {
         when {
             activeCall != null -> finishCall()
+            openedProfileUserId != null -> openedProfileUserId = null
+            openedStoriesUserId != null -> openedStoriesUserId = null
             openedLiveChat != null -> openedLiveChat = null
             openedChat != null -> openedChat = null
         }
