@@ -28,6 +28,43 @@ class ArturChatLocalCache(context: Context) {
             .apply()
     }
 
+    /** Cached profile data is user-scoped and is only used for the first paint. */
+    fun readProfile(viewerUserId: String, profileId: String): FaceVideoProfile? {
+        val raw = userPreferences(viewerUserId).getString(profileKey(profileId), null)
+            ?: return null
+        return runCatching { json.decodeFromString<FaceVideoProfile>(raw) }.getOrNull()
+    }
+
+    fun saveProfile(viewerUserId: String, profile: FaceVideoProfile) {
+        userPreferences(viewerUserId).edit()
+            .putString(profileKey(profile.id), json.encodeToString(profile))
+            .apply()
+    }
+
+    /** Signed story URLs are deliberately not persisted; fresh URLs are requested after startup. */
+    @Synchronized
+    fun readStories(viewerUserId: String): List<FaceVideoStoryCard> {
+        val stories = readList<FaceVideoStoryCard>(
+            userPreferences(viewerUserId).getString(KEY_STORIES, null)
+        ).filter(::isStoryActive)
+        return stories.map { it.copy(mediaUrl = "") }
+    }
+
+    @Synchronized
+    fun saveStories(viewerUserId: String, stories: List<FaceVideoStoryCard>) {
+        val active = stories.filter(::isStoryActive).take(MAX_CACHED_STORIES)
+            .map { it.copy(mediaUrl = "") }
+        userPreferences(viewerUserId).edit()
+            .putString(KEY_STORIES, json.encodeToString(active))
+            .apply()
+    }
+
+    private fun profileKey(profileId: String) = "$KEY_PROFILE_PREFIX${safeKey(profileId)}"
+
+    private fun isStoryActive(story: FaceVideoStoryCard): Boolean = runCatching {
+        java.time.Instant.parse(story.expiresAt).isAfter(java.time.Instant.now())
+    }.getOrDefault(false)
+
     fun readUnreadSummaries(userId: String): Map<String, FaceVideoChatUnreadSummary> =
         readList<FaceVideoChatUnreadSummary>(
             userPreferences(userId).getString(KEY_UNREAD, null)
@@ -92,6 +129,9 @@ class ArturChatLocalCache(context: Context) {
         const val KEY_CHATS = "chat_summaries_v1"
         const val KEY_UNREAD = "unread_summaries_v1"
         const val KEY_MESSAGES = "messages_v1"
+        const val KEY_STORIES = "visible_stories_v1"
+        const val KEY_PROFILE_PREFIX = "profile_v1_"
         const val MAX_CACHED_MESSAGES = 80
+        const val MAX_CACHED_STORIES = 200
     }
 }

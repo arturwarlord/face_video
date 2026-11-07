@@ -64,16 +64,18 @@ data class FaceVideoStory(
     @SerialName("expires_at") val expiresAt: String
 )
 
+@Serializable
 data class FaceVideoStoryCard(
     val storyId: String,
     val userId: String,
     val username: String,
     val displayName: String,
     val avatarUrl: String?,
-    val mediaUrl: String,
+    val mediaUrl: String = "",
     val caption: String,
     val createdAt: String,
-    val expiresAt: String
+    val expiresAt: String,
+    val mediaPath: String = ""
 )
 
 @Serializable
@@ -296,9 +298,13 @@ class SupabaseChatRepository(
         }.decodeList<FaceVideoStory>()
         if (rows.isEmpty()) return emptyList()
 
-        val profileCache = mutableMapOf<String, FaceVideoProfile?>()
+        val visibleUserIds = rows.mapTo(mutableSetOf()) { it.userId }
+        val profiles = client.from("face_video_profiles").select {
+            filter { isIn("id", visibleUserIds) }
+        }.decodeList<FaceVideoProfile>().associateBy { it.id }
+
         return rows.mapNotNull { story ->
-            val profile = profileCache.getOrPut(story.userId) { getProfile(story.userId) } ?: return@mapNotNull null
+            val profile = profiles[story.userId] ?: return@mapNotNull null
             val signedUrl = client.storage.from(STORIES_BUCKET).createSignedUrl(
                 path = story.mediaPath,
                 expiresIn = 3.minutes
@@ -312,7 +318,8 @@ class SupabaseChatRepository(
                 mediaUrl = signedUrl,
                 caption = story.caption,
                 createdAt = story.createdAt,
-                expiresAt = story.expiresAt
+                expiresAt = story.expiresAt,
+                mediaPath = story.mediaPath
             )
         }
     }
@@ -354,7 +361,8 @@ class SupabaseChatRepository(
             mediaUrl = signedUrl,
             caption = row.caption,
             createdAt = row.createdAt,
-            expiresAt = row.expiresAt
+            expiresAt = row.expiresAt,
+            mediaPath = row.mediaPath
         )
     }
 
@@ -412,7 +420,9 @@ class SupabaseChatRepository(
             "image/webp" -> "webp"
             else -> "jpg"
         }
-        val path = "$userId/avatar.$extension"
+        // Versioned object paths prevent an old CDN or device cache from serving
+        // the previous avatar after the user changes their photo.
+        val path = "$userId/${UUID.randomUUID()}.$extension"
         client.storage.from("arturchat-avatars").upload(path = path, data = bytes) {
             contentType = ContentType.parse(mimeType)
             upsert = true
