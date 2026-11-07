@@ -29,7 +29,6 @@ data class FaceVideoChatSummary(
 )
 
 @Serializable
-@Serializable
 private data class FaceVideoOnlinePresenceRow(
     @SerialName("user_id") val userId: String,
     @SerialName("last_seen_at") val lastSeenAt: String
