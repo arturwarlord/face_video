@@ -100,6 +100,7 @@ import com.facevideo.app.data.SupabaseCallRepository
 import com.facevideo.app.data.DemoData
 import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatImageCache
 import com.facevideo.app.data.ArturChatLocalCache
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
@@ -867,6 +868,7 @@ private fun FaceVideoApp(
                 storyOwnerId = openedStoriesUserId!!,
                 currentUserId = userId,
                 repository = liveRepository,
+                cache = localCache,
                 onBack = { openedStoriesUserId = null }
             )
         } else if (openedProfileUserId != null && liveRepository != null && userId != null) {
@@ -874,6 +876,7 @@ private fun FaceVideoApp(
                 userId = openedProfileUserId!!,
                 currentUserId = userId,
                 repository = liveRepository,
+                cache = localCache,
                 onlineUserIds = onlineUserIds,
                 onBack = { openedProfileUserId = null },
                 onOpenChat = { chat ->
@@ -946,6 +949,7 @@ private fun FaceVideoApp(
                             userEmail = userEmail,
                             userId = userId,
                             repository = liveRepository,
+                            cache = localCache,
                             onSignOut = {
                                 val currentUserId = userId
                                 scope.launch {
@@ -1117,6 +1121,7 @@ private fun LiveChatListScreen(
         if (!contactsMode) {
             StoriesStrip(
                 repository = repository,
+                cache = cache,
                 userId = userId,
                 onOpenStories = onOpenStories
             )
@@ -1232,11 +1237,14 @@ private fun LiveChatListScreen(
 @Composable
 private fun StoriesStrip(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     onOpenStories: (String) -> Unit
 ) {
-    var stories by remember(userId) { mutableStateOf<List<FaceVideoStoryCard>>(emptyList()) }
-    var myProfile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
+    val cachedStories = remember(cache, userId) { cache.readStories(userId) }
+    val cachedMyProfile = remember(cache, userId) { cache.readProfile(userId, userId) }
+    var stories by remember(userId, cache) { mutableStateOf(cachedStories) }
+    var myProfile by remember(userId, cache) { mutableStateOf(cachedMyProfile) }
     var loadError by remember(userId) { mutableStateOf<String?>(null) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -1245,6 +1253,7 @@ private fun StoriesStrip(
     var isPublishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val mediaCache = remember(context) { ArturChatImageCache(context) }
 
     LaunchedEffect(repository, userId, refreshKey) {
         loadError = null
@@ -1253,8 +1262,14 @@ private fun StoriesStrip(
             val own = repository.getMyProfile(userId)
             stories = visible
             myProfile = own
+            withContext(Dispatchers.IO) {
+                cache.saveStories(userId, visible)
+                if (own != null) cache.saveProfile(userId, own)
+                mediaCache.pruneStories(userId, visible.mapTo(mutableSetOf()) { it.storyId })
+            }
         }.onFailure {
             loadError = it.message ?: "Не удалось загрузить истории."
+            android.util.Log.w("ArturChatStories", "Could not refresh visible stories; keeping local cache", it)
         }
     }
 
@@ -1310,7 +1325,8 @@ private fun StoriesStrip(
                             myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }?.take(1)?.uppercase() ?: "Я",
                             0,
                             Modifier.fillMaxSize(),
-                            imageUrl = myProfile?.avatarUrl
+                            imageUrl = myProfile?.avatarUrl,
+                            imageCacheKey = myProfile?.id
                         )
                     }
                     Surface(
@@ -1344,7 +1360,8 @@ private fun StoriesStrip(
                             story.userId.hashCode().ushr(1) % 4,
                             Modifier.fillMaxSize(),
                             highlighted = true,
-                            imageUrl = story.avatarUrl
+                            imageUrl = story.avatarUrl,
+                            imageCacheKey = story.userId
                         )
                     }
                     Spacer(Modifier.height(6.dp))
@@ -1410,9 +1427,14 @@ private fun StoriesStrip(
                                 val prepared = withContext(Dispatchers.IO) {
                                     prepareChatImage(context, uri)
                                 }
-                                repository.publishStory(userId, prepared.bytes, caption)
+                                repository.publishStory(userId, prepared.bytes, caption).also { published ->
+                                    withContext(Dispatchers.IO) {
+                                        mediaCache.writeBytes("stories", userId, published.storyId, prepared.bytes)
+                                    }
+                                }
                             }.onSuccess { published ->
                                 stories = listOf(published) + stories
+                                withContext(Dispatchers.IO) { cache.saveStories(userId, stories) }
                                 showComposer = false
                                 selectedUri = null
                                 Toast.makeText(context, "История опубликована", Toast.LENGTH_SHORT).show()
@@ -1439,21 +1461,42 @@ private fun StoriesStrip(
 
 @Composable
 private fun StoryImage(
-    url: String,
+    story: FaceVideoStoryCard,
+    viewerUserId: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop
 ) {
-    var bitmap by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(url) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                java.net.URL(url).openStream().use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()
+    val context = LocalContext.current
+    val mediaCache = remember(context) { ArturChatImageCache(context) }
+    var bitmap by remember(viewerUserId, story.storyId) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(viewerUserId, story.storyId, story.mediaUrl) {
+        val cachedBytes = withContext(Dispatchers.IO) {
+            mediaCache.readBytes("stories", viewerUserId, story.storyId)
+        }
+        bitmap = cachedBytes?.let { decodeCachedImage(it, 1800) }
+
+        if (story.mediaUrl.isNotBlank()) {
+            val refreshedBytes = withContext(Dispatchers.IO) {
+                runCatching {
+                    mediaCache.fetchAndStore(
+                        kind = "stories",
+                        ownerId = viewerUserId,
+                        mediaId = story.storyId,
+                        sourceUrl = story.mediaUrl,
+                        freshnessMillis = 15 * 60 * 1000L,
+                        refreshWhenSourceChanges = false
+                    )
+                }.onFailure {
+                    android.util.Log.w("ArturChatStories", "Could not refresh story image", it)
+                }.getOrNull()
+            }
+            if (refreshedBytes != null) bitmap = decodeCachedImage(refreshedBytes, 1800)
         }
     }
-    if (bitmap != null) {
+    val loaded = bitmap
+    if (loaded != null) {
         Image(
-            bitmap = bitmap!!.asImageBitmap(),
+            bitmap = loaded.asImageBitmap(),
             contentDescription = "История",
             modifier = modifier,
             contentScale = contentScale
@@ -1465,30 +1508,56 @@ private fun StoryImage(
     }
 }
 
+private fun decodeCachedImage(
+    bytes: ByteArray,
+    maxDimension: Int
+): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sampleSize = 1
+    while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > maxDimension) {
+        sampleSize *= 2
+    }
+    val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+}
+
 @Composable
 private fun StoryViewerScreen(
     storyOwnerId: String,
     currentUserId: String,
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     onBack: () -> Unit
 ) {
-    var stories by remember(storyOwnerId) { mutableStateOf<List<FaceVideoStoryCard>>(emptyList()) }
+    val cachedStories = remember(cache, currentUserId, storyOwnerId) {
+        cache.readStories(currentUserId).filter { it.userId == storyOwnerId }.sortedBy { it.createdAt }
+    }
+    var stories by remember(storyOwnerId, currentUserId, cache) { mutableStateOf(cachedStories) }
     var index by remember(storyOwnerId) { mutableStateOf(0) }
-    var isLoading by remember(storyOwnerId) { mutableStateOf(true) }
+    var isLoading by remember(storyOwnerId) { mutableStateOf(cachedStories.isEmpty()) }
     var errorMessage by remember(storyOwnerId) { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val mediaCache = remember(context) { ArturChatImageCache(context) }
 
-    LaunchedEffect(repository, storyOwnerId) {
-        isLoading = true
+    LaunchedEffect(repository, storyOwnerId, currentUserId) {
+        isLoading = stories.isEmpty()
         runCatching {
-            stories = repository.listVisibleStories()
-                .filter { it.userId == storyOwnerId }
-                .sortedBy { it.createdAt }
+            val visible = repository.listVisibleStories()
+            stories = visible.filter { it.userId == storyOwnerId }.sortedBy { it.createdAt }
             index = 0
+            withContext(Dispatchers.IO) {
+                cache.saveStories(currentUserId, visible)
+                mediaCache.pruneStories(currentUserId, visible.mapTo(mutableSetOf()) { it.storyId })
+            }
         }.onFailure {
             errorMessage = it.message ?: "Не удалось загрузить историю."
+            android.util.Log.w("ArturChatStories", "Could not refresh story viewer; keeping local cache", it)
         }
         isLoading = false
     }
@@ -1527,7 +1596,7 @@ private fun StoryViewerScreen(
                 Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(18.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                StoryImage(current.mediaUrl, Modifier.fillMaxSize(), ContentScale.Fit)
+                StoryImage(current, currentUserId, Modifier.fillMaxSize(), ContentScale.Fit)
                 if (current.caption.isNotBlank()) {
                     Surface(
                         color = Color(0xCC202A38),
@@ -1577,12 +1646,21 @@ private fun StoryViewerScreen(
                     showDeleteConfirmation = false
                     scope.launch {
                         deleting = true
-                        runCatching { repository.deleteStory(current.storyId, "${current.userId}/${current.storyId}.jpg") }
-                            .onSuccess {
-                                stories = stories.filterNot { it.storyId == current.storyId }
-                                index = (index - 1).coerceAtLeast(0)
-                                if (stories.isEmpty()) onBack()
+                        runCatching {
+                            repository.deleteStory(
+                                current.storyId,
+                                current.mediaPath.ifBlank { "${current.userId}/${current.storyId}.jpg" }
+                            )
+                        }.onSuccess {
+                            stories = stories.filterNot { it.storyId == current.storyId }
+                            withContext(Dispatchers.IO) {
+                                cache.saveStories(currentUserId, cache.readStories(currentUserId)
+                                    .filterNot { it.storyId == current.storyId })
+                                mediaCache.remove("stories", currentUserId, current.storyId)
                             }
+                            index = (index - 1).coerceAtLeast(0)
+                            if (stories.isEmpty()) onBack()
+                        }
                             .onFailure { errorMessage = it.message ?: "Не удалось удалить историю." }
                         deleting = false
                     }
@@ -1622,7 +1700,13 @@ private fun LiveChatRow(
             .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Avatar(initials, chat.id.hashCode().ushr(1) % 4, Modifier.size(53.dp), imageUrl = chat.peerAvatarUrl)
+        Avatar(
+            initials,
+            chat.id.hashCode().ushr(1) % 4,
+            Modifier.size(53.dp),
+            imageUrl = chat.peerAvatarUrl,
+            imageCacheKey = chat.peerUserId
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -1944,7 +2028,8 @@ private fun LiveChatScreen(
                     Modifier.size(43.dp).clickable(enabled = peerUserId != null && !chat.isGroup) {
                         peerUserId?.let(onOpenProfile)
                     },
-                    imageUrl = peerAvatarUrl
+                    imageUrl = peerAvatarUrl,
+                    imageCacheKey = peerUserId
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(
@@ -2411,15 +2496,41 @@ private fun Avatar(
     style: Int,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
-    imageUrl: String? = null
+    imageUrl: String? = null,
+    imageCacheKey: String? = null
 ) {
-    var avatarBitmap by remember(imageUrl) { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(imageUrl) {
-        avatarBitmap = if (imageUrl.isNullOrBlank()) null else withContext(Dispatchers.IO) {
+    val context = LocalContext.current
+    val imageCache = remember(context) { ArturChatImageCache(context) }
+    val stableCacheKey = imageCacheKey?.takeIf { it.isNotBlank() }
+        ?: imageUrl?.takeIf { it.isNotBlank() }
+    var avatarBitmap by remember(stableCacheKey) { mutableStateOf<android.graphics.Bitmap?>(null) }
+
+    LaunchedEffect(imageUrl, stableCacheKey) {
+        if (imageUrl.isNullOrBlank() || stableCacheKey.isNullOrBlank()) {
+            avatarBitmap = null
+            return@LaunchedEffect
+        }
+
+        val cachedBytes = withContext(Dispatchers.IO) {
+            imageCache.readBytes("avatars", "public", stableCacheKey)
+        }
+        if (cachedBytes != null) avatarBitmap = decodeCachedImage(cachedBytes, 512)
+
+        val freshBytes = withContext(Dispatchers.IO) {
             runCatching {
-                java.net.URL(imageUrl).openStream().use { BitmapFactory.decodeStream(it) }
+                imageCache.fetchAndStore(
+                    kind = "avatars",
+                    ownerId = "public",
+                    mediaId = stableCacheKey,
+                    sourceUrl = imageUrl,
+                    freshnessMillis = 24 * 60 * 60 * 1000L,
+                    refreshWhenSourceChanges = true
+                )
+            }.onFailure {
+                android.util.Log.w("ArturChatAvatar", "Avatar cache refresh failed", it)
             }.getOrNull()
         }
+        if (freshBytes != null) avatarBitmap = decodeCachedImage(freshBytes, 512)
     }
     Box(
         modifier.clip(CircleShape).background(
@@ -3314,7 +3425,8 @@ private fun FriendDirectoryRow(
                 profile.displayName.ifBlank { profile.username }.take(1).uppercase(),
                 profile.id.hashCode().ushr(1) % 4,
                 Modifier.size(47.dp).clickable(onClick = onProfile),
-                imageUrl = profile.avatarUrl
+                imageUrl = profile.avatarUrl,
+                imageCacheKey = profile.id
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).clickable(onClick = onProfile)) {
@@ -3374,7 +3486,8 @@ private fun AddFriendDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Avatar(
                             foundProfile!!.displayName.ifBlank { foundProfile!!.username }.take(1).uppercase(),
-                            2, Modifier.size(42.dp), imageUrl = foundProfile!!.avatarUrl
+                            2, Modifier.size(42.dp), imageUrl = foundProfile!!.avatarUrl,
+                            imageCacheKey = foundProfile!!.id
                         )
                         Spacer(Modifier.width(10.dp))
                         Column {
@@ -3442,32 +3555,36 @@ private fun ProfileScreen(
     userEmail: String?,
     userId: String?,
     repository: SupabaseChatRepository?,
+    cache: ArturChatLocalCache,
     onSignOut: () -> Unit
 ) {
-    var profile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
-    var username by remember(userId) { mutableStateOf("") }
-    var displayName by remember(userId) { mutableStateOf("") }
-    var statusText by remember(userId) { mutableStateOf("") }
-    var about by remember(userId) { mutableStateOf("") }
-    var isLoading by remember(userId) { mutableStateOf(true) }
+    val cachedProfile = remember(cache, userId) { userId?.let { cache.readProfile(it, it) } }
+    var profile by remember(userId, cache) { mutableStateOf(cachedProfile) }
+    var username by remember(userId, cache) { mutableStateOf(cachedProfile?.username.orEmpty()) }
+    var displayName by remember(userId, cache) { mutableStateOf(cachedProfile?.displayName.orEmpty()) }
+    var statusText by remember(userId, cache) { mutableStateOf(cachedProfile?.statusText.orEmpty()) }
+    var about by remember(userId, cache) { mutableStateOf(cachedProfile?.about.orEmpty()) }
+    var isLoading by remember(userId) { mutableStateOf(cachedProfile == null) }
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    LaunchedEffect(repository, userId) {
+    LaunchedEffect(repository, userId, cache) {
         val currentRepository = repository
         val currentUserId = userId
         if (currentRepository != null && currentUserId != null) {
+            isLoading = profile == null
             runCatching { currentRepository.getMyProfile(currentUserId) }
                 .onSuccess { loaded ->
                     profile = loaded
+                    if (loaded != null) cache.saveProfile(currentUserId, loaded)
                     username = loaded?.username.orEmpty()
                     displayName = loaded?.displayName.orEmpty()
                     statusText = loaded?.statusText.orEmpty()
                     about = loaded?.about.orEmpty()
-                    if (loaded == null) errorMessage = "Профиль пока не найден."
+                    if (loaded == null && profile == null) errorMessage = "Профиль пока не найден."
                 }
                 .onFailure { errorMessage = it.message ?: "Не удалось загрузить профиль." }
         }
@@ -3487,6 +3604,7 @@ private fun ProfileScreen(
                         repository.updateMyProfile(userId, username, displayName, statusText, about, url)
                     }.onSuccess {
                         profile = it
+                        cache.saveProfile(userId, it)
                         successMessage = "Фотография профиля обновлена."
                     }.onFailure { errorMessage = it.message ?: "Фото загружено, но профиль не обновился." }
                 }.onFailure { errorMessage = it.message ?: "Не удалось загрузить фотографию." }
@@ -3507,7 +3625,8 @@ private fun ProfileScreen(
                 1,
                 Modifier.size(112.dp),
                 highlighted = profile != null,
-                imageUrl = profile?.avatarUrl
+                imageUrl = profile?.avatarUrl,
+                imageCacheKey = userId
             )
             Surface(
                 color = AccentSlate,
@@ -3522,7 +3641,7 @@ private fun ProfileScreen(
         Text(if (username.isNotBlank()) "@$username" else userEmail ?: "Демонстрационный режим", color = Muted, fontSize = 12.sp)
         Spacer(Modifier.height(20.dp))
 
-        if (isLoading) {
+        if (isLoading && profile == null) {
             Text("Загружаем профиль…", color = Muted, fontSize = 12.sp)
         } else if (repository != null && userId != null && profile != null) {
             Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, PaletteMist), modifier = Modifier.fillMaxWidth()) {
@@ -3580,6 +3699,7 @@ private fun ProfileScreen(
                                     repository.updateMyProfile(userId, username, displayName, statusText, about)
                                 }.onSuccess {
                                     profile = it
+                                    cache.saveProfile(userId, it)
                                     successMessage = "Изменения сохранены и доступны собеседникам."
                                 }.onFailure { failure ->
                                     errorMessage = when {
@@ -3626,25 +3746,32 @@ private fun UserProfileScreen(
     userId: String,
     currentUserId: String,
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     onlineUserIds: Set<String>,
     onBack: () -> Unit,
     onOpenChat: (FaceVideoChatSummary) -> Unit
 ) {
-    var profile by remember(userId) { mutableStateOf<FaceVideoProfile?>(null) }
+    val cachedProfile = remember(cache, userId, currentUserId) { cache.readProfile(currentUserId, userId) }
+    var profile by remember(userId, currentUserId, cache) { mutableStateOf(cachedProfile) }
     var friendship by remember(userId, currentUserId) { mutableStateOf<com.facevideo.app.data.FaceVideoFriendship?>(null) }
-    var isLoading by remember(userId) { mutableStateOf(true) }
+    var isLoading by remember(userId) { mutableStateOf(cachedProfile == null) }
     var isBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRemoveFriend by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(repository, userId, currentUserId) {
-        isLoading = true
+    LaunchedEffect(repository, userId, currentUserId, cache) {
+        isLoading = profile == null
         runCatching {
-            profile = repository.getProfile(userId)
+            val loadedProfile = repository.getProfile(userId)
+            if (loadedProfile != null) {
+                profile = loadedProfile
+                cache.saveProfile(currentUserId, loadedProfile)
+            }
             friendship = repository.getFriendshipWith(currentUserId, userId)
         }.onFailure {
             errorMessage = it.message ?: "Не удалось загрузить профиль."
+            android.util.Log.w("ArturChatProfile", "Could not refresh user profile; keeping local cache", it)
         }
         isLoading = false
     }
@@ -3661,7 +3788,7 @@ private fun UserProfileScreen(
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("‹ Назад", color = AccentSlate, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
-        if (isLoading) {
+        if (isLoading && profile == null) {
             Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                 androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
             }
@@ -3669,7 +3796,13 @@ private fun UserProfileScreen(
             val p = profile!!
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(22.dp))
-                Avatar(p.displayName.ifBlank { p.username }.take(1).uppercase(), 2, Modifier.size(124.dp), imageUrl = p.avatarUrl)
+                Avatar(
+                    p.displayName.ifBlank { p.username }.take(1).uppercase(),
+                    2,
+                    Modifier.size(124.dp),
+                    imageUrl = p.avatarUrl,
+                    imageCacheKey = p.id
+                )
                 Spacer(Modifier.height(16.dp))
                 Text(p.displayName.ifBlank { p.username }, color = MainText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 Text("@${p.username}", color = Muted, fontSize = 13.sp)
