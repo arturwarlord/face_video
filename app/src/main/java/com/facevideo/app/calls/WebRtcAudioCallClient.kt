@@ -97,6 +97,7 @@ class WebRtcAudioCallClient(
     private var videoCapturer: CameraVideoCapturer? = null
     private var localVideoTrack: VideoTrack? = null
     private var remoteVideoTrack: VideoTrack? = null
+    private var remoteVideoSinkAttached = false
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
     private var videoEglBase: EglBase? = null
     private val remoteVideoTrackLock = Any()
@@ -200,6 +201,7 @@ class WebRtcAudioCallClient(
         runCatching { remoteVideoRenderer?.release() }
         runCatching { videoEglBase?.release() }
 
+        remoteVideoSinkAttached = false
         peerConnection = null
         localAudioTrack = null
         audioSource = null
@@ -353,21 +355,22 @@ class WebRtcAudioCallClient(
                 override fun onDataChannel(channel: org.webrtc.DataChannel) = Unit
                 override fun onRenegotiationNeeded() = Unit
 
+                // Unified Plan delivers remote media through onTrack. Keep
+                // onAddTrack as a compatibility path for WebRTC implementations
+                // that still emit the legacy callback.
+                override fun onTrack(transceiver: org.webrtc.RtpTransceiver) {
+                    if (!videoEnabled) return
+                    val videoTrack = transceiver.receiver.track() as? VideoTrack ?: return
+                    attachRemoteVideoTrack(videoTrack, "onTrack")
+                }
+
                 override fun onAddTrack(
                     receiver: org.webrtc.RtpReceiver,
                     mediaStreams: Array<org.webrtc.MediaStream>
                 ) {
                     if (!videoEnabled) return
                     val videoTrack = receiver.track() as? VideoTrack ?: return
-                    val renderer = remoteVideoRenderer ?: return
-                    synchronized(remoteVideoTrackLock) {
-                        if (remoteVideoTrack !== videoTrack) {
-                            remoteVideoTrack?.removeSink(renderer)
-                            remoteVideoTrack = videoTrack
-                            videoTrack.addSink(renderer)
-                            Log.i(TAG, "Remote video track attached to renderer")
-                        }
-                    }
+                    attachRemoteVideoTrack(videoTrack, "onAddTrack")
                 }
             }
         ) ?: error("WebRTC не смог создать соединение.")
@@ -409,6 +412,10 @@ class WebRtcAudioCallClient(
         localVideoRenderer = localRenderer
         remoteVideoRenderer = remoteRenderer
 
+        // A remote track can arrive before the renderer is available; attach
+        // it now that the SurfaceViewRenderer has been initialized.
+        remoteVideoTrack?.let { attachRemoteVideoTrack(it, "renderer-initialized") }
+
         val source = factory.createVideoSource(false)
         videoSource = source
         val textureHelper = SurfaceTextureHelper.create(
@@ -433,6 +440,36 @@ class WebRtcAudioCallClient(
         // Conservative starting profile for mobile networks and mid-range phones.
         capturer.startCapture(640, 480, 24)
         Log.i(TAG, "Local camera started: 640x480@24fps")
+    }
+
+    /**
+     * Attach the peer's video track exactly once. Retain an early track until
+     * the renderer exists so a callback race cannot leave the remote screen black.
+     */
+    private fun attachRemoteVideoTrack(track: VideoTrack, callback: String) {
+        if (!videoEnabled || closed.get()) return
+        synchronized(remoteVideoTrackLock) {
+            if (remoteVideoTrack !== track) {
+                if (remoteVideoSinkAttached) {
+                    remoteVideoTrack?.let { previous ->
+                        remoteVideoRenderer?.let(previous::removeSink)
+                    }
+                }
+                remoteVideoTrack = track
+                remoteVideoSinkAttached = false
+            }
+
+            val renderer = remoteVideoRenderer
+            if (renderer == null) {
+                Log.w(TAG, "Remote video track received before renderer initialization ($callback)")
+                return
+            }
+            if (!remoteVideoSinkAttached) {
+                track.addSink(renderer)
+                remoteVideoSinkAttached = true
+                Log.i(TAG, "Remote video track attached via $callback")
+            }
+        }
     }
 
     private fun createCameraCapturer(context: Context): CameraVideoCapturer? {
