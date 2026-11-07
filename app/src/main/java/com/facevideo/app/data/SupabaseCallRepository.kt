@@ -5,7 +5,12 @@ import io.github.jan.supabase.annotations.SupabaseExperimental
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.realtime.selectAsFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -63,6 +68,10 @@ private data class FaceVideoCallStatusUpdate(val status: String)
  * participants can see a call and that signaling payloads go only to the peer.
  */
 class SupabaseCallRepository(private val client: SupabaseClient) {
+    private companion object {
+        const val TAG = "ArturChatIncomingCall"
+        const val INCOMING_CALL_POLL_INTERVAL_MS = 1_500L
+    }
 
     suspend fun startDirectCall(
         chatId: String,
@@ -171,12 +180,30 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             }
             .decodeList<FaceVideoCallSignal>()
 
-    @OptIn(SupabaseExperimental::class)
-    fun observeIncomingCalls(userId: String): Flow<List<FaceVideoCall>> =
-        client.from("face_video_calls").selectAsFlow(FaceVideoCall::id) {
-            eq("callee_id", userId)
-            eq("status", "ringing")
+    /**
+     * Incoming calls are critical short-lived events. Poll the authoritative table
+     * so the foreground app still discovers a call if a Realtime change is missed.
+     */
+    fun observeIncomingCalls(userId: String): Flow<List<FaceVideoCall>> = flow {
+        var lastKnownCalls = emptyList<FaceVideoCall>()
+        while (currentCoroutineContext().isActive) {
+            try {
+                lastKnownCalls = client.from("face_video_calls").select {
+                    filter {
+                        eq("callee_id", userId)
+                        eq("status", "ringing")
+                    }
+                    order("created_at", Order.DESCENDING)
+                }.decodeList<FaceVideoCall>()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w(TAG, "Incoming-call poll failed; keeping last known calls", error)
+            }
+            emit(lastKnownCalls)
+            delay(INCOMING_CALL_POLL_INTERVAL_MS)
         }
+    }
 
     @OptIn(SupabaseExperimental::class)
     fun observeSignals(callId: String, recipientId: String): Flow<List<FaceVideoCallSignal>> =
