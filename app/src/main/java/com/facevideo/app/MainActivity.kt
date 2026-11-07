@@ -1012,7 +1012,7 @@ private fun LiveChatListScreen(
         if (chats.isEmpty()) isLoading = true
         loadError = null
         try {
-            val refreshedChats = repository.listMyChats()
+            val refreshedChats = repository.listMyChats(userId)
             chats = refreshedChats
             withContext(Dispatchers.IO) {
                 cache.saveChats(userId, refreshedChats)
@@ -1578,7 +1578,7 @@ private fun LiveChatRow(
             .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Avatar(initials, chat.id.hashCode().ushr(1) % 4, Modifier.size(53.dp))
+        Avatar(initials, chat.id.hashCode().ushr(1) % 4, Modifier.size(53.dp), imageUrl = chat.peerAvatarUrl)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -1739,16 +1739,26 @@ private fun LiveChatScreen(
     }
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = cachedMessages)
-    var peerUserId by remember(repository, chat.id, userId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(repository, chat.id, userId, chat.isGroup) {
-        peerUserId = if (chat.isGroup) {
-            null
+    var peerUserId by remember(repository, chat.id, userId) { mutableStateOf(chat.peerUserId) }
+    var peerAvatarUrl by remember(repository, chat.id, userId) { mutableStateOf(chat.peerAvatarUrl) }
+    LaunchedEffect(repository, chat.id, userId, chat.isGroup, chat.peerUserId, chat.peerAvatarUrl) {
+        if (chat.isGroup) {
+            peerUserId = null
+            peerAvatarUrl = null
         } else {
-            runCatching { repository.getDirectChatPeerId(chat.id, userId) }
-                .onFailure {
-                    android.util.Log.w("ArturChatPresence", "Could not resolve chat peer", it)
-                }
-                .getOrNull()
+            val resolvedPeerId = chat.peerUserId ?: runCatching {
+                repository.getDirectChatPeerId(chat.id, userId)
+            }.onFailure {
+                android.util.Log.w("ArturChatPresence", "Could not resolve chat peer", it)
+            }.getOrNull()
+            peerUserId = resolvedPeerId
+            peerAvatarUrl = chat.peerAvatarUrl ?: resolvedPeerId?.let { peerId ->
+                runCatching { repository.getProfile(peerId)?.avatarUrl }
+                    .onFailure {
+                        android.util.Log.w("ArturChatAvatar", "Could not load peer avatar", it)
+                    }
+                    .getOrNull()
+            }
         }
     }
     var locallySentMessages by remember(chat.id) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
@@ -1889,7 +1899,8 @@ private fun LiveChatScreen(
                     chat.id.hashCode().ushr(1) % 4,
                     Modifier.size(43.dp).clickable(enabled = peerUserId != null && !chat.isGroup) {
                         peerUserId?.let(onOpenProfile)
-                    }
+                    },
+                    imageUrl = peerAvatarUrl
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(
@@ -2094,7 +2105,7 @@ private fun LiveChatScreen(
                         scope.launch {
                             actionBusy = true
                             forwardTargets = runCatching {
-                                repository.listMyChats().filter { it.id != chat.id }
+                                repository.listMyChats(userId).filter { it.id != chat.id }
                             }.getOrDefault(emptyList())
                             actionBusy = false
                             showForwardPicker = true

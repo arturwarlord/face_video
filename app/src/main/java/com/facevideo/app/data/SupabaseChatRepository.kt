@@ -22,7 +22,10 @@ data class FaceVideoChatSummary(
     @SerialName("is_group") val isGroup: Boolean,
     @SerialName("last_message_preview") val lastMessagePreview: String = "",
     @SerialName("last_message_at") val lastMessageAt: String? = null,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    // Enriched on the client from chat members + profiles; not columns in the SQL view.
+    @SerialName("peer_user_id") val peerUserId: String? = null,
+    @SerialName("peer_avatar_url") val peerAvatarUrl: String? = null
 )
 
 @Serializable
@@ -123,6 +126,12 @@ data class FaceVideoMessageReceipt(
 
 @Serializable
 private data class FaceVideoChatMemberUserId(
+    @SerialName("user_id") val userId: String
+)
+
+@Serializable
+private data class FaceVideoChatAvatarMember(
+    @SerialName("chat_id") val chatId: String,
     @SerialName("user_id") val userId: String
 )
 
@@ -405,10 +414,38 @@ class SupabaseChatRepository(
         return client.storage.from("arturchat-avatars").publicUrl(path)
     }
 
-    suspend fun listMyChats(): List<FaceVideoChatSummary> =
-        client.from("face_video_chat_summaries")
+    /**
+     * Loads chat summaries and enriches direct chats with the other participant's
+     * profile photo. Two batched queries avoid an N+1 request per chat row.
+     */
+    suspend fun listMyChats(currentUserId: String): List<FaceVideoChatSummary> {
+        val chats = client.from("face_video_chat_summaries")
             .select()
             .decodeList<FaceVideoChatSummary>()
+        val directChatIds = chats.filterNot { it.isGroup }.map { it.id }.distinct()
+        if (directChatIds.isEmpty()) return chats
+
+        val memberships = client.from("face_video_chat_members").select {
+            filter { isIn("chat_id", directChatIds) }
+        }.decodeList<FaceVideoChatAvatarMember>()
+        val peerByChat = memberships.groupBy { it.chatId }.mapNotNull { (chatId, rows) ->
+            rows.firstOrNull { it.userId != currentUserId }?.userId?.let { chatId to it }
+        }.toMap()
+        val peerIds = peerByChat.values.distinct()
+        if (peerIds.isEmpty()) return chats
+
+        val profiles = client.from("face_video_profiles").select {
+            filter { isIn("id", peerIds) }
+        }.decodeList<FaceVideoProfile>().associateBy { it.id }
+
+        return chats.map { chat ->
+            val peerId = peerByChat[chat.id]
+            chat.copy(
+                peerUserId = peerId,
+                peerAvatarUrl = peerId?.let { profiles[it]?.avatarUrl }
+            )
+        }
+    }
 
     suspend fun getChat(chatId: String): FaceVideoChatSummary? =
         client.from("face_video_chat_summaries")
@@ -444,7 +481,7 @@ class SupabaseChatRepository(
         otherUserId: String,
         currentUserId: String
     ): FaceVideoChatSummary? {
-        val existing = listMyChats().firstOrNull { chat ->
+        val existing = listMyChats(currentUserId).firstOrNull { chat ->
             !chat.isGroup && getDirectChatPeerId(chat.id, currentUserId) == otherUserId
         }
         if (existing != null) return existing
