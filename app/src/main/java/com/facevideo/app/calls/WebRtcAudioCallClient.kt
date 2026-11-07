@@ -29,7 +29,10 @@ import org.webrtc.Camera1Enumerator
 import org.webrtc.Camera2Enumerator
 import org.webrtc.CameraEnumerator
 import org.webrtc.CameraVideoCapturer
+import org.webrtc.DefaultVideoDecoderFactory
+import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
+import org.webrtc.RendererCommon
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoSource
@@ -99,7 +102,6 @@ class WebRtcAudioCallClient(
     private var remoteVideoTrack: VideoTrack? = null
     private var remoteVideoSinkAttached = false
     private var surfaceTextureHelper: SurfaceTextureHelper? = null
-    private var videoEglBase: EglBase? = null
     private val remoteVideoTrackLock = Any()
 
     var localVideoRenderer: SurfaceViewRenderer? = null
@@ -199,7 +201,6 @@ class WebRtcAudioCallClient(
         runCatching { surfaceTextureHelper?.dispose() }
         runCatching { localVideoRenderer?.release() }
         runCatching { remoteVideoRenderer?.release() }
-        runCatching { videoEglBase?.release() }
 
         remoteVideoSinkAttached = false
         peerConnection = null
@@ -212,7 +213,6 @@ class WebRtcAudioCallClient(
         surfaceTextureHelper = null
         localVideoRenderer = null
         remoteVideoRenderer = null
-        videoEglBase = null
 
         runCatching {
             val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -235,8 +235,12 @@ class WebRtcAudioCallClient(
 
     private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
-        initializeFactory(appContext)
-        val factory = peerConnectionFactory ?: error("Не удалось инициализировать WebRTC.")
+        initializeFactory(appContext, videoEnabled)
+        val factory = if (videoEnabled) {
+            videoPeerConnectionFactory
+        } else {
+            peerConnectionFactory
+        } ?: error("Не удалось инициализировать WebRTC для выбранного типа звонка.")
 
         val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         previousAudioMode = audioManager.mode
@@ -397,15 +401,30 @@ class WebRtcAudioCallClient(
                 PackageManager.PERMISSION_GRANTED
         ) { "Для видеозвонка разреши ArturChat доступ к камере." }
 
-        val egl = EglBase.create()
-        videoEglBase = egl
+        // The video PeerConnectionFactory owns a long-lived EGL context
+        // shared with its encoder/decoder factories. Renderers and capture
+        // must use that same context; do not release it when one call ends.
+        val eglContext = videoFactoryEglBase?.eglBaseContext
+            ?: error("Не удалось инициализировать EGL для видеокодеков.")
         val localRenderer = SurfaceViewRenderer(appContext).apply {
-            init(egl.eglBaseContext, null)
+            init(eglContext, null)
             setEnableHardwareScaler(true)
             setMirror(true)
         }
         val remoteRenderer = SurfaceViewRenderer(appContext).apply {
-            init(egl.eglBaseContext, null)
+            init(
+                eglContext,
+                object : RendererCommon.RendererEvents {
+                    override fun onFirstFrameRendered() {
+                        Log.i(TAG, "Remote video first frame rendered")
+                        setStatus("Видео собеседника получено")
+                    }
+
+                    override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
+                        Log.i(TAG, "Remote video frame: ${width}x${height}, rotation=$rotation")
+                    }
+                }
+            )
             setEnableHardwareScaler(true)
             setMirror(false)
         }
@@ -420,7 +439,7 @@ class WebRtcAudioCallClient(
         videoSource = source
         val textureHelper = SurfaceTextureHelper.create(
             "ArturChatCamera-${call.id}",
-            egl.eglBaseContext
+            eglContext
         ) ?: error("Не удалось подготовить видеопоток.")
         surfaceTextureHelper = textureHelper
 
@@ -465,9 +484,11 @@ class WebRtcAudioCallClient(
                 return
             }
             if (!remoteVideoSinkAttached) {
+                track.setEnabled(true)
                 track.addSink(renderer)
                 remoteVideoSinkAttached = true
-                Log.i(TAG, "Remote video track attached via $callback")
+                Log.i(TAG, "Remote video track attached via $callback; enabled=true")
+                setStatus("Удалённая видеодорожка получена, ждём первый кадр…")
             }
         }
     }
@@ -639,6 +660,27 @@ class WebRtcAudioCallClient(
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
+            val localSdpLines = localSdp.lineSequence().toList()
+            val videoStart = localSdpLines.indexOfFirst { it.startsWith("m=video ") }
+            val videoEnd = if (videoStart >= 0) {
+                (videoStart + 1 until localSdpLines.size)
+                    .firstOrNull { localSdpLines[it].startsWith("m=") } ?: localSdpLines.size
+            } else {
+                videoStart
+            }
+            val localVideoSection = if (videoStart >= 0) {
+                localSdpLines.subList(videoStart, videoEnd)
+            } else {
+                emptyList()
+            }
+            val localVideoMLine = localVideoSection.firstOrNull()
+            val localVideoCodecs = localVideoSection
+                .filter { it.startsWith("a=rtpmap:") }
+                .joinToString(",") { it.removePrefix("a=rtpmap:") }
+            val localVideoDirection = localVideoSection.firstOrNull {
+                it == "a=sendrecv" || it == "a=sendonly" || it == "a=recvonly" || it == "a=inactive"
+            }
+            Log.i(TAG, "Local SDP video: mLine=$localVideoMLine; codecs=$localVideoCodecs; direction=$localVideoDirection")
             Log.i(
                 TAG,
                 "Local ICE gather finished=$gatheringFinished; SDP candidate count=$candidatesInSdp"
@@ -919,16 +961,46 @@ class WebRtcAudioCallClient(
             "Не удалось установить прямое соединение между телефонами. " +
                 "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
                 "или переключить один из телефонов на другую сеть."
+        // Keep the proven audio-only factory completely unchanged. Video
+        // calls use a second factory with real encoder/decoder implementations;
+        // otherwise SDP can advertise an empty/rejected m=video section.
         @Volatile private var peerConnectionFactory: PeerConnectionFactory? = null
+        @Volatile private var videoPeerConnectionFactory: PeerConnectionFactory? = null
+        @Volatile private var videoFactoryEglBase: EglBase? = null
+        @Volatile private var webRtcRuntimeInitialized = false
 
-        private fun initializeFactory(context: Context) {
-            if (peerConnectionFactory != null) return
+        private fun initializeFactory(context: Context, withVideo: Boolean) {
             synchronized(this) {
-                if (peerConnectionFactory == null) {
+                if (!webRtcRuntimeInitialized) {
                     PeerConnectionFactory.initialize(
                         PeerConnectionFactory.InitializationOptions.builder(context)
                             .createInitializationOptions()
                     )
+                    webRtcRuntimeInitialized = true
+                }
+
+                if (withVideo) {
+                    if (videoPeerConnectionFactory == null) {
+                        val eglBase = EglBase.create()
+                        try {
+                            val factory = PeerConnectionFactory.builder()
+                                .setVideoEncoderFactory(
+                                    DefaultVideoEncoderFactory(eglBase.eglBaseContext, true, true)
+                                )
+                                .setVideoDecoderFactory(
+                                    DefaultVideoDecoderFactory(eglBase.eglBaseContext)
+                                )
+                                .createPeerConnectionFactory()
+                            videoFactoryEglBase = eglBase
+                            videoPeerConnectionFactory = factory
+                            Log.i(TAG, "Video PeerConnectionFactory initialized with video codecs")
+                        } catch (error: Throwable) {
+                            runCatching { eglBase.release() }
+                            throw error
+                        }
+                    }
+                } else if (peerConnectionFactory == null) {
+                    // Preserve the original factory used by audio-only calls.
                     peerConnectionFactory = PeerConnectionFactory.builder()
                         .createPeerConnectionFactory()
                 }
