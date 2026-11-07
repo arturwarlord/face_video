@@ -3609,7 +3609,10 @@ private fun ProfileScreen(
                     about = loaded?.about.orEmpty()
                     if (loaded == null && profile == null) errorMessage = "Профиль пока не найден."
                 }
-                .onFailure { errorMessage = it.message ?: "Не удалось загрузить профиль." }
+                .onFailure {
+                    errorMessage = it.message ?: "Не удалось обновить профиль."
+                    android.util.Log.w("ArturChatProfile", "Could not refresh own profile", it)
+                }
         }
         isLoading = false
     }
@@ -3619,150 +3622,518 @@ private fun ProfileScreen(
             scope.launch {
                 isSaving = true
                 errorMessage = null
+                successMessage = null
                 runCatching {
                     val prepared = withContext(Dispatchers.IO) { prepareChatImage(context, uri) }
-                    repository.uploadProfileAvatar(userId, prepared.bytes)
-                }.onSuccess { url ->
-                    runCatching {
-                        repository.updateMyProfile(userId, username, displayName, statusText, about, url)
-                    }.onSuccess {
-                        profile = it
-                        cache.saveProfile(userId, it)
-                        successMessage = "Фотография профиля обновлена."
-                    }.onFailure { errorMessage = it.message ?: "Фото загружено, но профиль не обновился." }
-                }.onFailure { errorMessage = it.message ?: "Не удалось загрузить фотографию." }
+                    val url = repository.uploadProfileAvatar(userId, prepared.bytes)
+                    repository.updateMyProfile(userId, username, displayName, statusText, about, url)
+                }.onSuccess {
+                    profile = it
+                    cache.saveProfile(userId, it)
+                    successMessage = "Фотография профиля обновлена."
+                }.onFailure {
+                    errorMessage = it.message ?: "Не удалось обновить фотографию."
+                }
                 isSaving = false
             }
         }
     }
 
+    val hasChanges = profile?.let {
+        username != it.username ||
+            displayName != it.displayName ||
+            statusText != it.statusText ||
+            about != it.about
+    } ?: false
+    val validUsername = username.matches(Regex("^[a-z0-9_]{3,24}$"))
+    val canSave = !isSaving && hasChanges && validUsername && displayName.trim().isNotEmpty()
+
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.Start
     ) {
-        Text("МОЙ ПРОФИЛЬ", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
-        Spacer(Modifier.height(18.dp))
-        Box(contentAlignment = Alignment.BottomEnd) {
-            Avatar(
-                (displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }).trim().take(1).uppercase(),
-                1,
-                Modifier.size(112.dp),
-                highlighted = profile != null,
-                imageUrl = profile?.avatarUrl,
-                imageCacheKey = userId
-            )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "ПРОФИЛЬ",
+                    color = AccentSlate,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.8.sp
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Ваше пространство",
+                    color = MainText,
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Настройте, как вас видят друзья",
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+            }
             Surface(
-                color = AccentSlate,
+                color = Color(0xFFE8EDF3),
                 shape = CircleShape,
-                modifier = Modifier.size(34.dp).clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
+                border = BorderStroke(1.dp, PaletteMist)
             ) {
-                Box(contentAlignment = Alignment.Center) { Text("✎", color = Color.White, fontSize = 17.sp) }
+                Text(
+                    "AC",
+                    color = AccentSlate,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
+                )
             }
         }
-        Spacer(Modifier.height(12.dp))
-        Text(displayName.ifBlank { "Ваш профиль" }, color = MainText, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(if (username.isNotBlank()) "@$username" else userEmail ?: "Демонстрационный режим", color = Muted, fontSize = 12.sp)
+
         Spacer(Modifier.height(20.dp))
 
-        if (isLoading && profile == null) {
-            Text("Загружаем профиль…", color = Muted, fontSize = 12.sp)
-        } else if (repository != null && userId != null && profile != null) {
-            Surface(color = Panel, shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, PaletteMist), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("ЛИЧНЫЕ ДАННЫЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = displayName,
-                        onValueChange = { displayName = it.take(48); successMessage = null },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Имя") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = username,
-                        onValueChange = {
-                            username = it.lowercase().filter { ch -> ch.isLetterOrDigit() || ch == '_' }.take(24)
-                            errorMessage = null
-                            successMessage = null
-                        },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Псевдоним") },
-                        leadingIcon = { Text("@", color = AccentSlate) },
-                        supportingText = { Text("3–24 символа: a–z, 0–9 и _") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("СТАТУС", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-                    OutlinedTextField(
-                        value = statusText,
-                        onValueChange = { statusText = it.take(80); successMessage = null },
-                        modifier = Modifier.fillMaxWidth(), singleLine = true,
-                        label = { Text("Например: На работе · Не беспокоить") },
-                        supportingText = { Text("${statusText.length}/80") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("О СЕБЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-                    OutlinedTextField(
-                        value = about,
-                        onValueChange = { about = it.take(500); successMessage = null },
-                        modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 5,
-                        label = { Text("Расскажи немного о себе") },
-                        supportingText = { Text("${about.length}/500") }
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Электронная почта", color = Muted, fontSize = 10.sp)
-                    Text(userEmail.orEmpty(), color = MainText, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
-                    if (errorMessage != null) Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
-                    if (successMessage != null) Text(successMessage.orEmpty(), color = AccentSlate, fontSize = 11.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                isSaving = true
-                                errorMessage = null
-                                successMessage = null
-                                runCatching {
-                                    repository.updateMyProfile(userId, username, displayName, statusText, about)
-                                }.onSuccess {
-                                    profile = it
-                                    cache.saveProfile(userId, it)
-                                    successMessage = "Изменения сохранены и доступны собеседникам."
-                                }.onFailure { failure ->
-                                    errorMessage = when {
-                                        failure.message.orEmpty().contains("duplicate", true) || failure.message.orEmpty().contains("unique", true) ->
-                                            "Этот псевдоним уже занят. Выбери другой."
-                                        else -> failure.message ?: "Не удалось сохранить изменения."
-                                    }
-                                }
-                                isSaving = false
+        // Profile hero: avatar and identity stay visually separate from the editor.
+        Surface(
+            color = Panel,
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, PaletteMist),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(Brush.linearGradient(listOf(Color(0xFFE8EEF5), Color(0xFFFFF8F4))))
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Avatar(
+                            displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                .trim().take(1).uppercase(),
+                            1,
+                            Modifier.size(88.dp),
+                            highlighted = profile != null,
+                            imageUrl = profile?.avatarUrl,
+                            imageCacheKey = userId
+                        )
+                        Surface(
+                            color = AccentSlate,
+                            shape = CircleShape,
+                            border = BorderStroke(2.dp, Color(0xFFE8EEF5)),
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.size(31.dp)
+                                .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("✎", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             }
-                        },
-                        enabled = !isSaving && username.length >= 3,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (isSaving) "Сохраняем…" else "Сохранить профиль") }
+                        }
+                    }
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "ВАШ АККАУНТ",
+                            color = AccentSlate,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.3.sp
+                        )
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            displayName.ifBlank { "Ваше имя" },
+                            color = MainText,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            if (username.isNotBlank()) "@$username" else "Добавьте псевдоним",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(15.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Фото профиля",
+                        color = MainText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (isSaving) "Обновляем…" else "Изменить фото  ›",
+                        color = AccentSlate,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable(enabled = !isSaving) {
+                            avatarPicker.launch("image/*")
+                        }.padding(vertical = 5.dp)
+                    )
                 }
             }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("ЛИЧНЫЕ ДАННЫЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Основная информация", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            }
+            if (hasChanges) {
+                Text("Не сохранено", color = Color(0xFF9C784F), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            } else if (profile != null) {
+                Text("Актуально", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Spacer(Modifier.height(13.dp))
+
+        if (isLoading && profile == null) {
+            Surface(
+                color = Panel,
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, PaletteMist),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = AccentSlate,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text("Загружаем ваш профиль…", color = Muted, fontSize = 12.sp)
+                }
+            }
+        } else if (repository != null && userId != null && profile != null) {
+            ProfileInputField(
+                label = "Имя",
+                value = displayName,
+                onValueChange = {
+                    displayName = it.take(48)
+                    successMessage = null
+                },
+                placeholder = "Как к вам обращаться",
+                maxLength = 48
+            )
+            Spacer(Modifier.height(12.dp))
+            ProfileInputField(
+                label = "Уникальный псевдоним",
+                value = username,
+                onValueChange = {
+                    username = it.lowercase().filter { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == '_' }.take(24)
+                    errorMessage = null
+                    successMessage = null
+                },
+                placeholder = "например, artur_01",
+                prefix = "@",
+                maxLength = 24,
+                footnote = "3–24 символа · латинские буквы, цифры и _",
+                isInvalid = username.isNotEmpty() && !validUsername
+            )
+            Spacer(Modifier.height(12.dp))
+            ProfileInputField(
+                label = "Статус",
+                value = statusText,
+                onValueChange = {
+                    statusText = it.take(80)
+                    successMessage = null
+                },
+                placeholder = "Например: На работе · Не беспокоить",
+                maxLength = 80
+            )
+            Spacer(Modifier.height(12.dp))
+            ProfileInputField(
+                label = "О себе",
+                value = about,
+                onValueChange = {
+                    about = it.take(500)
+                    successMessage = null
+                },
+                placeholder = "Расскажите немного о себе…",
+                maxLength = 500,
+                multiline = true
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            Surface(
+                color = Panel,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, PaletteMist),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(15.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(color = Color(0xFFE8EDF3), shape = CircleShape) {
+                        Text("✉", color = AccentSlate, fontSize = 15.sp, modifier = Modifier.padding(10.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Электронная почта", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(3.dp))
+                        Text(userEmail.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 1)
+                    }
+                    Text("АККАУНТ", color = AccentSlate, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                }
+            }
+
+            if (errorMessage != null) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = Color(0xFFFFF0F0),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        errorMessage.orEmpty(),
+                        color = Color(0xFFA85F6E),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(13.dp)
+                    )
+                }
+            }
+            if (successMessage != null) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = Color(0xFFEAF1ED),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        successMessage.orEmpty(),
+                        color = Color(0xFF547565),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(13.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            Surface(
+                color = if (canSave) AccentSlate else Color(0xFFD5DCE5),
+                shape = RoundedCornerShape(17.dp),
+                shadowElevation = if (canSave) 3.dp else 0.dp,
+                modifier = Modifier.fillMaxWidth()
+                    .height(54.dp)
+                    .clickable(enabled = canSave) {
+                        scope.launch {
+                            isSaving = true
+                            errorMessage = null
+                            successMessage = null
+                            runCatching {
+                                repository.updateMyProfile(
+                                    userId,
+                                    username,
+                                    displayName,
+                                    statusText,
+                                    about
+                                )
+                            }.onSuccess {
+                                profile = it
+                                cache.saveProfile(userId, it)
+                                successMessage = "Изменения сохранены и доступны собеседникам."
+                            }.onFailure { failure ->
+                                errorMessage = when {
+                                    failure.message.orEmpty().contains("duplicate", true) ||
+                                        failure.message.orEmpty().contains("unique", true) ->
+                                        "Этот псевдоним уже занят. Выбери другой."
+                                    else -> failure.message ?: "Не удалось сохранить изменения."
+                                }
+                            }
+                            isSaving = false
+                        }
+                    }
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        when {
+                            isSaving -> "Сохраняем изменения…"
+                            hasChanges -> "Сохранить изменения"
+                            else -> "Все изменения сохранены"
+                        },
+                        color = if (canSave) Color.White else Color(0xFF7C8999),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            Text(
+                if (hasChanges) "После сохранения обновлённый профиль увидят ваши собеседники."
+                else "Ваш профиль синхронизирован с ArturChat.",
+                color = Muted,
+                fontSize = 10.sp,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
         } else {
-            Text(errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.", color = Muted, fontSize = 12.sp)
+            Surface(
+                color = Panel,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, PaletteMist),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.",
+                    color = Muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(18.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("ПРИЛОЖЕНИЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                Text("ArturChat", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Text("v${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(16.dp))
-        Surface(color = PanelLight, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("ВЕРСИЯ ПРИЛОЖЕНИЯ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text("ArturChat", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        if (userEmail != null) {
+            Surface(
+                color = Color(0xFFFFF1F0),
+                shape = RoundedCornerShape(17.dp),
+                border = BorderStroke(1.dp, Color(0xFFF2D8D7)),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("↪", color = Color(0xFFA85F6E), fontSize = 19.sp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Выйти из аккаунта", color = Color(0xFFA85F6E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Text("v${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         Spacer(Modifier.height(18.dp))
-        if (userEmail != null) {
-            Surface(color = PaletteBlush, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)) {
-                Text("Выйти из аккаунта", color = Color(0xFFA85F6E), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(16.dp))
-            }
-        }
-        Spacer(Modifier.height(12.dp))
     }
 }
+
+@Composable
+private fun ProfileInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    prefix: String? = null,
+    maxLength: Int? = null,
+    footnote: String? = null,
+    isInvalid: Boolean = false,
+    multiline: Boolean = false
+) {
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp).padding(bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label.uppercase(),
+                color = if (isInvalid) Color(0xFFA85F6E) else AccentSlate,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.1.sp,
+                modifier = Modifier.weight(1f)
+            )
+            if (maxLength != null) {
+                Text(
+                    "${value.length}/$maxLength",
+                    color = if (isInvalid) Color(0xFFA85F6E) else Muted,
+                    fontSize = 9.sp
+                )
+            }
+        }
+        Surface(
+            color = Panel,
+            shape = RoundedCornerShape(17.dp),
+            border = BorderStroke(
+                1.dp,
+                if (isInvalid) Color(0xFFE2BFC1) else PaletteMist
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = if (multiline) 13.dp else 15.dp),
+                verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically
+            ) {
+                if (prefix != null) {
+                    Text(
+                        prefix,
+                        color = AccentSlate,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(end = 8.dp, top = if (multiline) 1.dp else 0.dp)
+                    )
+                }
+                Box(Modifier.weight(1f)) {
+                    if (value.isEmpty()) {
+                        Text(
+                            placeholder,
+                            color = Color(0xFF9AA5B3),
+                            fontSize = 13.sp
+                        )
+                    }
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = !multiline,
+                        minLines = if (multiline) 3 else 1,
+                        maxLines = if (multiline) 5 else 1,
+                        textStyle = TextStyle(
+                            color = MainText,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = if (multiline) KeyboardCapitalization.Sentences
+                                else KeyboardCapitalization.Words
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentSlate)
+                    )
+                }
+            }
+        }
+        if (footnote != null) {
+            Text(
+                footnote,
+                color = if (isInvalid) Color(0xFFA85F6E) else Muted,
+                fontSize = 9.sp,
+                modifier = Modifier.padding(start = 3.dp, top = 5.dp)
+            )
+        }
+    }
+}
+
 
 @Composable
 private fun UserProfileScreen(

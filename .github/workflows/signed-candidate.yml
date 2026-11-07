@@ -1,6 +1,6 @@
 name: ArturChat signed candidate APK
 
-# Build signed candidate for ArturChat 0.6.24 refines the chat home layout.
+# Build signed candidate for ArturChat 0.6.25 refines the chat home layout.
 on:
   push:
     branches: [main]
@@ -90,16 +90,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.24"
-          -PAPP_VERSION_CODE="6024"
+          -PAPP_VERSION_NAME="0.6.25"
+          -PAPP_VERSION_CODE="6025"
 
       - name: Build signed candidate APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.6.24"
-          -PAPP_VERSION_CODE="6024"
+          -PAPP_VERSION_NAME="0.6.25"
+          -PAPP_VERSION_CODE="6025"
 
       - name: Verify APK signature
         shell: bash
