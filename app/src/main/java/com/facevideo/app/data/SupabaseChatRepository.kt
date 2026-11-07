@@ -300,7 +300,7 @@ class SupabaseChatRepository(
 
         val visibleUserIds = rows.mapTo(mutableSetOf()) { it.userId }
         val profiles = client.from("face_video_profiles").select {
-            filter { isIn("id", visibleUserIds) }
+            filter { isIn("id", visibleUserIds.toList()) }
         }.decodeList<FaceVideoProfile>().associateBy { it.id }
 
         return rows.mapNotNull { story ->
