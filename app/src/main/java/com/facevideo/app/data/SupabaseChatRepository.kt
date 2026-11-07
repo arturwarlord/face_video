@@ -426,14 +426,26 @@ class SupabaseChatRepository(
      */
     /** Save the current user's latest online heartbeat without depending on Realtime. */
     suspend fun heartbeatOnlinePresence(userId: String) {
-        client.from("face_video_online_presence").insert(
-            FaceVideoOnlinePresenceRow(
-                userId = userId,
-                lastSeenAt = java.time.Instant.now().toString()
-            ),
-            upsert = true,
-            onConflict = "user_id"
+        val row = FaceVideoOnlinePresenceRow(
+            userId = userId,
+            lastSeenAt = java.time.Instant.now().toString()
         )
+        val updated = client.from("face_video_online_presence").update(row) {
+            select()
+            filter { eq("user_id", userId) }
+        }.decodeList<FaceVideoOnlinePresenceRow>()
+
+        if (updated.isEmpty()) {
+            try {
+                client.from("face_video_online_presence").insert(row)
+            } catch (insertError: Exception) {
+                // Another signed-in device may have created this shared account row
+                // between our UPDATE and INSERT. Retry as UPDATE in that case.
+                client.from("face_video_online_presence").update(row) {
+                    filter { eq("user_id", userId) }
+                }
+            }
+        }
     }
 
     /** Users with a heartbeat in the last 45 seconds are treated as online. */
