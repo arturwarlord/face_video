@@ -292,8 +292,14 @@ class SupabaseChatRepository(
      * Story rows are filtered by RLS: only the author and their accepted friends
      * can receive them, and expired entries are never returned.
      */
-    suspend fun listVisibleStories(): List<FaceVideoStoryCard> {
+    suspend fun listVisibleStories(
+        storyOwnerId: String? = null,
+        includeMediaUrls: Boolean = true
+    ): List<FaceVideoStoryCard> {
         val rows = client.from("face_video_stories").select {
+            if (storyOwnerId != null) {
+                filter { eq("user_id", storyOwnerId) }
+            }
             order("created_at", Order.DESCENDING)
         }.decodeList<FaceVideoStory>()
         if (rows.isEmpty()) return emptyList()
@@ -305,10 +311,7 @@ class SupabaseChatRepository(
 
         return rows.mapNotNull { story ->
             val profile = profiles[story.userId] ?: return@mapNotNull null
-            val signedUrl = client.storage.from(STORIES_BUCKET).createSignedUrl(
-                path = story.mediaPath,
-                expiresIn = 3.minutes
-            )
+            val signedUrl = if (includeMediaUrls) createStoryMediaUrl(story.mediaPath) else ""
             FaceVideoStoryCard(
                 storyId = story.id,
                 userId = story.userId,
@@ -323,6 +326,13 @@ class SupabaseChatRepository(
             )
         }
     }
+
+    /** Signed URLs are short-lived; only create them when a story image is about to load. */
+    suspend fun createStoryMediaUrl(mediaPath: String): String =
+        client.storage.from(STORIES_BUCKET).createSignedUrl(
+            path = mediaPath,
+            expiresIn = 15.minutes
+        )
 
     /** Publishes a JPEG photo story. The database enforces a 24-hour lifetime. */
     suspend fun publishStory(userId: String, bytes: ByteArray, caption: String): FaceVideoStoryCard {

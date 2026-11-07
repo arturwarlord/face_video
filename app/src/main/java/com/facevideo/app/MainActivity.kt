@@ -1258,7 +1258,7 @@ private fun StoriesStrip(
     LaunchedEffect(repository, userId, refreshKey) {
         loadError = null
         runCatching {
-            val visible = repository.listVisibleStories()
+            val visible = repository.listVisibleStories(includeMediaUrls = false)
             val own = repository.getMyProfile(userId)
             stories = visible
             myProfile = own
@@ -1266,6 +1266,28 @@ private fun StoriesStrip(
                 cache.saveStories(userId, visible)
                 if (own != null) cache.saveProfile(userId, own)
                 mediaCache.pruneStories(userId, visible.mapTo(mutableSetOf()) { it.storyId })
+            }
+            // Warm one story per author in the background. The story list itself
+            // no longer waits for a signed URL for every photo.
+            val storiesToPreload = visible.groupBy { it.userId }.values
+                .mapNotNull { group -> group.minByOrNull { it.createdAt } }
+                .take(8)
+            scope.launch(Dispatchers.IO) {
+                storiesToPreload.forEach { story ->
+                    runCatching {
+                        val signedUrl = repository.createStoryMediaUrl(story.mediaPath)
+                        mediaCache.fetchAndStore(
+                            kind = "stories",
+                            ownerId = userId,
+                            mediaId = story.storyId,
+                            sourceUrl = signedUrl,
+                            freshnessMillis = 15 * 60 * 1000L,
+                            refreshWhenSourceChanges = false
+                        )
+                    }.onFailure {
+                        android.util.Log.w("ArturChatStories", "Story prefetch failed", it)
+                    }
+                }
             }
         }.onFailure {
             loadError = it.message ?: "Не удалось загрузить истории."
@@ -1548,12 +1570,13 @@ private fun StoryViewerScreen(
     LaunchedEffect(repository, storyOwnerId, currentUserId) {
         isLoading = stories.isEmpty()
         runCatching {
-            val visible = repository.listVisibleStories()
-            stories = visible.filter { it.userId == storyOwnerId }.sortedBy { it.createdAt }
+            val ownerStories = repository.listVisibleStories(storyOwnerId = storyOwnerId)
+            stories = ownerStories.sortedBy { it.createdAt }
             index = 0
             withContext(Dispatchers.IO) {
-                cache.saveStories(currentUserId, visible)
-                mediaCache.pruneStories(currentUserId, visible.mapTo(mutableSetOf()) { it.storyId })
+                val otherCachedStories = cache.readStories(currentUserId)
+                    .filterNot { it.userId == storyOwnerId }
+                cache.saveStories(currentUserId, otherCachedStories + ownerStories)
             }
         }.onFailure {
             errorMessage = it.message ?: "Не удалось загрузить историю."
