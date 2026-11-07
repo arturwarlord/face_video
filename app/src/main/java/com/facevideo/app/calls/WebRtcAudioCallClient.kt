@@ -795,6 +795,11 @@ class WebRtcAudioCallClient(
     private fun sendIceRestartRequest(reason: String) {
         if (!restartRequestSent.compareAndSet(false, true)) return
         restartAttempted.set(true)
+        // The peer is about to generate a fresh ICE generation. Stop applying
+        // trickled candidates to the previous remote SDP while the restart
+        // offer is in transit; receiveRemoteCandidate will queue them until
+        // setRemoteDescription() installs the new offer.
+        remoteDescriptionSet.set(false)
         callScope.launch {
             runCatching {
                 repository.sendSignal(
@@ -837,6 +842,10 @@ class WebRtcAudioCallClient(
                 // A new completion signal is required for the restarted ICE
                 // generation; the first gathering cycle has already completed.
                 iceGatheringCompleted = CompletableDeferred()
+                // Do not add candidates from the remote restart generation to
+                // the old answer. They must remain queued until the new answer
+                // is installed below via setRemoteDescription().
+                remoteDescriptionSet.set(false)
                 Log.w(TAG, "Starting one ICE restart: $reason")
                 setStatus("Пробуем восстановить прямое соединение…")
                 connection.restartIce()
