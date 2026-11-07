@@ -62,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
@@ -114,6 +115,8 @@ import com.facevideo.app.data.sortChatMessagesChronologically
 import com.facevideo.app.data.shouldShowChatMessageTime
 import com.facevideo.app.update.ArturChatUpdateHost
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -360,7 +363,9 @@ private fun FaceVideoApp(
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
     val callRepository = remember(supabase) { supabase?.let { SupabaseCallRepository(it) } }
     val scope = rememberCoroutineScope()
-    var onlineUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var realtimeOnlineUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var databaseOnlineUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val onlineUserIds = realtimeOnlineUserIds + databaseOnlineUserIds
     var presenceAvailable by remember { mutableStateOf(false) }
 
     // Share online state only with authenticated ArturChat profiles through a private Realtime channel.
@@ -373,7 +378,7 @@ private fun FaceVideoApp(
         val presenceFlow = presenceChannel.presenceDataFlow<FaceVideoPresence>()
         val presenceCollector = launch {
             presenceFlow.collect { presences ->
-                onlineUserIds = presences.mapTo(mutableSetOf()) { it.userId }
+                realtimeOnlineUserIds = presences.mapTo(mutableSetOf()) { it.userId }
             }
         }
 
@@ -387,7 +392,7 @@ private fun FaceVideoApp(
             throw error
         } catch (error: Exception) {
             android.util.Log.w("ArturChatPresence", "Could not connect online presence", error)
-            onlineUserIds = emptySet()
+            realtimeOnlineUserIds = emptySet()
             presenceAvailable = false
         } finally {
             presenceCollector.cancel()
@@ -399,6 +404,25 @@ private fun FaceVideoApp(
             presenceAvailable = false
         }
     }
+
+    // Database heartbeat is the reliable fallback when Realtime Presence cannot
+    // reserve a connection. A user stays online while at least one device pings.
+    LaunchedEffect(liveRepository, userId) {
+        val repository = liveRepository ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            try {
+                repository.heartbeatOnlinePresence(currentUserId)
+                databaseOnlineUserIds = repository.listOnlineUserIds()
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                android.util.Log.w("ArturChatPresence", "Database online heartbeat failed", error)
+            }
+            delay(15_000L)
+        }
+    }
+
     val appNotifications = remember(context) { AppNotificationManager(context) }
     val incomingCallsFlow = remember(callRepository, userId) {
         if (callRepository != null && userId != null) {
@@ -700,6 +724,16 @@ private fun FaceVideoApp(
     }
 
     val incomingCall = incomingCalls.firstOrNull { it.id != activeCall?.id }
+    LaunchedEffect(incomingCall?.id) {
+        if (incomingCall != null && activeCall == null) {
+            appNotifications.startIncomingCallAlert()
+        } else {
+            appNotifications.stopIncomingCallAlert()
+        }
+    }
+    DisposableEffect(appNotifications) {
+        onDispose { appNotifications.stopIncomingCallAlert() }
+    }
     LaunchedEffect(incomingCall?.id) {
         incomingCallerProfile = if (incomingCall != null) {
             runCatching { callRepository?.getProfile(incomingCall.callerId) }.getOrNull()
@@ -1913,9 +1947,9 @@ private fun LiveChatScreen(
                     Text(
                         when {
                             chat.isGroup -> "Групповой чат"
-                            !presenceAvailable -> "Статус недоступен"
                             peerUserId == null -> "Проверяем статус…"
                             peerIsOnline -> "В сети"
+                            !presenceAvailable -> "Статус обновляется…"
                             else -> "Не в сети"
                         },
                         color = if (peerIsOnline) AccentSlate else Muted,
