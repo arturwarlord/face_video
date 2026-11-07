@@ -245,5 +245,6 @@ class AppNotificationManager(context: Context) {
     private companion object {
         const val MESSAGE_CHANNEL_ID = "arturchat_messages"
         const val CALL_CHANNEL_ID = "arturchat_calls"
+        const val TAG = "ArturChatCallAlert"
     }
 }

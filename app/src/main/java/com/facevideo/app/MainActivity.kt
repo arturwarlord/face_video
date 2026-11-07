@@ -400,7 +400,7 @@ private fun FaceVideoApp(
                 .onFailure {
                     android.util.Log.w("ArturChatPresence", "Could not remove online presence channel", it)
                 }
-            onlineUserIds = emptySet()
+            realtimeOnlineUserIds = emptySet()
             presenceAvailable = false
         }
     }
