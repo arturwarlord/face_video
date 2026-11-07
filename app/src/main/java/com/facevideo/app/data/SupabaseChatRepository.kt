@@ -29,6 +29,13 @@ data class FaceVideoChatSummary(
 )
 
 @Serializable
+@Serializable
+private data class FaceVideoOnlinePresenceRow(
+    @SerialName("user_id") val userId: String,
+    @SerialName("last_seen_at") val lastSeenAt: String
+)
+
+@Serializable
 data class FaceVideoProfile(
     val id: String,
     val username: String,
@@ -418,6 +425,27 @@ class SupabaseChatRepository(
      * Loads chat summaries and enriches direct chats with the other participant's
      * profile photo. Two batched queries avoid an N+1 request per chat row.
      */
+    /** Save the current user's latest online heartbeat without depending on Realtime. */
+    suspend fun heartbeatOnlinePresence(userId: String) {
+        client.from("face_video_online_presence").insert(
+            FaceVideoOnlinePresenceRow(
+                userId = userId,
+                lastSeenAt = java.time.Instant.now().toString()
+            ),
+            upsert = true,
+            onConflict = "user_id"
+        )
+    }
+
+    /** Users with a heartbeat in the last 45 seconds are treated as online. */
+    suspend fun listOnlineUserIds(): Set<String> {
+        val cutoff = java.time.Instant.now().minusSeconds(45).toString()
+        return client.from("face_video_online_presence").select {
+            filter { gt("last_seen_at", cutoff) }
+        }.decodeList<FaceVideoOnlinePresenceRow>()
+            .mapTo(mutableSetOf()) { it.userId }
+    }
+
     suspend fun listMyChats(currentUserId: String): List<FaceVideoChatSummary> {
         val chats = client.from("face_video_chat_summaries")
             .select()
