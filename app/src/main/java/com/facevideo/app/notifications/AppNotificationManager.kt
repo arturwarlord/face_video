@@ -10,7 +10,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import com.facevideo.app.MainActivity
 import com.facevideo.app.R
 
@@ -29,6 +34,8 @@ internal object CallNotificationIntents {
 class AppNotificationManager(context: Context) {
     private val appContext = context.applicationContext
     private val manager = appContext.getSystemService(NotificationManager::class.java)
+    @Volatile private var incomingRingtonePlayer: MediaPlayer? = null
+    @Volatile private var incomingCallVibrator: Vibrator? = null
 
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -114,6 +121,74 @@ class AppNotificationManager(context: Context) {
 
     fun cancelNotification(notificationId: String) {
         manager.cancel(notificationId.hashCode())
+    }
+
+    /** Play the device ringtone and vibration while an incoming call is waiting. */
+    @Synchronized
+    fun startIncomingCallAlert() {
+        if (incomingRingtonePlayer != null) return
+        val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        if (ringtoneUri != null) {
+            val player = MediaPlayer()
+            try {
+                player.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                player.isLooping = true
+                player.setDataSource(appContext, ringtoneUri)
+                player.setOnPreparedListener { prepared ->
+                    if (incomingRingtonePlayer === prepared) {
+                        runCatching { prepared.start() }
+                            .onFailure { android.util.Log.w(TAG, "Could not start incoming ringtone", it) }
+                    } else {
+                        runCatching { prepared.release() }
+                    }
+                }
+                player.setOnErrorListener { failed, _, _ ->
+                    synchronized(this) {
+                        if (incomingRingtonePlayer === failed) incomingRingtonePlayer = null
+                    }
+                    runCatching { failed.release() }
+                    true
+                }
+                incomingRingtonePlayer = player
+                player.prepareAsync()
+            } catch (error: Exception) {
+                incomingRingtonePlayer = null
+                runCatching { player.release() }
+                android.util.Log.w(TAG, "Could not prepare incoming ringtone", error)
+            }
+        }
+
+        @Suppress("DEPRECATION")
+        runCatching {
+            val vibrator = appContext.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+            if (vibrator?.hasVibrator() == true) {
+                incomingCallVibrator = vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 650, 450), 0))
+                } else {
+                    vibrator.vibrate(longArrayOf(0, 650, 450), 0)
+                }
+            }
+        }.onFailure { android.util.Log.w(TAG, "Could not vibrate for incoming call", it) }
+    }
+
+    @Synchronized
+    fun stopIncomingCallAlert() {
+        val player = incomingRingtonePlayer
+        incomingRingtonePlayer = null
+        if (player != null) {
+            runCatching { if (player.isPlaying) player.stop() }
+            runCatching { player.release() }
+        }
+        val vibrator = incomingCallVibrator
+        incomingCallVibrator = null
+        runCatching { vibrator?.cancel() }
     }
 
     private fun callActionPendingIntent(callId: String, action: String): PendingIntent {
