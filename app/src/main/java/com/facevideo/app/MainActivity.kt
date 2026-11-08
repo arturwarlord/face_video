@@ -6,12 +6,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -127,6 +130,8 @@ import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
+import com.facevideo.app.model.formatVoiceDuration
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -1944,6 +1949,14 @@ private fun LiveChatScreen(
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
+    var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
+    var voiceRecordingStartedAt by remember(chat.id) { mutableStateOf(0L) }
+    var voiceRecordingDurationMs by remember(chat.id) { mutableStateOf(0L) }
+
+    DisposableEffect(chat.id, voiceRecorder) {
+        onDispose { voiceRecorder.cancel() }
+    }
 
     LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
         runCatching { repository.markChatRead(chat.id) }
@@ -2030,6 +2043,85 @@ private fun LiveChatScreen(
         if (uri != null) sendImage(uri)
     }
 
+    fun startVoiceRecording() {
+        if (isSending || isVoiceRecording) return
+        try {
+            voiceRecorder.start()
+            voiceRecordingStartedAt = SystemClock.elapsedRealtime()
+            voiceRecordingDurationMs = 0L
+            isVoiceRecording = true
+            errorMessage = null
+        } catch (error: Exception) {
+            android.util.Log.e("ArturChatVoice", "Could not start recording", error)
+            errorMessage = error.message ?: "Не удалось начать запись. Проверьте доступ к микрофону."
+        }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startVoiceRecording()
+        else errorMessage = "Для записи голосовых сообщений нужен доступ к микрофону."
+    }
+
+    fun cancelVoiceRecording() {
+        if (!isVoiceRecording) return
+        isVoiceRecording = false
+        voiceRecorder.cancel()
+        voiceRecordingDurationMs = 0L
+    }
+
+    fun sendVoiceRecording() {
+        if (!isVoiceRecording || isSending) return
+        val durationMs = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+        isVoiceRecording = false
+        voiceRecordingDurationMs = durationMs
+        isSending = true
+        errorMessage = null
+        scope.launch {
+            var recordedFile: File? = null
+            try {
+                val completedFile = withContext(Dispatchers.IO) { voiceRecorder.stop() }
+                recordedFile = completedFile
+                require(durationMs >= 1_000L) { "Запишите голосовое сообщение хотя бы одну секунду." }
+                val audioBytes = withContext(Dispatchers.IO) { completedFile.readBytes() }
+                val audioPath = repository.uploadChatVoice(chat.id, userId, audioBytes)
+                val persistedMessage = repository.sendVoiceMessage(
+                    chatId = chat.id,
+                    audioPath = audioPath,
+                    fileName = "voice-message.m4a",
+                    fileSize = audioBytes.size.toLong(),
+                    durationMs = durationMs,
+                    replyToMessageId = replyingTo?.id
+                )
+                locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
+                replyingTo = null
+                Toast.makeText(context, "Голосовое сообщение отправлено", Toast.LENGTH_SHORT).show()
+            } catch (error: Exception) {
+                android.util.Log.e("ArturChatVoice", "Voice send failed", error)
+                errorMessage = error.message ?: "Не удалось отправить голосовое сообщение."
+            } finally {
+                withContext(Dispatchers.IO) { recordedFile?.delete() }
+                isSending = false
+                voiceRecordingDurationMs = 0L
+            }
+        }
+    }
+
+    LaunchedEffect(isVoiceRecording, voiceRecordingStartedAt) {
+        if (isVoiceRecording) {
+            while (isVoiceRecording) {
+                val elapsed = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+                voiceRecordingDurationMs = elapsed
+                if (elapsed >= MAX_CHAT_VOICE_DURATION_MS) {
+                    sendVoiceRecording()
+                    break
+                }
+                delay(200L)
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
@@ -2112,7 +2204,9 @@ private fun LiveChatScreen(
                             isMine = message.senderId == userId,
                             deliveryStatus = if (message.senderId == userId && message.deletedAt == null) resolveMessageDeliveryStatus(message.id, receipts) else null,
                             forwardedFromName = message.forwardedFromName,
-                            isDeleted = message.deletedAt != null
+                            isDeleted = message.deletedAt != null,
+                            attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
+                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
@@ -2304,62 +2398,124 @@ private fun LiveChatScreen(
 
         if (isSending) {
             Text(
-                "Отправляем фото или сообщение…",
+                "Отправляем сообщение или аудио…",
                 color = Muted,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = PanelLight,
-                shape = CircleShape,
-                modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
-                    imagePicker.launch("image/*")
-                }
+        if (isVoiceRecording) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("+", color = AccentSlate, fontSize = 25.sp)
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    color = Panel,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFA85F6E)))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Запись голоса", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(formatVoiceDuration(voiceRecordingDurationMs), color = AccentSlate, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable { cancelVoiceRecording() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("×", color = MainText, fontSize = 25.sp)
+                    }
+                }
+                Spacer(Modifier.width(7.dp))
+                Surface(
+                    color = AccentSlate,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable { sendVoiceRecording() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-            Spacer(Modifier.width(9.dp))
-            Surface(
-                Modifier.weight(1f),
-                color = Panel,
-                shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+        } else {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                BasicTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        capitalization = KeyboardCapitalization.None,
-                        imeAction = ImeAction.Send
-                    ),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                    textStyle = TextStyle(color = MainText, fontSize = 14.sp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
-                    decorationBox = { inner ->
-                        Box {
-                            if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
-                            inner()
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
+                        imagePicker.launch("image/*")
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("+", color = AccentSlate, fontSize = 25.sp)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    Modifier.weight(1f),
+                    color = Panel,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            capitalization = KeyboardCapitalization.None,
+                            imeAction = ImeAction.Send
+                        ),
+                        keyboardActions = KeyboardActions(onSend = { sendMessage() }),
+                        textStyle = TextStyle(color = MainText, fontSize = 14.sp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+                        decorationBox = { inner ->
+                            Box {
+                                if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
+                                inner()
+                            }
+                        }
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
+                        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            startVoiceRecording()
+                        } else {
+                            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
-                )
-            }
-            Spacer(Modifier.width(9.dp))
-            Box(
-                Modifier.size(43.dp).clip(CircleShape).background(if (isSending) Muted else AccentSlate)
-                    .clickable(enabled = !isSending) { sendMessage() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🎙", color = AccentSlate, fontSize = 18.sp)
+                    }
+                }
+                Spacer(Modifier.width(7.dp))
+                Box(
+                    Modifier.size(43.dp).clip(CircleShape)
+                        .background(if (isSending || draft.isBlank()) Muted else AccentSlate)
+                        .clickable(enabled = !isSending && draft.isNotBlank()) { sendMessage() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -2751,6 +2907,177 @@ private fun ChatImagePreview(
     }
 }
 
+@Composable
+private fun ChatVoiceMessagePlayer(
+    path: String,
+    repository: SupabaseChatRepository,
+    durationMs: Long
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val playerState = remember(path) { mutableStateOf<MediaPlayer?>(null) }
+    val audioFileState = remember(path) { mutableStateOf<File?>(null) }
+    var isLoading by remember(path) { mutableStateOf(false) }
+    var isPrepared by remember(path) { mutableStateOf(false) }
+    var isPlaying by remember(path) { mutableStateOf(false) }
+    var playbackFailed by remember(path) { mutableStateOf(false) }
+    var playbackPositionMs by remember(path) { mutableStateOf(0L) }
+    val safeDurationMs = durationMs.coerceAtLeast(0L)
+
+    fun togglePlayback() {
+        val currentPlayer = playerState.value
+        if (currentPlayer != null && isPrepared) {
+            runCatching {
+                if (isPlaying) {
+                    currentPlayer.pause()
+                    isPlaying = false
+                } else {
+                    if (safeDurationMs > 0L && playbackPositionMs >= safeDurationMs) {
+                        currentPlayer.seekTo(0)
+                        playbackPositionMs = 0L
+                    }
+                    currentPlayer.start()
+                    isPlaying = true
+                }
+            }.onFailure {
+                playbackFailed = true
+                isPlaying = false
+            }
+            return
+        }
+        if (isLoading) return
+
+        playbackFailed = false
+        isLoading = true
+        scope.launch {
+            var createdPlayer: MediaPlayer? = null
+            try {
+                val audioBytes = withContext(Dispatchers.IO) {
+                    repository.downloadChatAttachment(path)
+                }
+                val audioFile = withContext(Dispatchers.IO) {
+                    File.createTempFile("arturchat-voice-", ".m4a", context.cacheDir).apply {
+                        writeBytes(audioBytes)
+                    }
+                }
+                audioFileState.value?.delete()
+                audioFileState.value = audioFile
+
+                val mediaPlayer = MediaPlayer()
+                createdPlayer = mediaPlayer
+                playerState.value = mediaPlayer
+                mediaPlayer.setOnPreparedListener { preparedPlayer ->
+                    isPrepared = true
+                    isLoading = false
+                    playbackPositionMs = 0L
+                    runCatching {
+                        preparedPlayer.start()
+                        isPlaying = true
+                    }.onFailure {
+                        playbackFailed = true
+                        isPlaying = false
+                    }
+                }
+                mediaPlayer.setOnCompletionListener { completedPlayer ->
+                    isPlaying = false
+                    playbackPositionMs = 0L
+                    runCatching { completedPlayer.seekTo(0) }
+                }
+                mediaPlayer.setOnErrorListener { failedPlayer, _, _ ->
+                    isLoading = false
+                    isPlaying = false
+                    isPrepared = false
+                    playbackFailed = true
+                    runCatching { failedPlayer.release() }
+                    if (playerState.value === failedPlayer) playerState.value = null
+                    true
+                }
+                mediaPlayer.setDataSource(audioFile.absolutePath)
+                mediaPlayer.prepareAsync()
+            } catch (error: Exception) {
+                runCatching { createdPlayer?.release() }
+                playerState.value = null
+                audioFileState.value?.delete()
+                audioFileState.value = null
+                isLoading = false
+                playbackFailed = true
+                android.util.Log.w("ArturChatVoice", "Voice playback failed", error)
+            }
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            playbackPositionMs = runCatching {
+                playerState.value?.currentPosition?.toLong() ?: 0L
+            }.getOrDefault(0L)
+            delay(200L)
+        }
+    }
+
+    DisposableEffect(path) {
+        onDispose {
+            runCatching { playerState.value?.release() }
+            audioFileState.value?.delete()
+        }
+    }
+
+    val progress = if (safeDurationMs > 0L) {
+        (playbackPositionMs.toFloat() / safeDurationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = AccentSlate,
+                shape = CircleShape,
+                modifier = Modifier.size(34.dp).clickable(enabled = !isLoading) { togglePlayback() }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        when {
+                            isLoading -> "…"
+                            isPlaying -> "Ⅱ"
+                            else -> "▶"
+                        },
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Голосовое сообщение", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                        .background(Color(0xFFC9D3DF))
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape)
+                            .background(AccentSlate)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    formatVoiceDuration(playbackPositionMs) + " / " + formatVoiceDuration(safeDurationMs),
+                    color = Muted,
+                    fontSize = 9.sp
+                )
+            }
+        }
+        if (playbackFailed) {
+            Text("Не удалось воспроизвести аудио", color = Color(0xFFA85F6E), fontSize = 9.sp)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SelectionActionButton(
@@ -2874,18 +3201,29 @@ private fun MessageBubble(
                         }
                         Spacer(Modifier.height(6.dp))
                     }
+                    val isVoiceMessage = message.attachmentMimeType?.startsWith("audio/") == true
                     if (attachmentPath != null && attachmentRepository != null) {
-                        ChatImagePreview(
-                            path = attachmentPath,
-                            repository = attachmentRepository
-                        )
+                        if (isVoiceMessage) {
+                            ChatVoiceMessagePlayer(
+                                path = attachmentPath,
+                                repository = attachmentRepository,
+                                durationMs = message.attachmentDurationMs ?: 0L
+                            )
+                        } else {
+                            ChatImagePreview(
+                                path = attachmentPath,
+                                repository = attachmentRepository
+                            )
+                        }
                         Spacer(Modifier.height(6.dp))
                     }
-                    Text(
-                        text = messageText,
-                        color = MainText,
-                        fontSize = 14.sp
-                    )
+                    if (!isVoiceMessage || attachmentPath == null) {
+                        Text(
+                            text = messageText,
+                            color = MainText,
+                            fontSize = 14.sp
+                        )
+                    }
                     if (showTime) {
                         Row(
                             modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
@@ -4382,5 +4720,70 @@ private fun BottomNavigation(
                 }
             }
         }
+    }
+}
+
+private const val MAX_CHAT_VOICE_BYTES = 10 * 1024 * 1024
+private const val MAX_CHAT_VOICE_DURATION_MS = 10 * 60 * 1000L
+
+private class ChatVoiceRecorder(private val cacheDirectory: File) {
+    private var recorder: MediaRecorder? = null
+    private var outputFile: File? = null
+
+    fun start() {
+        check(recorder == null) { "Запись уже запущена." }
+        val file = File(cacheDirectory, "voice-" + UUID.randomUUID().toString() + ".m4a")
+        val activeRecorder = MediaRecorder()
+        try {
+            activeRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            activeRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            activeRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            activeRecorder.setAudioEncodingBitRate(64_000)
+            activeRecorder.setAudioSamplingRate(44_100)
+            activeRecorder.setMaxFileSize(MAX_CHAT_VOICE_BYTES.toLong())
+            activeRecorder.setOutputFile(file.absolutePath)
+            activeRecorder.prepare()
+            activeRecorder.start()
+            recorder = activeRecorder
+            outputFile = file
+        } catch (error: Exception) {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+            file.delete()
+            throw error
+        }
+    }
+
+    fun stop(): File {
+        val activeRecorder = recorder ?: throw IllegalStateException("Запись не запущена.")
+        val completedFile = outputFile ?: throw IllegalStateException("Файл записи не найден.")
+        recorder = null
+        outputFile = null
+        try {
+            activeRecorder.stop()
+            require(completedFile.isFile && completedFile.length() > 0L) {
+                "Запись не содержит аудиоданных."
+            }
+            return completedFile
+        } catch (error: Exception) {
+            completedFile.delete()
+            throw error
+        } finally {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+    }
+
+    fun cancel() {
+        val activeRecorder = recorder
+        val partialFile = outputFile
+        recorder = null
+        outputFile = null
+        if (activeRecorder != null) {
+            runCatching { activeRecorder.stop() }
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+        partialFile?.delete()
     }
 }

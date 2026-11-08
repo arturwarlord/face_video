@@ -23,4 +23,16 @@ class ChatModelsTest {
     fun queryMatchesMessagePreview() {
         assertEquals("Мария", filterChats(chats, "встречи").single().title)
     }
+
+    @Test
+    fun voiceDurationFormatsMinutesAndSeconds() {
+        assertEquals("0:00", formatVoiceDuration(0L))
+        assertEquals("1:05", formatVoiceDuration(65_000L))
+        assertEquals("10:00", formatVoiceDuration(600_000L))
+    }
+
+    @Test
+    fun negativeVoiceDurationIsClampedToZero() {
+        assertEquals("0:00", formatVoiceDuration(-500L))
+    }
 }
