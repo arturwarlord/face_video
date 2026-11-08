@@ -2667,51 +2667,69 @@ private fun LiveChatScreen(
             .imePadding()
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 8.dp),
-            color = Color.White.copy(alpha = 0.34f),
-            shape = RoundedCornerShape(23.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.82f)),
-            shadowElevation = 2.dp
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            color = Color.White.copy(alpha = 0.48f),
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+            shadowElevation = 7.dp
         ) {
             Row(
                 Modifier.fillMaxWidth()
                     .background(
-                        Brush.horizontalGradient(
+                        Brush.linearGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.34f),
-                                Color(0xFFE5ECFF).copy(alpha = 0.24f),
-                                Color.White.copy(alpha = 0.38f)
+                                Color(0xFFF9FBFF).copy(alpha = 0.96f),
+                                Color(0xFFEAF0FF).copy(alpha = 0.92f),
+                                Color(0xFFF5EDFF).copy(alpha = 0.94f)
                             )
                         )
                     )
-                    .padding(horizontal = 7.dp, vertical = 7.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (selectedMessageIds.isNotEmpty()) {
-                    ChatHeaderIconButton(onClick = { selectedMessageIds = emptySet() }) {
-                        Text("×", color = AccentSlate, fontSize = 29.sp, fontWeight = FontWeight.Light)
+                    ChatChromeActionButton(
+                        onClick = { selectedMessageIds = emptySet() },
+                        filled = false
+                    ) {
+                        Text("×", color = InboxAccentStrong, fontSize = 26.sp, fontWeight = FontWeight.Light)
                     }
-                    Text(
-                        "${selectedMessageIds.size} выбрано",
-                        color = MainText,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        fontSize = 13.sp
-                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${selectedMessageIds.size} выбрано",
+                            color = InboxPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text("Сообщения отмечены", color = InboxMuted, fontSize = 9.sp)
+                    }
                 } else {
-                    ChatHeaderIconButton(onClick = onBack) {
+                    ChatChromeActionButton(onClick = onBack, filled = false) {
                         InboxBackGlyph()
                     }
-                    Spacer(Modifier.width(5.dp))
-                    Avatar(
-                        chat.title.take(2).uppercase(),
-                        chat.id.hashCode().ushr(1) % 4,
-                        Modifier.size(45.dp).clickable(enabled = peerUserId != null && !chat.isGroup) {
-                            peerUserId?.let(onOpenProfile)
-                        },
-                        imageUrl = peerAvatarUrl,
-                        imageCacheKey = peerUserId
-                    )
+                    Spacer(Modifier.width(9.dp))
+                    Box(
+                        Modifier.size(48.dp)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF32ADFF), Color(0xFF596BE8), Color(0xFF9A68E9))
+                                ),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        Avatar(
+                            chat.title.take(2).uppercase(),
+                            chat.id.hashCode().ushr(1) % 4,
+                            Modifier.fillMaxSize().clip(CircleShape)
+                                .clickable(enabled = peerUserId != null && !chat.isGroup) {
+                                    peerUserId?.let(onOpenProfile)
+                                },
+                            imageUrl = peerAvatarUrl,
+                            imageCacheKey = peerUserId
+                        )
+                    }
                     Spacer(Modifier.width(10.dp))
                     Column(
                         Modifier.weight(1f).clickable(enabled = peerUserId != null && !chat.isGroup) {
@@ -2723,49 +2741,54 @@ private fun LiveChatScreen(
                             color = InboxPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(Modifier.height(3.dp))
                         val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier.size(6.dp).background(
-                                    if (peerIsOnline) InboxOnline else InboxMuted.copy(alpha = 0.65f),
-                                    CircleShape
+                        Surface(
+                            color = Color.White.copy(alpha = 0.62f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.78f))
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(6.dp).background(
+                                        if (peerIsOnline) InboxOnline else InboxMuted.copy(alpha = 0.68f),
+                                        CircleShape
+                                    )
                                 )
-                            )
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                when {
-                                    chat.isGroup -> "Групповой чат"
-                                    peerUserId == null -> "Проверяем статус…"
-                                    peerIsOnline -> "В сети"
-                                    !presenceAvailable -> "Статус обновляется…"
-                                    else -> "Не в сети"
-                                },
-                                color = if (peerIsOnline) InboxOnline else InboxMuted,
-                                fontSize = 10.sp,
-                                maxLines = 1
-                            )
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    when {
+                                        chat.isGroup -> "Групповой чат"
+                                        peerUserId == null -> "Проверяем статус…"
+                                        peerIsOnline -> "В сети"
+                                        !presenceAvailable -> "Статус обновляется…"
+                                        else -> "Не в сети"
+                                    },
+                                    color = if (peerIsOnline) InboxOnline else InboxMuted,
+                                    fontSize = 9.sp,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
-                    Spacer(Modifier.width(4.dp))
-                    InboxHeaderActionButton(onClick = { onCall(false) }) {
+                    Spacer(Modifier.width(7.dp))
+                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false) {
                         ChatCallGlyph(video = false, tint = InboxAccentStrong)
                     }
-                    Spacer(Modifier.width(5.dp))
-                    InboxHeaderActionButton(onClick = { onCall(true) }) {
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false) {
                         ChatCallGlyph(video = true, tint = InboxAccentStrong)
                     }
                 }
             }
         }
-        Box(
-            Modifier.fillMaxWidth().height(1.dp).background(
-                Brush.horizontalGradient(
-                    listOf(Color.Transparent, Color.White.copy(alpha = 0.94f), Color(0xFFD6DDF0), Color.Transparent)
-                )
-            )
-        )
+        Spacer(Modifier.height(3.dp))
 
         if (orderedMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -2996,86 +3019,101 @@ private fun LiveChatScreen(
             Text(
                 "Отправляем сообщение или аудио…",
                 color = InboxMuted,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                fontSize = 9.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp)
             )
         }
 
         if (isVoiceRecording) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.34f),
+                color = Color.White.copy(alpha = 0.58f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
-                shadowElevation = 3.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                shadowElevation = 8.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.34f), Color(0xFFE8EDFF).copy(alpha = 0.30f), Color.White.copy(alpha = 0.40f))))
-                        .padding(horizontal = 7.dp, vertical = 7.dp),
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF))
+                            )
+                        )
+                        .padding(9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        color = Color.White.copy(alpha = 0.66f),
-                        shape = RoundedCornerShape(22.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
-                    ) {
-                        Column(
-                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFDF718D)))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Запись голоса", color = InboxPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.weight(1f))
-                                Text(formatVoiceDuration(voiceRecordingDurationMs), color = InboxAccentStrong, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            VoiceWaveformBars(
-                                waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList()),
-                                progress = 1f,
-                                modifier = Modifier.fillMaxWidth().height(26.dp)
+                    Column(Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFE36C8A)))
+                            Spacer(Modifier.width(7.dp))
+                            Text("Идёт запись", color = InboxPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                formatVoiceDuration(voiceRecordingDurationMs),
+                                color = Color(0xFFCB587A),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
+                        Spacer(Modifier.height(7.dp))
+                        VoiceWaveformBars(
+                            waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList()),
+                            progress = 1f,
+                            modifier = Modifier.fillMaxWidth().height(24.dp)
+                        )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    InboxHeaderActionButton(onClick = { cancelVoiceRecording() }) {
-                        Text("×", color = InboxAccentStrong, fontSize = 25.sp, fontWeight = FontWeight.Light)
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(
+                        onClick = { cancelVoiceRecording() },
+                        filled = false
+                    ) {
+                        Text("×", color = Color(0xFFCC6681), fontSize = 24.sp, fontWeight = FontWeight.Light)
                     }
-                    Spacer(Modifier.width(7.dp))
-                    Box(
-                        Modifier.size(46.dp).clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
-                            .border(1.dp, Color.White.copy(alpha = 0.62f), CircleShape)
-                            .clickable(enabled = !isSending) { sendVoiceRecording() },
-                        contentAlignment = Alignment.Center
-                    ) { ChatSendGlyph() }
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(
+                        onClick = { sendVoiceRecording() },
+                        enabled = !isSending,
+                        filled = true
+                    ) {
+                        ChatSendGlyph()
+                    }
                 }
             }
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.34f),
+                color = Color.White.copy(alpha = 0.60f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
-                shadowElevation = 3.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                shadowElevation = 8.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.34f), Color(0xFFE8EDFF).copy(alpha = 0.30f), Color.White.copy(alpha = 0.40f))))
-                        .padding(horizontal = 7.dp, vertical = 7.dp),
+                        .background(
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFFFCFDFF).copy(alpha = 0.98f),
+                                    Color(0xFFE8EEFF).copy(alpha = 0.96f),
+                                    Color(0xFFF2ECFF).copy(alpha = 0.98f)
+                                )
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    InboxHeaderActionButton(onClick = { if (!isSending) imagePicker.launch("image/*") }) {
-                        InboxCameraGlyph()
+                    ChatChromeActionButton(
+                        onClick = { if (!isSending) imagePicker.launch("image/*") },
+                        enabled = !isSending,
+                        filled = true
+                    ) {
+                        InboxCameraGlyph(tint = Color.White, iconSize = 21.dp)
                     }
                     Spacer(Modifier.width(8.dp))
                     Surface(
-                        Modifier.weight(1f),
-                        color = Color.White.copy(alpha = 0.66f),
-                        shape = RoundedCornerShape(22.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
+                        modifier = Modifier.weight(1f),
+                        color = Color.White.copy(alpha = 0.88f),
+                        shape = RoundedCornerShape(23.dp),
+                        border = BorderStroke(1.dp, Color.White)
                     ) {
                         BasicTextField(
                             value = draft,
@@ -3087,42 +3125,45 @@ private fun LiveChatScreen(
                                 imeAction = ImeAction.Send
                             ),
                             keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                            textStyle = TextStyle(color = InboxPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                            textStyle = TextStyle(
+                                color = InboxPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp),
                             decorationBox = { inner ->
-                                Box {
-                                    if (draft.isEmpty()) Text("Сообщение…", color = InboxMuted, fontSize = 13.sp)
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (draft.isEmpty()) {
+                                        Text("Сообщение…", color = InboxMuted, fontSize = 12.sp)
+                                    }
                                     inner()
                                 }
                             }
                         )
                     }
                     Spacer(Modifier.width(8.dp))
-                    InboxHeaderActionButton(onClick = {
-                        if (!isSending) {
-                            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                startVoiceRecording()
-                            } else {
-                                voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    ChatChromeActionButton(
+                        onClick = {
+                            if (!isSending) {
+                                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    startVoiceRecording()
+                                } else {
+                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
-                        }
-                    }) { ChatMicrophoneGlyph() }
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        Modifier.size(46.dp).clip(CircleShape)
-                            .background(
-                                if (isSending || draft.isBlank()) Brush.horizontalGradient(listOf(Color(0xFF9AA6C8), Color(0xFFB0B9D4)))
-                                else Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8)))
-                            )
-                            .border(1.dp, Color.White.copy(alpha = 0.62f), CircleShape)
-                            .clickable(enabled = !isSending && draft.isNotBlank()) { sendMessage() },
-                        contentAlignment = Alignment.Center
+                        },
+                        enabled = !isSending,
+                        filled = false
                     ) {
-                        if (isSending) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                modifier = Modifier.size(19.dp), color = Color.White, strokeWidth = 2.dp
-                            )
-                        } else ChatSendGlyph()
+                        ChatMicrophoneGlyph(tint = InboxAccentStrong)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    ChatChromeActionButton(
+                        onClick = { sendMessage() },
+                        enabled = !isSending && draft.isNotBlank(),
+                        filled = true
+                    ) {
+                        ChatSendGlyph()
                     }
                 }
             }
@@ -6187,6 +6228,48 @@ private fun UserProfileScreen(
 }
 
 @Composable
+private fun ChatChromeActionButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    filled: Boolean = false,
+    content: @Composable () -> Unit
+) {
+    val gradient = Brush.linearGradient(
+        listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+    )
+    Box(
+        modifier = modifier.size(44.dp)
+            .clip(CircleShape)
+            .background(
+                if (filled) {
+                    if (enabled) gradient else Brush.linearGradient(
+                        listOf(Color(0xFFB7C4DF), Color(0xFF9EACC9))
+                    )
+                } else Brush.linearGradient(
+                    listOf(Color(0xFFA6BBF6), Color(0xFFBEDBFF), Color(0xFFD0BFFF))
+                )
+            )
+            .border(1.dp, Color.White.copy(alpha = 0.94f), CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (filled) {
+            content()
+        } else {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                color = Color.White.copy(alpha = 0.94f),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, Color.White)
+            ) {
+                Box(contentAlignment = Alignment.Center) { content() }
+            }
+        }
+    }
+}
+
+@Composable
 private fun InboxHeaderActionButton(
     onClick: () -> Unit,
     content: @Composable () -> Unit
@@ -6396,8 +6479,11 @@ private fun InboxSearchGlyph(iconSize: Dp = 21.dp) {
 }
 
 @Composable
-private fun InboxCameraGlyph() {
-    Canvas(Modifier.size(28.dp)) {
+private fun InboxCameraGlyph(
+    tint: Color = InboxAccentStrong,
+    iconSize: Dp = 28.dp
+) {
+    Canvas(Modifier.size(iconSize)) {
         val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
         val body = Path().apply {
             moveTo(size.width * 0.16f, size.height * 0.34f)
@@ -6414,9 +6500,9 @@ private fun InboxCameraGlyph() {
             cubicTo(size.width * 0.19f, size.height * 0.85f, size.width * 0.15f, size.height * 0.79f, size.width * 0.15f, size.height * 0.71f)
             close()
         }
-        drawPath(body, InboxAccentStrong, style = stroke)
+        drawPath(body, tint, style = stroke)
         drawCircle(
-            InboxAccentStrong,
+            tint,
             radius = size.width * 0.15f,
             center = Offset(size.width * 0.53f, size.height * 0.53f),
             style = stroke
