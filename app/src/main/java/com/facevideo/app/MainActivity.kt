@@ -1900,7 +1900,7 @@ private fun StoryViewerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier.size(40.dp).clickable(onClick = onBack),
                         shape = CircleShape,
                         color = Color.White.copy(alpha = 0.14f),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
@@ -1911,7 +1911,7 @@ private fun StoryViewerScreen(
                                 color = Color.White,
                                 fontSize = 29.sp,
                                 fontWeight = FontWeight.Light,
-                                modifier = Modifier.clickable(onClick = onBack).padding(bottom = 3.dp)
+                                modifier = Modifier.padding(bottom = 3.dp)
                             )
                         }
                     }
