@@ -5772,45 +5772,6 @@ private fun ProfileScreen(
     }
 }
 
-@Composable
-private fun ProfileOverviewRow(
-    icon: String,
-    title: String,
-    value: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = Color.White.copy(alpha = 0.68f),
-        shape = RoundedCornerShape(19.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = Color(0xFFE6EBFF),
-                shape = RoundedCornerShape(13.dp)
-            ) {
-                Text(
-                    icon,
-                    color = AccentSlate,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 10.dp)
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(3.dp))
-                Text(value, color = Muted, fontSize = 10.sp, maxLines = 2, lineHeight = 14.sp)
-            }
-            Text("›", color = AccentSlate, fontSize = 23.sp, fontWeight = FontWeight.Light)
-        }
-    }
-}
 
 @Composable
 private fun ProfileEditorTab(
