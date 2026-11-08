@@ -735,7 +735,7 @@ class SupabaseChatRepository(
         require(imagePath.startsWith("$chatId/")) {
             "Вложение не относится к этой переписке."
         }
-        require(fileSize in 1..MAX_CHAT_IMAGE_BYTES.toLong()) {
+        require(fileSize in 1..MAX_CHAT_ATTACHMENT_BYTES.toLong()) {
             "Фото должно быть не больше 10 МБ."
         }
         val safeName = fileName.trim().take(255).ifBlank { "photo.jpg" }
