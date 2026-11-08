@@ -9,6 +9,13 @@ on:
       - "app/build.gradle.kts"
       - "gradle/**"
       - ".github/workflows/signed-candidate.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/src/main/**"
+      - "app/build.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/signed-candidate.yml"
   workflow_dispatch:
 
 permissions:
