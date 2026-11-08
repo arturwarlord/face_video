@@ -1,0 +1,123 @@
+name: ArturChat next installable APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-next-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-next-apk:
+    name: Build signed ArturChat 0.7.2 APK (no release)
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      FIREBASE_GOOGLE_SERVICES_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_BASE64 }}
+      ARTURCHAT_KEYSTORE_BASE64: ${{ secrets.ARTURCHAT_KEYSTORE_BASE64 }}
+      ARTURCHAT_KEYSTORE_PASSWORD: ${{ secrets.ARTURCHAT_KEYSTORE_PASSWORD }}
+      ARTURCHAT_KEY_ALIAS: ${{ secrets.ARTURCHAT_KEY_ALIAS }}
+      ARTURCHAT_KEY_PASSWORD: ${{ secrets.ARTURCHAT_KEY_PASSWORD }}
+      APP_VERSION_NAME: "0.7.2"
+      APP_VERSION_CODE: "7002"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Prepare Firebase Android configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_GOOGLE_SERVICES_BASE64:-}" ]; then
+            echo "::warning::FIREBASE_GOOGLE_SERVICES_BASE64 is not configured; this APK will not register FCM tokens."
+            exit 0
+          fi
+          printf '%s' "$FIREBASE_GOOGLE_SERVICES_BASE64" | base64 --decode > app/google-services.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("app/google-services.json").read_text(encoding="utf-8"))
+          clients = config.get("client", [])
+          package_names = {
+              item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for item in clients
+          }
+          if "com.facevideo.app" not in package_names:
+              raise SystemExit("Firebase config does not contain Android package com.facevideo.app")
+          PY
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Validate signing configuration and prepare existing release keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ARTURCHAT_KEYSTORE_BASE64 ARTURCHAT_KEYSTORE_PASSWORD ARTURCHAT_KEY_ALIAS ARTURCHAT_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required Actions secret: $name"
+              exit 1
+            fi
+          done
+          echo "$ARTURCHAT_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/arturchat-upload.jks"
+          chmod 600 "$RUNNER_TEMP/arturchat-upload.jks"
+          echo "ARTURCHAT_KEYSTORE_PATH=$RUNNER_TEMP/arturchat-upload.jks" >> "$GITHUB_ENV"
+
+      - name: Run unit tests
+        run: >-
+          gradle --no-daemon testDebugUnitTest
+          -PSUPABASE_URL="$SUPABASE_URL"
+          -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          -PAPP_VERSION_NAME="$APP_VERSION_NAME"
+          -PAPP_VERSION_CODE="$APP_VERSION_CODE"
+
+      - name: Build signed installable APK
+        run: >-
+          gradle --no-daemon assembleRelease
+          -PSUPABASE_URL="$SUPABASE_URL"
+          -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+          -PAPP_VERSION_NAME="$APP_VERSION_NAME"
+          -PAPP_VERSION_CODE="$APP_VERSION_CODE"
+
+      - name: Verify package, version and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='7002' versionName='0.7.2'"
+          mkdir -p next-apk
+          cp "$APK" "next-apk/ArturChat-0.7.2.apk"
+          cd next-apk
+          sha256sum ArturChat-0.7.2.apk > ArturChat-0.7.2.apk.sha256
+
+      - name: Upload signed APK (no GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArturChat-0.7.2-installable
+          path: |
+            next-apk/ArturChat-0.7.2.apk
+            next-apk/ArturChat-0.7.2.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
