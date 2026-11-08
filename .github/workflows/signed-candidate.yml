@@ -1,6 +1,6 @@
-name: ArturChat signed candidate APK
+name: ArturChat 0.7.2 signed installable APK
 
-# Build signed candidate for ArturChat 0.7.1.
+# Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
   push:
     branches: [main]
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-signed-candidate:
-    name: Build and sign test APK
+    name: Build and sign installable test APK
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -71,7 +71,7 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Validate signing configuration and prepare keystore
+      - name: Validate signing configuration and prepare existing release keystore
         shell: bash
         run: |
           set -euo pipefail
@@ -90,29 +90,42 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.7.1"
-          -PAPP_VERSION_CODE="7001"
+          -PAPP_VERSION_NAME="0.7.2"
+          -PAPP_VERSION_CODE="7002"
 
-      - name: Build signed candidate APK
+      - name: Build signed installable APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.7.1"
-          -PAPP_VERSION_CODE="7001"
+          -PAPP_VERSION_NAME="0.7.2"
+          -PAPP_VERSION_CODE="7002"
 
-      - name: Verify APK signature
+      - name: Verify package, version and APK signature
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='7002' versionName='0.7.2'"
 
-      - name: Upload signed candidate APK
+      - name: Prepare APK and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p installable
+          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.7.2.apk
+          cd installable
+          sha256sum ArturChat-0.7.2.apk > ArturChat-0.7.2.apk.sha256
+
+      - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: arturchat-signed-candidate-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: arturchat-0.7.2-installable
+          path: |
+            installable/ArturChat-0.7.2.apk
+            installable/ArturChat-0.7.2.apk.sha256
           if-no-files-found: error
           retention-days: 14
