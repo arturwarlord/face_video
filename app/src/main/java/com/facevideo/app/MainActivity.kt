@@ -144,6 +144,8 @@ import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
+import com.facevideo.app.model.buildVoiceWaveform
+import com.facevideo.app.model.normalizeVoiceAmplitude
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -2185,6 +2187,7 @@ private fun LiveChatScreen(
     var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
     var voiceRecordingStartedAt by remember(chat.id) { mutableStateOf(0L) }
     var voiceRecordingDurationMs by remember(chat.id) { mutableStateOf(0L) }
+    val voiceAmplitudeSamples = remember(chat.id) { mutableStateListOf<Int>() }
 
     DisposableEffect(chat.id, voiceRecorder) {
         onDispose { voiceRecorder.cancel() }
@@ -2281,6 +2284,7 @@ private fun LiveChatScreen(
             voiceRecorder.start()
             voiceRecordingStartedAt = SystemClock.elapsedRealtime()
             voiceRecordingDurationMs = 0L
+            voiceAmplitudeSamples.clear()
             isVoiceRecording = true
             errorMessage = null
         } catch (error: Exception) {
@@ -2301,11 +2305,13 @@ private fun LiveChatScreen(
         isVoiceRecording = false
         voiceRecorder.cancel()
         voiceRecordingDurationMs = 0L
+        voiceAmplitudeSamples.clear()
     }
 
     fun sendVoiceRecording() {
         if (!isVoiceRecording || isSending) return
         val durationMs = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+        val waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList())
         isVoiceRecording = false
         voiceRecordingDurationMs = durationMs
         isSending = true
@@ -2324,6 +2330,7 @@ private fun LiveChatScreen(
                     fileName = "voice-message.m4a",
                     fileSize = audioBytes.size.toLong(),
                     durationMs = durationMs,
+                    waveform = waveform,
                     replyToMessageId = replyingTo?.id
                 )
                 locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
@@ -2336,6 +2343,7 @@ private fun LiveChatScreen(
                 withContext(Dispatchers.IO) { recordedFile?.delete() }
                 isSending = false
                 voiceRecordingDurationMs = 0L
+                voiceAmplitudeSamples.clear()
             }
         }
     }
@@ -2345,11 +2353,12 @@ private fun LiveChatScreen(
             while (isVoiceRecording) {
                 val elapsed = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
                 voiceRecordingDurationMs = elapsed
+                voiceAmplitudeSamples.add(voiceRecorder.readAmplitudeLevel())
                 if (elapsed >= MAX_CHAT_VOICE_DURATION_MS) {
                     sendVoiceRecording()
                     break
                 }
-                delay(200L)
+                delay(100L)
             }
         }
     }
@@ -2539,7 +2548,8 @@ private fun LiveChatScreen(
                             forwardedFromName = message.forwardedFromName,
                             isDeleted = message.deletedAt != null,
                             attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
-                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null
+                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null,
+                            attachmentWaveform = if (message.deletedAt == null) message.attachmentWaveform else null
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
@@ -2758,15 +2768,22 @@ private fun LiveChatScreen(
                         shape = RoundedCornerShape(22.dp),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
                     ) {
-                        Row(
-                            Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFDF718D)))
-                            Spacer(Modifier.width(8.dp))
-                            Text("Запись голоса", color = InboxPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Text(formatVoiceDuration(voiceRecordingDurationMs), color = InboxAccentStrong, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFDF718D)))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Запись голоса", color = InboxPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.weight(1f))
+                                Text(formatVoiceDuration(voiceRecordingDurationMs), color = InboxAccentStrong, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            VoiceWaveformBars(
+                                waveform = voiceAmplitudeSamples.toList(),
+                                progress = 1f,
+                                modifier = Modifier.fillMaxWidth().height(26.dp)
+                            )
                         }
                     }
                     Spacer(Modifier.width(8.dp))
@@ -3264,10 +3281,52 @@ private fun ChatImagePreview(
 }
 
 @Composable
+private fun VoiceWaveformBars(
+    waveform: List<Int>,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val bars = remember(waveform) {
+        if (waveform.size in 16..96) waveform.map { it.coerceIn(8, 100) }
+        else List(64) { 14 }
+    }
+    val safeProgress = progress.coerceIn(0f, 1f)
+    Canvas(modifier = modifier) {
+        if (bars.isEmpty() || size.width <= 0f || size.height <= 0f) return@Canvas
+        val step = size.width / bars.size
+        val strokeWidth = (step * 0.54f).coerceIn(1.6.dp.toPx(), 3.4.dp.toPx())
+        val playedColor = Color(0xFF596FE3)
+        val futureColor = Color(0xFFC8D3EC)
+        bars.forEachIndexed { index, level ->
+            val fraction = level / 100f
+            val barHeight = (size.height * (0.18f + fraction * 0.82f))
+                .coerceIn(3.dp.toPx(), size.height * 0.96f)
+            val x = step * (index + 0.5f)
+            val top = (size.height - barHeight) / 2f
+            drawLine(
+                color = if ((index + 0.5f) / bars.size <= safeProgress) playedColor else futureColor,
+                start = Offset(x, top),
+                end = Offset(x, top + barHeight),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        }
+        if (safeProgress > 0f && safeProgress < 1f) {
+            drawCircle(
+                color = Color(0xFF5267D8),
+                radius = 2.6.dp.toPx(),
+                center = Offset(size.width * safeProgress, size.height / 2f)
+            )
+        }
+    }
+}
+
+@Composable
 private fun ChatVoiceMessagePlayer(
     path: String,
     repository: SupabaseChatRepository,
-    durationMs: Long
+    durationMs: Long,
+    waveform: List<Int>
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -3356,7 +3415,7 @@ private fun ChatVoiceMessagePlayer(
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
             playbackPositionMs = runCatching { playerState.value?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L)
-            delay(200L)
+            delay(120L)
         }
     }
     DisposableEffect(path) {
@@ -3366,13 +3425,16 @@ private fun ChatVoiceMessagePlayer(
         }
     }
 
-    val progress = if (safeDurationMs > 0L) (playbackPositionMs.toFloat() / safeDurationMs.toFloat()).coerceIn(0f, 1f) else 0f
+    val progress = if (safeDurationMs > 0L) {
+        (playbackPositionMs.toFloat() / safeDurationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(38.dp).clip(CircleShape)
+                Modifier.size(40.dp).clip(CircleShape)
                     .background(Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
-                    .border(1.dp, Color.White.copy(alpha = 0.86f), CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.90f), CircleShape)
                     .clickable(enabled = !isLoading) { togglePlayback() },
                 contentAlignment = Alignment.Center
             ) {
@@ -3382,17 +3444,20 @@ private fun ChatVoiceMessagePlayer(
                     )
                 } else ChatPlaybackGlyph(isPlaying)
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f)) {
-                Text("Голосовое сообщение", color = InboxPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(7.dp))
-                Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color(0xFFDDE5F7))) {
-                    Box(
-                        Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape)
-                            .background(Brush.horizontalGradient(listOf(Color(0xFF35B5FF), Color(0xFF5D71ED), Color(0xFF9A73ED))))
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Голосовое сообщение", color = InboxPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Text(formatVoiceDuration(safeDurationMs), color = InboxAccentStrong, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(4.dp))
+                VoiceWaveformBars(
+                    waveform = waveform,
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth().height(31.dp)
+                )
+                Spacer(Modifier.height(1.dp))
                 Text(
                     formatVoiceDuration(playbackPositionMs) + " / " + formatVoiceDuration(safeDurationMs),
                     color = InboxMuted,
@@ -3461,6 +3526,7 @@ private fun MessageBubble(
         }
     } else null
     val messageText = message.text
+    val isVoiceAttachment = message.attachmentMimeType?.startsWith("audio/") == true && attachmentPath != null
 
     Row(
         Modifier.fillMaxWidth().padding(
@@ -3477,7 +3543,7 @@ private fun MessageBubble(
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
-                    .widthIn(max = 300.dp)
+                    .then(if (isVoiceAttachment) Modifier.widthIn(min = 250.dp, max = 310.dp) else Modifier.widthIn(max = 310.dp))
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
@@ -3505,10 +3571,10 @@ private fun MessageBubble(
             ) {
                 Column(
                     modifier = Modifier.padding(
-                        start = 14.dp,
-                        end = 14.dp,
-                        top = 7.dp,
-                        bottom = if (showTime) 4.dp else 7.dp
+                        start = if (isVoiceAttachment) 12.dp else 14.dp,
+                        end = if (isVoiceAttachment) 12.dp else 14.dp,
+                        top = if (isVoiceAttachment) 10.dp else 7.dp,
+                        bottom = if (showTime) 5.dp else 8.dp
                     )
                 ) {
                     if (message.forwardedFromName != null) {
@@ -3547,7 +3613,8 @@ private fun MessageBubble(
                             ChatVoiceMessagePlayer(
                                 path = attachmentPath,
                                 repository = attachmentRepository,
-                                durationMs = message.attachmentDurationMs ?: 0L
+                                durationMs = message.attachmentDurationMs ?: 0L,
+                                waveform = message.attachmentWaveform.orEmpty()
                             )
                         } else {
                             ChatImagePreview(
@@ -3666,6 +3733,12 @@ private class ChatVoiceRecorder(private val cacheDirectory: File) {
             file.delete()
             throw error
         }
+    }
+
+    fun readAmplitudeLevel(): Int {
+        val activeRecorder = recorder ?: return 8
+        val amplitude = runCatching { activeRecorder.maxAmplitude }.getOrDefault(0)
+        return normalizeVoiceAmplitude(amplitude)
     }
 
     fun stop(): File {
