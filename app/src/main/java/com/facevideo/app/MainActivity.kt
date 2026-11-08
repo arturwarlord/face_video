@@ -2907,6 +2907,177 @@ private fun ChatImagePreview(
     }
 }
 
+@Composable
+private fun ChatVoiceMessagePlayer(
+    path: String,
+    repository: SupabaseChatRepository,
+    durationMs: Long
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val playerState = remember(path) { mutableStateOf<MediaPlayer?>(null) }
+    val audioFileState = remember(path) { mutableStateOf<File?>(null) }
+    var isLoading by remember(path) { mutableStateOf(false) }
+    var isPrepared by remember(path) { mutableStateOf(false) }
+    var isPlaying by remember(path) { mutableStateOf(false) }
+    var playbackFailed by remember(path) { mutableStateOf(false) }
+    var playbackPositionMs by remember(path) { mutableStateOf(0L) }
+    val safeDurationMs = durationMs.coerceAtLeast(0L)
+
+    fun togglePlayback() {
+        val currentPlayer = playerState.value
+        if (currentPlayer != null && isPrepared) {
+            runCatching {
+                if (isPlaying) {
+                    currentPlayer.pause()
+                    isPlaying = false
+                } else {
+                    if (safeDurationMs > 0L && playbackPositionMs >= safeDurationMs) {
+                        currentPlayer.seekTo(0)
+                        playbackPositionMs = 0L
+                    }
+                    currentPlayer.start()
+                    isPlaying = true
+                }
+            }.onFailure {
+                playbackFailed = true
+                isPlaying = false
+            }
+            return
+        }
+        if (isLoading) return
+
+        playbackFailed = false
+        isLoading = true
+        scope.launch {
+            var createdPlayer: MediaPlayer? = null
+            try {
+                val audioBytes = withContext(Dispatchers.IO) {
+                    repository.downloadChatAttachment(path)
+                }
+                val audioFile = withContext(Dispatchers.IO) {
+                    File.createTempFile("arturchat-voice-", ".m4a", context.cacheDir).apply {
+                        writeBytes(audioBytes)
+                    }
+                }
+                audioFileState.value?.delete()
+                audioFileState.value = audioFile
+
+                val mediaPlayer = MediaPlayer()
+                createdPlayer = mediaPlayer
+                playerState.value = mediaPlayer
+                mediaPlayer.setOnPreparedListener { preparedPlayer ->
+                    isPrepared = true
+                    isLoading = false
+                    playbackPositionMs = 0L
+                    runCatching {
+                        preparedPlayer.start()
+                        isPlaying = true
+                    }.onFailure {
+                        playbackFailed = true
+                        isPlaying = false
+                    }
+                }
+                mediaPlayer.setOnCompletionListener { completedPlayer ->
+                    isPlaying = false
+                    playbackPositionMs = 0L
+                    runCatching { completedPlayer.seekTo(0) }
+                }
+                mediaPlayer.setOnErrorListener { failedPlayer, _, _ ->
+                    isLoading = false
+                    isPlaying = false
+                    isPrepared = false
+                    playbackFailed = true
+                    runCatching { failedPlayer.release() }
+                    if (playerState.value === failedPlayer) playerState.value = null
+                    true
+                }
+                mediaPlayer.setDataSource(audioFile.absolutePath)
+                mediaPlayer.prepareAsync()
+            } catch (error: Exception) {
+                runCatching { createdPlayer?.release() }
+                playerState.value = null
+                audioFileState.value?.delete()
+                audioFileState.value = null
+                isLoading = false
+                playbackFailed = true
+                android.util.Log.w("ArturChatVoice", "Voice playback failed", error)
+            }
+        }
+    }
+
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            playbackPositionMs = runCatching {
+                playerState.value?.currentPosition?.toLong() ?: 0L
+            }.getOrDefault(0L)
+            delay(200L)
+        }
+    }
+
+    DisposableEffect(path) {
+        onDispose {
+            runCatching { playerState.value?.release() }
+            audioFileState.value?.delete()
+        }
+    }
+
+    val progress = if (safeDurationMs > 0L) {
+        (playbackPositionMs.toFloat() / safeDurationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = AccentSlate,
+                shape = CircleShape,
+                modifier = Modifier.size(34.dp).clickable(enabled = !isLoading) { togglePlayback() }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        when {
+                            isLoading -> "…"
+                            isPlaying -> "Ⅱ"
+                            else -> "▶"
+                        },
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Голосовое сообщение", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                        .background(Color(0xFFC9D3DF))
+                ) {
+                    Box(
+                        Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape)
+                            .background(AccentSlate)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    formatVoiceDuration(playbackPositionMs) + " / " + formatVoiceDuration(safeDurationMs),
+                    color = Muted,
+                    fontSize = 9.sp
+                )
+            }
+        }
+        if (playbackFailed) {
+            Text("Не удалось воспроизвести аудио", color = Color(0xFFA85F6E), fontSize = 9.sp)
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SelectionActionButton(
@@ -3030,18 +3201,29 @@ private fun MessageBubble(
                         }
                         Spacer(Modifier.height(6.dp))
                     }
+                    val isVoiceMessage = message.attachmentMimeType?.startsWith("audio/") == true
                     if (attachmentPath != null && attachmentRepository != null) {
-                        ChatImagePreview(
-                            path = attachmentPath,
-                            repository = attachmentRepository
-                        )
+                        if (isVoiceMessage) {
+                            ChatVoiceMessagePlayer(
+                                path = attachmentPath,
+                                repository = attachmentRepository,
+                                durationMs = message.attachmentDurationMs ?: 0L
+                            )
+                        } else {
+                            ChatImagePreview(
+                                path = attachmentPath,
+                                repository = attachmentRepository
+                            )
+                        }
                         Spacer(Modifier.height(6.dp))
                     }
-                    Text(
-                        text = messageText,
-                        color = MainText,
-                        fontSize = 14.sp
-                    )
+                    if (!isVoiceMessage || attachmentPath == null) {
+                        Text(
+                            text = messageText,
+                            color = MainText,
+                            fontSize = 14.sp
+                        )
+                    }
                     if (showTime) {
                         Row(
                             modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
@@ -4538,5 +4720,70 @@ private fun BottomNavigation(
                 }
             }
         }
+    }
+}
+
+private const val MAX_CHAT_VOICE_BYTES = 10 * 1024 * 1024
+private const val MAX_CHAT_VOICE_DURATION_MS = 10 * 60 * 1000L
+
+private class ChatVoiceRecorder(private val cacheDirectory: File) {
+    private var recorder: MediaRecorder? = null
+    private var outputFile: File? = null
+
+    fun start() {
+        check(recorder == null) { "Запись уже запущена." }
+        val file = File(cacheDirectory, "voice-" + UUID.randomUUID().toString() + ".m4a")
+        val activeRecorder = MediaRecorder()
+        try {
+            activeRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            activeRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            activeRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            activeRecorder.setAudioEncodingBitRate(64_000)
+            activeRecorder.setAudioSamplingRate(44_100)
+            activeRecorder.setMaxFileSize(MAX_CHAT_VOICE_BYTES.toLong())
+            activeRecorder.setOutputFile(file.absolutePath)
+            activeRecorder.prepare()
+            activeRecorder.start()
+            recorder = activeRecorder
+            outputFile = file
+        } catch (error: Exception) {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+            file.delete()
+            throw error
+        }
+    }
+
+    fun stop(): File {
+        val activeRecorder = recorder ?: throw IllegalStateException("Запись не запущена.")
+        val completedFile = outputFile ?: throw IllegalStateException("Файл записи не найден.")
+        recorder = null
+        outputFile = null
+        try {
+            activeRecorder.stop()
+            require(completedFile.isFile && completedFile.length() > 0L) {
+                "Запись не содержит аудиоданных."
+            }
+            return completedFile
+        } catch (error: Exception) {
+            completedFile.delete()
+            throw error
+        } finally {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+    }
+
+    fun cancel() {
+        val activeRecorder = recorder
+        val partialFile = outputFile
+        recorder = null
+        outputFile = null
+        if (activeRecorder != null) {
+            runCatching { activeRecorder.stop() }
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+        partialFile?.delete()
     }
 }
