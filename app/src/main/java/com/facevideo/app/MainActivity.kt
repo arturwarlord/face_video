@@ -2256,7 +2256,12 @@ private fun LiveChatRow(
                 }
             }
         }
-            Text("⋮", color = InboxMuted, fontSize = 18.sp, modifier = Modifier.clickable { showMenu = true }.padding(start = 8.dp))
+            ChatChromeActionButton(
+                onClick = { showMenu = true },
+                size = 34.dp
+            ) {
+                InboxMoreGlyph()
+            }
         }
     }
     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
@@ -3607,6 +3612,27 @@ private fun VoiceWaveformBars(
     }
 }
 
+private object DecodedVoiceWaveformCache {
+    private val values = object : LinkedHashMap<String, List<Int>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Int>>?): Boolean =
+            size > 128
+    }
+
+    @Synchronized
+    fun get(path: String): List<Int>? = values[path]
+
+    @Synchronized
+    fun put(path: String, waveform: List<Int>) {
+        values[path] = waveform.toList()
+    }
+}
+
+private fun shouldRebuildVoiceWaveform(waveform: List<Int>): Boolean {
+    if (waveform.size !in 16..96) return true
+    val range = (waveform.maxOrNull() ?: 0) - (waveform.minOrNull() ?: 0)
+    return waveform.distinct().size < 12 || range < 26
+}
+
 @Composable
 private fun ChatVoiceMessagePlayer(
     path: String,
@@ -3618,12 +3644,53 @@ private fun ChatVoiceMessagePlayer(
     val scope = rememberCoroutineScope()
     val playerState = remember(path) { mutableStateOf<MediaPlayer?>(null) }
     val audioFileState = remember(path) { mutableStateOf<File?>(null) }
+    val cachedWaveform = remember(path) { DecodedVoiceWaveformCache.get(path) }
+    var displayWaveform by remember(path) { mutableStateOf(cachedWaveform ?: waveform) }
     var isLoading by remember(path) { mutableStateOf(false) }
     var isPrepared by remember(path) { mutableStateOf(false) }
     var isPlaying by remember(path) { mutableStateOf(false) }
     var playbackFailed by remember(path) { mutableStateOf(false) }
     var playbackPositionMs by remember(path) { mutableStateOf(0L) }
     val safeDurationMs = durationMs.coerceAtLeast(0L)
+
+    LaunchedEffect(path, waveform) {
+        val memoryCached = DecodedVoiceWaveformCache.get(path)
+        if (memoryCached != null) {
+            displayWaveform = memoryCached
+        } else if (shouldRebuildVoiceWaveform(waveform)) {
+            var temporaryFile: File? = null
+            var keepFileForPlayback = false
+            try {
+                // Older messages carry a coarse legacy waveform. Rebuild it from their actual AAC.
+                val audioBytes = withContext(Dispatchers.IO) {
+                    repository.downloadChatAttachment(path)
+                }
+                temporaryFile = withContext(Dispatchers.IO) {
+                    File.createTempFile("arturchat-waveform-", ".m4a", context.cacheDir)
+                        .apply { writeBytes(audioBytes) }
+                }
+                val decoded = withContext(Dispatchers.IO) {
+                    decodeVoiceWaveformFromFile(temporaryFile!!)
+                }
+                if (decoded != null) {
+                    displayWaveform = decoded
+                    DecodedVoiceWaveformCache.put(path, decoded)
+                    if (audioFileState.value?.isFile != true) {
+                        audioFileState.value = temporaryFile
+                        keepFileForPlayback = true
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w("ArturChatVoice", "Could not rebuild legacy waveform", error)
+            } finally {
+                if (!keepFileForPlayback) temporaryFile?.delete()
+            }
+        } else {
+            DecodedVoiceWaveformCache.put(path, waveform)
+        }
+    }
 
     fun togglePlayback() {
         val currentPlayer = playerState.value
@@ -3652,12 +3719,15 @@ private fun ChatVoiceMessagePlayer(
         scope.launch {
             var createdPlayer: MediaPlayer? = null
             try {
-                val audioBytes = withContext(Dispatchers.IO) { repository.downloadChatAttachment(path) }
-                val audioFile = withContext(Dispatchers.IO) {
+                val cachedAudioFile = audioFileState.value?.takeIf { it.isFile }
+                val audioFile = cachedAudioFile ?: withContext(Dispatchers.IO) {
+                    val audioBytes = repository.downloadChatAttachment(path)
                     File.createTempFile("arturchat-voice-", ".m4a", context.cacheDir).apply { writeBytes(audioBytes) }
                 }
-                audioFileState.value?.delete()
-                audioFileState.value = audioFile
+                if (audioFileState.value !== audioFile) {
+                    audioFileState.value?.delete()
+                    audioFileState.value = audioFile
+                }
                 val mediaPlayer = MediaPlayer()
                 createdPlayer = mediaPlayer
                 playerState.value = mediaPlayer
@@ -3733,9 +3803,9 @@ private fun ChatVoiceMessagePlayer(
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 VoiceWaveformBars(
-                    waveform = waveform,
+                    waveform = displayWaveform,
                     progress = progress,
-                    modifier = Modifier.fillMaxWidth().height(18.dp)
+                    modifier = Modifier.fillMaxWidth().height(22.dp)
                 )
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -6521,6 +6591,16 @@ private fun NewChatGlyph() {
         drawPath(bubble, Color.White, style = line)
         drawLine(Color.White, Offset(size.width * 0.55f, size.height * 0.30f), Offset(size.width * 0.55f, size.height * 0.57f), strokeWidth = line.width, cap = StrokeCap.Round)
         drawLine(Color.White, Offset(size.width * 0.42f, size.height * 0.435f), Offset(size.width * 0.68f, size.height * 0.435f), strokeWidth = line.width, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun InboxMoreGlyph() {
+    Canvas(Modifier.size(18.dp)) {
+        val dotRadius = 1.55.dp.toPx()
+        listOf(0.24f, 0.50f, 0.76f).forEach { y ->
+            drawCircle(InboxMuted, radius = dotRadius, center = Offset(size.width * 0.5f, size.height * y))
+        }
     }
 }
 
