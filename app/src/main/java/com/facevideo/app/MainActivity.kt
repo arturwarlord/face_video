@@ -5247,29 +5247,15 @@ private fun ProfileScreen(
                             .padding(19.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(contentAlignment = Alignment.BottomEnd) {
-                                Avatar(
-                                    displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
-                                        .trim().take(1).uppercase(),
-                                    1,
-                                    Modifier.size(92.dp),
-                                    highlighted = true,
-                                    imageUrl = profile?.avatarUrl,
-                                    imageCacheKey = userId
-                                )
-                                Surface(
-                                    color = Color(0xFF5266D8),
-                                    shape = CircleShape,
-                                    border = BorderStroke(2.dp, Color.White),
-                                    modifier = Modifier.size(31.dp).clickable(enabled = !isSaving) {
-                                        avatarPicker.launch("image/*")
-                                    }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text("✎", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
+                            Avatar(
+                                displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                    .trim().take(1).uppercase(),
+                                1,
+                                Modifier.size(92.dp),
+                                highlighted = true,
+                                imageUrl = profile?.avatarUrl,
+                                imageCacheKey = userId
+                            )
                             Spacer(Modifier.width(15.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
@@ -5322,6 +5308,51 @@ private fun ProfileScreen(
                                 )
                             }
                         }
+                        Spacer(Modifier.height(15.dp))
+                        Text(
+                            "О СЕБЕ",
+                            color = AccentSlate,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            about.ifBlank { "Пока ничего не рассказано о себе." },
+                            color = if (about.isBlank()) Muted else MainText,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+                        if (!userEmail.isNullOrBlank()) {
+                            Spacer(Modifier.height(14.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(1.dp)
+                                    .background(Color.White.copy(alpha = 0.72f))
+                            )
+                            Spacer(Modifier.height(11.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✉", color = AccentSlate, fontSize = 14.sp)
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Электронная почта", color = Muted, fontSize = 9.sp)
+                                    Text(
+                                        userEmail.orEmpty(),
+                                        color = MainText,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    "ПОДТВЕРЖДЁН",
+                                    color = AccentSlate,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.4.sp
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -5341,6 +5372,7 @@ private fun ProfileScreen(
                                 )
                             )
                             .clickable {
+                                resetDraft()
                                 isEditing = true
                                 editSection = 0
                                 errorMessage = null
@@ -5359,81 +5391,6 @@ private fun ProfileScreen(
                     }
                 }
 
-                Spacer(Modifier.height(22.dp))
-                Text(
-                    "ВАША ИНФОРМАЦИЯ",
-                    color = AccentSlate,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp
-                )
-                Spacer(Modifier.height(10.dp))
-
-                ProfileOverviewRow(
-                    icon = "01",
-                    title = "Личные данные",
-                    value = listOf(displayName.ifBlank { "Имя не указано" }, username.takeIf { it.isNotBlank() }?.let { "@$it" })
-                        .filterNotNull().joinToString(" · "),
-                    onClick = {
-                        isEditing = true
-                        editSection = 0
-                        errorMessage = null
-                    }
-                )
-                Spacer(Modifier.height(9.dp))
-                ProfileOverviewRow(
-                    icon = "02",
-                    title = "О себе",
-                    value = about.ifBlank { "Добавьте описание и статус" },
-                    onClick = {
-                        isEditing = true
-                        editSection = 1
-                        errorMessage = null
-                    }
-                )
-                Spacer(Modifier.height(9.dp))
-                ProfileOverviewRow(
-                    icon = "03",
-                    title = "Фотография профиля",
-                    value = if (profile?.avatarUrl.isNullOrBlank()) "Добавьте свою фотографию" else "Фотография установлена",
-                    onClick = {
-                        isEditing = true
-                        editSection = 2
-                        errorMessage = null
-                    }
-                )
-
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    "АККАУНТ",
-                    color = AccentSlate,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.4.sp
-                )
-                Spacer(Modifier.height(9.dp))
-                Surface(
-                    color = Color.White.copy(alpha = 0.68f),
-                    shape = RoundedCornerShape(19.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(15.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Surface(color = Color(0xFFE7ECFF), shape = CircleShape) {
-                            Text("✉", color = AccentSlate, fontSize = 15.sp, modifier = Modifier.padding(10.dp))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Электронная почта", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.height(3.dp))
-                            Text(userEmail.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 1)
-                        }
-                        Text("ПОДТВЕРЖДЁН", color = AccentSlate, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
-                    }
-                }
             } else {
                 Surface(
                     color = Color.White.copy(alpha = 0.66f),
