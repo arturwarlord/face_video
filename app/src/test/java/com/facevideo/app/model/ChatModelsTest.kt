@@ -38,28 +38,54 @@ class ChatModelsTest {
     }
 
     @Test
-    fun waveformUsesFixedBarCountAndPreservesSignalEnvelope() {
-        val waveform = buildVoiceWaveform(listOf(8, 20, 88, 100), 16)
+    fun rawRecorderPeaksProduceDistinctTelegramStyleBars() {
+        val waveform = buildVoiceWaveform(
+            listOf(0, 900, 3_500, 12_000, 26_000, 5_000, 18_000, 1_500),
+            barCount = 16
+        )
 
         assertEquals(16, waveform.size)
         assertEquals(8, waveform.first())
-        assertEquals(100, waveform.last())
-        assertTrue(waveform.any { it in 80..100 })
+        assertEquals(100, waveform.maxOrNull())
         assertTrue(waveform.all { it in 8..100 })
+        assertTrue(waveform.toSet().size >= 6)
+        assertTrue((waveform.maxOrNull() ?: 0) - (waveform.minOrNull() ?: 0) >= 55)
     }
 
     @Test
-    fun emptyWaveformUsesSafeFallbackBars() {
-        val waveform = buildVoiceWaveform(emptyList())
+    fun emptyOrSilentRecordingUsesQuietFallbackBars() {
+        val empty = buildVoiceWaveform(emptyList())
+        val silent = buildVoiceWaveform(List(30) { 0 })
+
+        assertEquals(VOICE_WAVEFORM_BAR_COUNT, empty.size)
+        assertTrue(empty.all { it == 8 })
+        assertEquals(VOICE_WAVEFORM_BAR_COUNT, silent.size)
+        assertTrue(silent.all { it == 8 })
+    }
+
+    @Test
+    fun waveformKeepsAnIsolatedLoudPeakInsteadOfFlatteningTheWholeRecording() {
+        val waveform = buildVoiceWaveform(List(63) { 1_500 } + 32_767)
 
         assertEquals(VOICE_WAVEFORM_BAR_COUNT, waveform.size)
-        assertTrue(waveform.all { it in 8..100 })
+        assertEquals(100, waveform.last())
+        assertTrue(waveform.first() < 60)
+        assertTrue(waveform.toSet().size > 1)
     }
 
     @Test
-    fun recorderAmplitudeIsScaledIntoVisibleBarRange() {
-        assertEquals(8, normalizeVoiceAmplitude(0))
-        assertEquals(100, normalizeVoiceAmplitude(32_767))
-        assertTrue(normalizeVoiceAmplitude(8_000) in 8..100)
+    fun longRecordingsKeepThePeakInsideEachTimeSlice() {
+        val samples = List(256) { index ->
+            when (index % 4) {
+                0 -> 1_000
+                1 -> 4_000
+                2 -> 18_000
+                else -> 7_000
+            }
+        }
+        val waveform = buildVoiceWaveform(samples)
+
+        assertEquals(VOICE_WAVEFORM_BAR_COUNT, waveform.size)
+        assertTrue(waveform.toSet().size >= 3)
     }
 }
