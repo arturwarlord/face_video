@@ -1716,7 +1716,8 @@ private fun StoryImage(
     story: FaceVideoStoryCard,
     viewerUserId: String,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    fillWithBlurredCopy: Boolean = false
 ) {
     val context = LocalContext.current
     val mediaCache = remember(context) { ArturChatImageCache(context) }
@@ -1747,12 +1748,23 @@ private fun StoryImage(
     }
     val loaded = bitmap
     if (loaded != null) {
-        Image(
-            bitmap = loaded.asImageBitmap(),
-            contentDescription = "История",
-            modifier = modifier,
-            contentScale = contentScale
-        )
+        Box(modifier.fillMaxSize()) {
+            if (fillWithBlurredCopy) {
+                Image(
+                    bitmap = loaded.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.54f),
+                    contentScale = ContentScale.Crop
+                )
+                Box(Modifier.fillMaxSize().background(Color(0x66101928)))
+            }
+            Image(
+                bitmap = loaded.asImageBitmap(),
+                contentDescription = "История",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        }
     } else {
         Box(modifier.background(Color(0xFF293444)), contentAlignment = Alignment.Center) {
             androidx.compose.material3.CircularProgressIndicator(color = Color.White)
@@ -1829,18 +1841,24 @@ private fun StoryViewerScreen(
                 )
             )
     ) {
-        // A dimmed, softly blurred copy fills the letterbox area without cropping the original story.
+        // One decoded story image renders both the fitted foreground and the blurred ambient backdrop.
         if (current != null) {
-            StoryImage(
-                story = current,
-                viewerUserId = currentUserId,
-                modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.48f),
-                contentScale = ContentScale.Crop
-            )
-            Box(
-                Modifier.fillMaxSize()
-                    .background(Color(0x99101A29))
-            )
+            Crossfade(
+                targetState = current.storyId,
+                animationSpec = tween(240),
+                label = "story-media-transition"
+            ) { storyId ->
+                val visibleStory = stories.firstOrNull { it.storyId == storyId }
+                if (visibleStory != null) {
+                    StoryImage(
+                        story = visibleStory,
+                        viewerUserId = currentUserId,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        fillWithBlurredCopy = true
+                    )
+                }
+            }
         }
 
         Column(Modifier.fillMaxSize()) {
@@ -1974,22 +1992,6 @@ private fun StoryViewerScreen(
                         }
                     }
                     current != null -> {
-                        Crossfade(
-                            targetState = current.storyId,
-                            animationSpec = tween(240),
-                            label = "story-media-transition"
-                        ) { storyId ->
-                            val visibleStory = stories.firstOrNull { it.storyId == storyId }
-                            if (visibleStory != null) {
-                                StoryImage(
-                                    story = visibleStory,
-                                    viewerUserId = currentUserId,
-                                    modifier = Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 2.dp),
-                                    contentScale = ContentScale.Fit
-                                )
-                            }
-                        }
-
                         // Tap left/right on the media to navigate, as in modern story viewers.
                         Row(
                             Modifier.fillMaxSize()
