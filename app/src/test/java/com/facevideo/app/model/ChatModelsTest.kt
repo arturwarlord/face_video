@@ -76,12 +76,13 @@ class ChatModelsTest {
     @Test
     fun longRecordingsKeepThePeakInsideEachTimeSlice() {
         val samples = List(256) { index ->
-            when (index % 4) {
+            val groupLevel = when ((index / 4) % 4) {
                 0 -> 1_000
                 1 -> 4_000
                 2 -> 18_000
                 else -> 7_000
             }
+            if (index % 4 == 2) groupLevel else groupLevel / 3
         }
         val waveform = buildVoiceWaveform(samples)
 
