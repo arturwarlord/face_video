@@ -8,7 +8,7 @@
   <meta property="og:title" content="ArturChat — общение ближе">
   <meta property="og:description" content="Переписки, аудио- и видеозвонки, друзья и фотоистории — в одном приложении.">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="https://raw.githubusercontent.com/arturwarlord/face_video/main/docs/assets/concept-chat.webp">
+  <meta property="og:image" content="https://raw.githubusercontent.com/arturwarlord/face_video/main/docs/assets/concept-video-call.webp">
   <meta name="color-scheme" content="light">
   <title>ArturChat — общение ближе</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp">
@@ -364,6 +364,21 @@
     .feature-status { position:absolute;top:21px;right:20px;border:1px solid rgba(255,255,255,.96);border-radius:999px;padding:5px 9px;color:#5974ac;background:rgba(255,255,255,.62);font-size:9px;font-weight:850;letter-spacing:.02em; }
     .feature-art { position:absolute;right:-8px;bottom:-33px;width:42%;max-width:190px;opacity:.17;transform:rotate(-12deg);filter:saturate(1.2); }
     .feature-art img { width:100%;display:block;border-radius:20px;box-shadow:0 16px 36px rgba(73,94,162,.18); }
+    .feature-art-bubble {
+      display:block;
+      padding:16px 18px;
+      border:1px solid rgba(255,255,255,.96);
+      border-radius:17px;
+      color:#5a6bc9;
+      background:linear-gradient(140deg,rgba(255,255,255,.82),rgba(215,229,255,.68));
+      box-shadow:0 12px 30px rgba(73,94,162,.14);
+      font-size:11px;
+      font-weight:850;
+      line-height:1.7;
+      text-align:center;
+      backdrop-filter:blur(12px);
+    }
+    .feature-art-bubble b { color:#31436c;font-size:13px; }
     .feature.wide .feature-art { width:34%;max-width:220px;opacity:.35;right:18px;bottom:-48px; }
     .feature-foot { display:flex;align-items:center;gap:7px;margin-top:15px;color:#7e8ca7;font-size:10px;font-weight:750; }
     .feature-foot i { width:6px;height:6px;border-radius:50%;background:#48b894;box-shadow:0 0 0 4px rgba(72,184,148,.11); }
@@ -516,7 +531,7 @@
       .topbar { padding-inline:18px; }
       .brand { font-size:18px; }
       .brand img { width:39px;height:39px; }
-      .hero { padding:43px 0 28px; }
+      .hero { padding:43px 18px 28px; }
       h1 { font-size:clamp(44px,13vw,62px);margin-top:20px; }
       .lead { font-size:15px;line-height:1.7; }
       .hero-actions { display:grid;grid-template-columns:1fr; }
@@ -526,7 +541,14 @@
       .hero-orb { width:310px;height:310px; }
       .device-main { width:195px;height:360px;left:7%;top:12px;border-width:6px;border-radius:29px; }
       .device-side { width:170px;height:315px;right:5%;top:62px;border-width:6px;border-radius:29px; }
-      .chat-screen { padding:14px 10px 10px;border-radius:23px; }
+      .chat-screen { padding:13px 9px 9px;border-radius:23px; }
+      .chat-screen .chat-story-ring { width:35px;height:35px; }
+      .chat-screen .chat-story-ring span { width:29px;height:29px; }
+      .chat-screen .chat-stories { gap:3px; }
+      .chat-screen .chat-row { min-height:53px;gap:6px; }
+      .chat-screen .chat-avatar { width:32px;height:32px;flex-basis:32px; }
+      .chat-screen .chat-row-copy strong { font-size:9px; }
+      .chat-screen .chat-row-copy small { font-size:7px; }
       .chat-screen-gallery { padding:12px 9px 9px; }
       .hero-float { min-width:145px;padding:10px 12px; }
       .hero-float.one { right:-4px;bottom:25px; }
