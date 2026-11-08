@@ -1,5 +1,6 @@
 package com.facevideo.app.model
 
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 data class ChatSummary(
