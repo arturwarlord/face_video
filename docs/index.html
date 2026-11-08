@@ -700,7 +700,7 @@
         </div>
         <div class="roadmap-grid">
           <article class="plan-card featured">
-            <div class="plan-top"><span class="plan-icon">◷</span><span class="plan-label">Ближайший этап</span></div>
+            <div class="plan-top"><span class="plan-icon">◷</span><span class="plan-label">В разработке</span></div>
             <h3>История звонков</h3>
             <p>Единый журнал входящих и исходящих аудио- и видеовызовов с датой, статусом и длительностью разговора.</p>
           </article>
@@ -730,7 +730,7 @@
             <p>Улучшать настройки видимости, скорость работы, доступность и визуальную систему приложения.</p>
           </article>
         </div>
-        <p class="roadmap-foot">Приоритеты могут меняться по результатам тестирования и обратной связи. Функции со статусом «В планах» ещё не входят в публичную сборку.</p>
+        <p class="roadmap-foot">Приоритеты могут меняться по результатам тестирования и обратной связи. Журнал звонков находится в разработке; функции со статусом «В планах» ещё не входят в публичную сборку.</p>
       </div>
     </section>
 
@@ -883,7 +883,7 @@
         } catch (error) {
           console.info("ArturChat release metadata is temporarily unavailable.", error);
           if (byId("latest-summary")) byId("latest-summary").textContent = "Не удалось автоматически обновить сведения о релизе. Официальная страница загрузки GitHub остаётся доступна по кнопке ниже.";
-          if (byId("release-date")) byId("release-date").textContent = "Дата публикации уточняется";
+          if (byId("latest-date")) byId("latest-date").textContent = "Дата публикации уточняется";
           if (byId("release-status")) byId("release-status").textContent = "Текущая версия проекта — " + currentAppVersion + ". Статус опубликованного релиза временно не удалось проверить.";
           setLinks(fallbackApk, fallbackChecksum, "https://github.com/" + owner + "/" + repo + "/releases/latest");
         }
