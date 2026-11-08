@@ -101,6 +101,7 @@ data class FaceVideoMessage(
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
+    @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("deleted_by") val deletedBy: String? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
@@ -199,6 +200,7 @@ private data class NewMessage(
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
+    @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
     @SerialName("forwarded_from_name") val forwardedFromName: String? = null
 )
@@ -598,16 +600,19 @@ class SupabaseChatRepository(
     ): FaceVideoMessage {
         if (source.deletedAt != null) throw IllegalArgumentException("Удалённое сообщение нельзя переслать.")
         if (source.attachmentPath != null) {
+            val mimeType = source.attachmentMimeType
+                ?: throw IllegalArgumentException("Неизвестный тип вложения.")
             val bytes = downloadChatAttachment(source.attachmentPath)
-            val newPath = uploadChatImage(targetChatId, senderId, bytes)
+            val newPath = uploadChatAttachment(targetChatId, senderId, bytes, mimeType)
             return client.from("face_video_messages").insert(
                 NewMessage(
                     chatId = targetChatId,
                     body = source.body,
                     attachmentPath = newPath,
-                    attachmentMimeType = source.attachmentMimeType,
+                    attachmentMimeType = mimeType,
                     attachmentFileName = source.attachmentFileName,
                     attachmentSize = source.attachmentSize,
+                    attachmentDurationMs = source.attachmentDurationMs,
                     forwardedFromSenderId = source.senderId,
                     forwardedFromName = sourceName
                 )
@@ -685,16 +690,35 @@ class SupabaseChatRepository(
         chatId: String,
         senderId: String,
         bytes: ByteArray
+    ): String = uploadChatAttachment(chatId, senderId, bytes, "image/jpeg")
+
+    /** Uploads recorded voice into the same private chat bucket. */
+    suspend fun uploadChatVoice(
+        chatId: String,
+        senderId: String,
+        bytes: ByteArray
+    ): String = uploadChatAttachment(chatId, senderId, bytes, "audio/mp4")
+
+    private suspend fun uploadChatAttachment(
+        chatId: String,
+        senderId: String,
+        bytes: ByteArray,
+        mimeType: String
     ): String {
-        require(bytes.isNotEmpty() && bytes.size <= MAX_CHAT_IMAGE_BYTES) {
-            "Фото должно быть не больше 10 МБ."
+        require(bytes.isNotEmpty() && bytes.size <= MAX_CHAT_ATTACHMENT_BYTES) {
+            "Вложение должно быть не больше 10 МБ."
         }
-        val path = "$chatId/$senderId/${UUID.randomUUID()}.jpg"
+        val extension = when (mimeType) {
+            "image/jpeg" -> "jpg"
+            "audio/mp4" -> "m4a"
+            else -> throw IllegalArgumentException("Этот тип вложения не поддерживается.")
+        }
+        val path = chatId + "/" + senderId + "/" + UUID.randomUUID().toString() + "." + extension
         client.storage.from(CHAT_ATTACHMENTS_BUCKET).upload(
             path = path,
             data = bytes
         ) {
-            contentType = ContentType.Image.JPEG
+            contentType = ContentType.parse(mimeType)
         }
         return path
     }
@@ -724,6 +748,43 @@ class SupabaseChatRepository(
                     attachmentMimeType = "image/jpeg",
                     attachmentFileName = safeName,
                     attachmentSize = fileSize
+                )
+            ) {
+                select()
+            }
+            .decodeSingle<FaceVideoMessage>()
+    }
+
+    /** Inserts voice metadata after its audio file has uploaded successfully. */
+    suspend fun sendVoiceMessage(
+        chatId: String,
+        audioPath: String,
+        fileName: String,
+        fileSize: Long,
+        durationMs: Long,
+        replyToMessageId: String? = null
+    ): FaceVideoMessage {
+        require(audioPath.startsWith(chatId + "/")) {
+            "Голосовое сообщение не относится к этой переписке."
+        }
+        require(fileSize in 1..MAX_CHAT_ATTACHMENT_BYTES.toLong()) {
+            "Голосовое сообщение должно быть не больше 10 МБ."
+        }
+        require(durationMs in 1_000L..600_000L) {
+            "Длительность голосового сообщения должна быть от 1 секунды до 10 минут."
+        }
+        val safeName = fileName.trim().take(255).ifBlank { "voice-message.m4a" }
+        return client.from("face_video_messages")
+            .insert(
+                NewMessage(
+                    chatId = chatId,
+                    body = "Голосовое сообщение",
+                    replyToMessageId = replyToMessageId,
+                    attachmentPath = audioPath,
+                    attachmentMimeType = "audio/mp4",
+                    attachmentFileName = safeName,
+                    attachmentSize = fileSize,
+                    attachmentDurationMs = durationMs
                 )
             ) {
                 select()
@@ -785,4 +846,4 @@ class SupabaseChatRepository(
 
 
 private const val CHAT_ATTACHMENTS_BUCKET = "chat-attachments"
-private const val MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
+private const val MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024
