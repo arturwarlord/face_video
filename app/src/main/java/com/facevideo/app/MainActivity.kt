@@ -152,12 +152,14 @@ import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
 import com.facevideo.app.model.buildVoiceWaveform
 import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
+import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CancellationException
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.presenceDataFlow
 import io.github.jan.supabase.realtime.track
@@ -2564,7 +2566,7 @@ private fun LiveChatScreen(
     fun sendVoiceRecording() {
         if (!isVoiceRecording || isSending) return
         val durationMs = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
-        val waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList())
+        val recorderSamplesFallback = voiceAmplitudeSamples.toList()
         isVoiceRecording = false
         voiceRecordingDurationMs = durationMs
         isSending = true
@@ -2575,6 +2577,9 @@ private fun LiveChatScreen(
                 val completedFile = withContext(Dispatchers.IO) { voiceRecorder.stop() }
                 recordedFile = completedFile
                 require(durationMs >= 1_000L) { "Запишите голосовое сообщение хотя бы одну секунду." }
+                val waveform = withContext(Dispatchers.IO) {
+                    decodeVoiceWaveformFromFile(completedFile)
+                } ?: buildVoiceWaveform(recorderSamplesFallback)
                 val audioBytes = withContext(Dispatchers.IO) { completedFile.readBytes() }
                 val audioPath = repository.uploadChatVoice(chat.id, userId, audioBytes)
                 val persistedMessage = repository.sendVoiceMessage(
@@ -2611,7 +2616,7 @@ private fun LiveChatScreen(
                     sendVoiceRecording()
                     break
                 }
-                delay(100L)
+                delay(40L)
             }
         }
     }
@@ -2669,19 +2674,15 @@ private fun LiveChatScreen(
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             color = Color.White.copy(alpha = 0.48f),
-            shape = RoundedCornerShape(26.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
-            shadowElevation = 7.dp
+            shape = RoundedCornerShape(28.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
+            shadowElevation = 3.dp
         ) {
             Row(
                 Modifier.fillMaxWidth()
                     .background(
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFFF9FBFF).copy(alpha = 0.96f),
-                                Color(0xFFEAF0FF).copy(alpha = 0.92f),
-                                Color(0xFFF5EDFF).copy(alpha = 0.94f)
-                            )
+                        Brush.verticalGradient(
+                            listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
                         )
                     )
                     .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -2705,7 +2706,7 @@ private fun LiveChatScreen(
                         Text("Сообщения отмечены", color = InboxMuted, fontSize = 9.sp)
                     }
                 } else {
-                    ChatChromeActionButton(onClick = onBack, filled = false) {
+                    ChatChromeActionButton(onClick = onBack, filled = false, size = 40.dp) {
                         InboxBackGlyph()
                     }
                     Spacer(Modifier.width(9.dp))
@@ -2778,11 +2779,11 @@ private fun LiveChatScreen(
                         }
                     }
                     Spacer(Modifier.width(7.dp))
-                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false) {
+                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false, size = 40.dp) {
                         ChatCallGlyph(video = false, tint = InboxAccentStrong)
                     }
                     Spacer(Modifier.width(6.dp))
-                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false) {
+                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false, size = 40.dp) {
                         ChatCallGlyph(video = true, tint = InboxAccentStrong)
                     }
                 }
@@ -3084,18 +3085,14 @@ private fun LiveChatScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
                 color = Color.White.copy(alpha = 0.60f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
-                shadowElevation = 8.dp
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.90f)),
+                shadowElevation = 4.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
                         .background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFFCFDFF).copy(alpha = 0.98f),
-                                    Color(0xFFE8EEFF).copy(alpha = 0.96f),
-                                    Color(0xFFF2ECFF).copy(alpha = 0.98f)
-                                )
+                            Brush.verticalGradient(
+                                listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
                             )
                         )
                         .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -3104,9 +3101,10 @@ private fun LiveChatScreen(
                     ChatChromeActionButton(
                         onClick = { if (!isSending) imagePicker.launch("image/*") },
                         enabled = !isSending,
-                        filled = true
+                        filled = false,
+                        size = 40.dp
                     ) {
-                        InboxCameraGlyph(tint = Color.White, iconSize = 21.dp)
+                        InboxCameraGlyph(tint = InboxAccentStrong, iconSize = 22.dp)
                     }
                     Spacer(Modifier.width(8.dp))
                     Surface(
@@ -3588,11 +3586,11 @@ private fun VoiceWaveformBars(
     Canvas(modifier = modifier) {
         if (bars.isEmpty() || size.width <= 0f || size.height <= 0f) return@Canvas
         val step = size.width / bars.size
-        val strokeWidth = (step * 0.40f).coerceIn(1.15.dp.toPx(), 2.0.dp.toPx())
-        val minBarHeight = 2.dp.toPx()
-        val maxBarHeight = size.height * 0.92f
-        val playedColor = Color(0xFF596FE3)
-        val futureColor = Color(0xFFAEBBD4)
+        val strokeWidth = (step * 0.58f).coerceIn(1.0.dp.toPx(), 1.7.dp.toPx())
+        val minBarHeight = 2.4.dp.toPx()
+        val maxBarHeight = size.height * 0.96f
+        val playedColor = Color(0xFF5266DE)
+        val futureColor = Color(0xFF9EAECE)
         bars.forEachIndexed { index, level ->
             val amplitude = ((level - 8) / 92f).coerceIn(0f, 1f)
             val barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)
@@ -6235,39 +6233,30 @@ private fun ChatChromeActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     filled: Boolean = false,
+    size: Dp = 40.dp,
     content: @Composable () -> Unit
 ) {
     val gradient = Brush.linearGradient(
         listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
     )
     Box(
-        modifier = modifier.size(44.dp)
-            .clip(CircleShape)
-            .background(
+        modifier = modifier.size(size)
+            .clip(RoundedCornerShape(15.dp))
+            .then(
                 if (filled) {
-                    if (enabled) gradient else Brush.linearGradient(
-                        listOf(Color(0xFFB7C4DF), Color(0xFF9EACC9))
+                    Modifier.background(
+                        if (enabled) gradient else Brush.linearGradient(
+                            listOf(Color(0xFFB7C4DF), Color(0xFF9EACC9))
+                        )
                     )
-                } else Brush.linearGradient(
-                    listOf(Color(0xFFA6BBF6), Color(0xFFBEDBFF), Color(0xFFD0BFFF))
-                )
+                } else {
+                    Modifier.background(Color.White.copy(alpha = 0.30f))
+                }
             )
-            .border(1.dp, Color.White.copy(alpha = 0.94f), CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (filled) {
-            content()
-        } else {
-            Surface(
-                modifier = Modifier.size(40.dp),
-                color = Color.White.copy(alpha = 0.94f),
-                shape = CircleShape,
-                border = BorderStroke(1.dp, Color.White)
-            ) {
-                Box(contentAlignment = Alignment.Center) { content() }
-            }
-        }
+        Box(Modifier.alpha(if (enabled) 1f else 0.42f)) { content() }
     }
 }
 
