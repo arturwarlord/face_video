@@ -102,6 +102,7 @@ data class FaceVideoMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("deleted_by") val deletedBy: String? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
@@ -614,6 +615,7 @@ class SupabaseChatRepository(
                     attachmentFileName = source.attachmentFileName,
                     attachmentSize = source.attachmentSize,
                     attachmentDurationMs = source.attachmentDurationMs,
+                    attachmentWaveform = source.attachmentWaveform,
                     forwardedFromSenderId = source.senderId,
                     forwardedFromName = sourceName
                 )
@@ -763,6 +765,7 @@ class SupabaseChatRepository(
         fileName: String,
         fileSize: Long,
         durationMs: Long,
+        waveform: List<Int>,
         replyToMessageId: String? = null
     ): FaceVideoMessage {
         require(audioPath.startsWith(chatId + "/")) {
@@ -773,6 +776,9 @@ class SupabaseChatRepository(
         }
         require(durationMs in 1_000L..600_000L) {
             "Длительность голосового сообщения должна быть от 1 секунды до 10 минут."
+        }
+        require(waveform.size in 16..96 && waveform.all { it in 0..100 }) {
+            "Некорректная звуковая дорожка голосового сообщения."
         }
         val safeName = fileName.trim().take(255).ifBlank { "voice-message.m4a" }
         return client.from("face_video_messages")
@@ -785,7 +791,8 @@ class SupabaseChatRepository(
                     attachmentMimeType = "audio/mp4",
                     attachmentFileName = safeName,
                     attachmentSize = fileSize,
-                    attachmentDurationMs = durationMs
+                    attachmentDurationMs = durationMs,
+                    attachmentWaveform = waveform
                 )
             ) {
                 select()
