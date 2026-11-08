@@ -6,12 +6,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaPlayer
+import android.media.MediaRecorder
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.widget.Toast
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -127,6 +130,8 @@ import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
+import com.facevideo.app.model.formatVoiceDuration
+import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -1944,6 +1949,14 @@ private fun LiveChatScreen(
     var isSending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
+    var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
+    var voiceRecordingStartedAt by remember(chat.id) { mutableStateOf(0L) }
+    var voiceRecordingDurationMs by remember(chat.id) { mutableStateOf(0L) }
+
+    DisposableEffect(chat.id, voiceRecorder) {
+        onDispose { voiceRecorder.cancel() }
+    }
 
     LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
         runCatching { repository.markChatRead(chat.id) }
@@ -2030,6 +2043,85 @@ private fun LiveChatScreen(
         if (uri != null) sendImage(uri)
     }
 
+    fun startVoiceRecording() {
+        if (isSending || isVoiceRecording) return
+        try {
+            voiceRecorder.start()
+            voiceRecordingStartedAt = SystemClock.elapsedRealtime()
+            voiceRecordingDurationMs = 0L
+            isVoiceRecording = true
+            errorMessage = null
+        } catch (error: Exception) {
+            android.util.Log.e("ArturChatVoice", "Could not start recording", error)
+            errorMessage = error.message ?: "Не удалось начать запись. Проверьте доступ к микрофону."
+        }
+    }
+
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startVoiceRecording()
+        else errorMessage = "Для записи голосовых сообщений нужен доступ к микрофону."
+    }
+
+    fun cancelVoiceRecording() {
+        if (!isVoiceRecording) return
+        isVoiceRecording = false
+        voiceRecorder.cancel()
+        voiceRecordingDurationMs = 0L
+    }
+
+    fun sendVoiceRecording() {
+        if (!isVoiceRecording || isSending) return
+        val durationMs = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+        isVoiceRecording = false
+        voiceRecordingDurationMs = durationMs
+        isSending = true
+        errorMessage = null
+        scope.launch {
+            var recordedFile: File? = null
+            try {
+                val completedFile = withContext(Dispatchers.IO) { voiceRecorder.stop() }
+                recordedFile = completedFile
+                require(durationMs >= 1_000L) { "Запишите голосовое сообщение хотя бы одну секунду." }
+                val audioBytes = withContext(Dispatchers.IO) { completedFile.readBytes() }
+                val audioPath = repository.uploadChatVoice(chat.id, userId, audioBytes)
+                val persistedMessage = repository.sendVoiceMessage(
+                    chatId = chat.id,
+                    audioPath = audioPath,
+                    fileName = "voice-message.m4a",
+                    fileSize = audioBytes.size.toLong(),
+                    durationMs = durationMs,
+                    replyToMessageId = replyingTo?.id
+                )
+                locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
+                replyingTo = null
+                Toast.makeText(context, "Голосовое сообщение отправлено", Toast.LENGTH_SHORT).show()
+            } catch (error: Exception) {
+                android.util.Log.e("ArturChatVoice", "Voice send failed", error)
+                errorMessage = error.message ?: "Не удалось отправить голосовое сообщение."
+            } finally {
+                withContext(Dispatchers.IO) { recordedFile?.delete() }
+                isSending = false
+                voiceRecordingDurationMs = 0L
+            }
+        }
+    }
+
+    LaunchedEffect(isVoiceRecording, voiceRecordingStartedAt) {
+        if (isVoiceRecording) {
+            while (isVoiceRecording) {
+                val elapsed = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+                voiceRecordingDurationMs = elapsed
+                if (elapsed >= MAX_CHAT_VOICE_DURATION_MS) {
+                    sendVoiceRecording()
+                    break
+                }
+                delay(200L)
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
@@ -2112,7 +2204,9 @@ private fun LiveChatScreen(
                             isMine = message.senderId == userId,
                             deliveryStatus = if (message.senderId == userId && message.deletedAt == null) resolveMessageDeliveryStatus(message.id, receipts) else null,
                             forwardedFromName = message.forwardedFromName,
-                            isDeleted = message.deletedAt != null
+                            isDeleted = message.deletedAt != null,
+                            attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
+                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
@@ -2304,62 +2398,124 @@ private fun LiveChatScreen(
 
         if (isSending) {
             Text(
-                "Отправляем фото или сообщение…",
+                "Отправляем сообщение или аудио…",
                 color = Muted,
                 fontSize = 10.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = PanelLight,
-                shape = CircleShape,
-                modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
-                    imagePicker.launch("image/*")
-                }
+        if (isVoiceRecording) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("+", color = AccentSlate, fontSize = 25.sp)
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    color = Panel,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                ) {
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFA85F6E)))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Запись голоса", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(formatVoiceDuration(voiceRecordingDurationMs), color = AccentSlate, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable { cancelVoiceRecording() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("×", color = MainText, fontSize = 25.sp)
+                    }
+                }
+                Spacer(Modifier.width(7.dp))
+                Surface(
+                    color = AccentSlate,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable { sendVoiceRecording() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
-            Spacer(Modifier.width(9.dp))
-            Surface(
-                Modifier.weight(1f),
-                color = Panel,
-                shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+        } else {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                BasicTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        capitalization = KeyboardCapitalization.None,
-                        imeAction = ImeAction.Send
-                    ),
-                    keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                    textStyle = TextStyle(color = MainText, fontSize = 14.sp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
-                    decorationBox = { inner ->
-                        Box {
-                            if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
-                            inner()
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
+                        imagePicker.launch("image/*")
+                    }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("+", color = AccentSlate, fontSize = 25.sp)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    Modifier.weight(1f),
+                    color = Panel,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Text,
+                            capitalization = KeyboardCapitalization.None,
+                            imeAction = ImeAction.Send
+                        ),
+                        keyboardActions = KeyboardActions(onSend = { sendMessage() }),
+                        textStyle = TextStyle(color = MainText, fontSize = 14.sp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+                        decorationBox = { inner ->
+                            Box {
+                                if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
+                                inner()
+                            }
+                        }
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Surface(
+                    color = PanelLight,
+                    shape = CircleShape,
+                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
+                        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            startVoiceRecording()
+                        } else {
+                            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
-                )
-            }
-            Spacer(Modifier.width(9.dp))
-            Box(
-                Modifier.size(43.dp).clip(CircleShape).background(if (isSending) Muted else AccentSlate)
-                    .clickable(enabled = !isSending) { sendMessage() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🎙", color = AccentSlate, fontSize = 18.sp)
+                    }
+                }
+                Spacer(Modifier.width(7.dp))
+                Box(
+                    Modifier.size(43.dp).clip(CircleShape)
+                        .background(if (isSending || draft.isBlank()) Muted else AccentSlate)
+                        .clickable(enabled = !isSending && draft.isNotBlank()) { sendMessage() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
