@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.serialization.SerialName
+import com.facevideo.app.model.STORY_REACTION_OPTIONS
+import com.facevideo.app.model.StoryReactionEntry
+import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.summarizeStoryReactions
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -76,6 +80,20 @@ data class FaceVideoStoryCard(
     val createdAt: String,
     val expiresAt: String,
     val mediaPath: String = ""
+)
+
+@Serializable
+data class FaceVideoStoryReaction(
+    @SerialName("story_id") val storyId: String,
+    @SerialName("user_id") val userId: String,
+    val reaction: String,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+private data class NewFaceVideoStoryReaction(
+    @SerialName("story_id") val storyId: String,
+    val reaction: String
 )
 
 @Serializable
@@ -331,6 +349,52 @@ class SupabaseChatRepository(
                 mediaPath = story.mediaPath
             )
         }
+    }
+
+    /** Counts reactions visible to the current viewer and returns their own selection. */
+    suspend fun getStoryReactionSummary(
+        storyId: String,
+        currentUserId: String
+    ): StoryReactionSummary {
+        val rows = client.from("face_video_story_reactions").select {
+            filter { eq("story_id", storyId) }
+        }.decodeList<FaceVideoStoryReaction>()
+        return summarizeStoryReactions(
+            rows.map { StoryReactionEntry(userId = it.userId, reaction = it.reaction) },
+            currentUserId
+        )
+    }
+
+    /**
+     * Stores one reaction per authenticated user and story.
+     * The database defaults user_id to auth.uid(); RLS rejects reactions to own or inaccessible stories.
+     */
+    suspend fun setStoryReaction(
+        storyId: String,
+        currentUserId: String,
+        reaction: String?
+    ): StoryReactionSummary {
+        require(reaction == null || reaction in STORY_REACTION_OPTIONS) {
+            "Неподдерживаемая реакция на историю."
+        }
+        if (reaction == null) {
+            client.from("face_video_story_reactions").delete {
+                filter {
+                    eq("story_id", storyId)
+                    eq("user_id", currentUserId)
+                }
+            }
+        } else {
+            client.from("face_video_story_reactions").insert(
+                NewFaceVideoStoryReaction(
+                    storyId = storyId,
+                    reaction = reaction
+                ),
+                upsert = true,
+                onConflict = "story_id,user_id"
+            )
+        }
+        return getStoryReactionSummary(storyId, currentUserId)
     }
 
     /** Signed URLs are short-lived; only create them when a story image is about to load. */
