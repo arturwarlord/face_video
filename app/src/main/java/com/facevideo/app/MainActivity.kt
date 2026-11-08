@@ -1850,20 +1850,22 @@ private fun StoryViewerScreen(
             return@LaunchedEffect
         }
         isLoadingReactions = true
-        runCatching {
-            repository.getStoryReactionSummary(storyId, currentUserId)
-        }.onSuccess {
+        try {
+            val summary = repository.getStoryReactionSummary(storyId, currentUserId)
             if (stories.getOrNull(index)?.storyId == storyId) {
-                reactionSummary = it
+                reactionSummary = summary
             }
-        }.onFailure {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
             if (stories.getOrNull(index)?.storyId == storyId) {
-                reactionError = it.message ?: "Не удалось загрузить реакции."
+                reactionError = error.message ?: "Не удалось загрузить реакции."
             }
-            android.util.Log.w("ArturChatStories", "Could not load story reactions", it)
-        }
-        if (stories.getOrNull(index)?.storyId == storyId) {
-            isLoadingReactions = false
+            android.util.Log.w("ArturChatStories", "Could not load story reactions", error)
+        } finally {
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                isLoadingReactions = false
+            }
         }
     }
 
@@ -1879,24 +1881,26 @@ private fun StoryViewerScreen(
         scope.launch {
             isSavingReaction = true
             reactionError = null
-            runCatching {
-                repository.setStoryReaction(
+            try {
+                val updated = repository.setStoryReaction(
                     storyId = story.storyId,
                     currentUserId = currentUserId,
                     reaction = nextReaction
                 )
-            }.onSuccess {
                 if (stories.getOrNull(index)?.storyId == story.storyId) {
-                    reactionSummary = it
+                    reactionSummary = updated
                 }
-            }.onFailure {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 if (stories.getOrNull(index)?.storyId == story.storyId) {
-                    reactionError = it.message ?: "Не удалось сохранить реакцию."
+                    reactionError = error.message ?: "Не удалось сохранить реакцию."
                 }
-                android.util.Log.w("ArturChatStories", "Could not save story reaction", it)
-            }
-            if (stories.getOrNull(index)?.storyId == story.storyId) {
-                isSavingReaction = false
+                android.util.Log.w("ArturChatStories", "Could not save story reaction", error)
+            } finally {
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    isSavingReaction = false
+                }
             }
         }
     }
