@@ -3,471 +3,769 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#070b16">
-  <meta name="description" content="ArturChat — мессенджер с чатами, голосовыми и видеозвонками, друзьями, профилями и фотоисториями. Узнайте о текущих функциях и планах развития.">
-  <meta property="og:title" content="ArturChat — связь без границ">
-  <meta property="og:description" content="Чаты, голосовые и видеозвонки, личные профили, друзья и фотоистории. Официальная загрузка APK и дорожная карта ArturChat.">
+  <meta name="theme-color" content="#eef1ff">
+  <meta name="description" content="ArturChat — пространство для личного общения: сообщения, фотографии, аудио- и видеозвонки, друзья, профили и фотоистории. Официальная загрузка Android APK.">
+  <meta property="og:title" content="ArturChat — общение ближе">
+  <meta property="og:description" content="Переписки, аудио- и видеозвонки, друзья и фотоистории — в одном приложении.">
   <meta property="og:type" content="website">
-  <title>ArturChat — мессенджер и общение без границ</title>
+  <meta property="og:image" content="https://raw.githubusercontent.com/arturwarlord/face_video/main/docs/assets/concept-chat.webp">
+  <meta name="color-scheme" content="light">
+  <title>ArturChat — общение ближе</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp">
   <link rel="preconnect" href="https://api.github.com">
   <link rel="preconnect" href="https://raw.githubusercontent.com">
+  <script>document.documentElement.classList.add("has-js");</script>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #070b16;
-      --bg-soft: #0b1222;
-      --panel: rgba(17, 26, 46, .74);
-      --panel-strong: #111b31;
-      --line: rgba(180, 196, 233, .13);
-      --text: #f5f7ff;
-      --muted: #a6b2cb;
-      --muted-2: #73819e;
-      --purple: #9a7cff;
-      --cyan: #5edbe4;
-      --green: #8de4bd;
-      --radius: 24px;
-      --shadow: 0 28px 80px rgba(0,0,0,.34);
+      color-scheme: light;
+      --bg: #eff2ff;
+      --bg-2: #e8edff;
+      --surface: rgba(255,255,255,.64);
+      --surface-strong: rgba(255,255,255,.84);
+      --surface-soft: rgba(244,247,255,.72);
+      --line: rgba(255,255,255,.86);
+      --line-soft: rgba(151,166,218,.24);
+      --text: #202a43;
+      --muted: #71809d;
+      --muted-2: #94a0b7;
+      --blue: #319af2;
+      --indigo: #5268df;
+      --purple: #9461e8;
+      --cyan: #5fcbe7;
+      --green: #2d9c7d;
+      --red: #c65e78;
+      --radius: 26px;
+      --shadow: 0 24px 70px rgba(83,103,173,.15);
+      --shadow-soft: 0 12px 34px rgba(85,103,168,.10);
+      --page: 1240px;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       scroll-behavior: smooth;
     }
     * { box-sizing: border-box; }
+    html { scroll-padding-top: 92px; }
     body {
       margin: 0;
+      min-width: 320px;
       color: var(--text);
       background:
-        radial-gradient(900px 650px at 90% -10%, rgba(105, 86, 221, .19), transparent 66%),
-        radial-gradient(760px 520px at -8% 34%, rgba(36, 176, 196, .09), transparent 62%),
-        linear-gradient(180deg, #070b16 0%, #091020 50%, #070b16 100%);
-      line-height: 1.6;
+        radial-gradient(680px 550px at 88% 7%, rgba(153,139,255,.30), transparent 68%),
+        radial-gradient(700px 620px at 0% 31%, rgba(115,194,255,.22), transparent 66%),
+        radial-gradient(760px 500px at 66% 74%, rgba(190,174,255,.16), transparent 70%),
+        linear-gradient(145deg, #eff1ff 0%, #e8efff 48%, #f5f6ff 100%);
+      line-height: 1.55;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
     body:before {
       content: "";
       position: fixed;
       inset: 0;
       z-index: -1;
-      opacity: .18;
       pointer-events: none;
-      background-image: radial-gradient(rgba(255,255,255,.14) .6px, transparent .6px);
-      background-size: 5px 5px;
-      mask-image: linear-gradient(to bottom, black, transparent 75%);
+      opacity: .36;
+      background-image:
+        linear-gradient(rgba(255,255,255,.22) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.22) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, black, transparent 78%);
+    }
+    body:after {
+      content: "";
+      position: fixed;
+      width: 58vw;
+      height: 58vw;
+      min-width: 440px;
+      min-height: 440px;
+      top: 28%;
+      left: 42%;
+      z-index: -1;
+      border-radius: 50%;
+      background: rgba(173,160,255,.12);
+      filter: blur(100px);
+      pointer-events: none;
+      animation: ambient-drift 20s ease-in-out infinite alternate;
     }
     a { color: inherit; text-decoration: none; }
     button, a { -webkit-tap-highlight-color: transparent; }
-    .wrap { width: 100%; max-width: none; margin: 0 auto; padding-inline: clamp(20px, 4.2vw, 84px); }
+    button { font: inherit; }
+    img { max-width: 100%; }
+    ::selection { color: white; background: #7168dd; }
+    .wrap { width: min(var(--page), calc(100% - 56px)); margin-inline: auto; }
+    .scroll-progress { position: fixed; z-index: 70; inset: 0 auto auto 0; height: 3px; width: 100%; pointer-events: none; }
+    .scroll-progress span { display: block; width: 0; height: 100%; border-radius: 0 4px 4px 0; background: linear-gradient(90deg,var(--blue),var(--indigo),var(--purple)); box-shadow: 0 0 14px rgba(91,111,232,.48); }
     .topbar {
-      width: 100%;
-      height: 82px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: 78px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid var(--line);
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      background: rgba(7, 11, 22, .82);
-      backdrop-filter: blur(20px);
+      gap: 28px;
+      padding: 12px max(28px, calc((100vw - var(--page))/2));
+      border-bottom: 1px solid rgba(255,255,255,.72);
+      background: rgba(242,245,255,.70);
+      backdrop-filter: blur(24px) saturate(145%);
+      -webkit-backdrop-filter: blur(24px) saturate(145%);
+      box-shadow: 0 8px 28px rgba(93,111,169,.045);
     }
-    .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 820; letter-spacing: -.045em; }
-    .brand img { width: 42px; height: 42px; border-radius: 14px; box-shadow: 0 9px 28px rgba(104, 111, 255, .25); }
-    .brand-mark { background: linear-gradient(135deg, #9a6fff, #39cce3); color: #06101d; }
-    .nav { display: flex; align-items: center; gap: 28px; color: var(--muted); font-size: 13px; font-weight: 600; }
-    .nav a:not(.nav-cta):hover { color: var(--text); }
-    .nav-cta { padding: 10px 16px; border: 1px solid rgba(157, 145, 255, .35); border-radius: 999px; color: white; background: rgba(135, 114, 255, .09); }
-    .hero { width: 100%; max-width: 1680px; margin-inline: auto; padding-inline: clamp(24px, 4vw, 64px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .98fr); gap: clamp(28px, 3vw, 58px); align-items: center; min-height: calc(100svh - 82px); padding-block: clamp(38px, 5vh, 64px); }
-    .eyebrow { display: inline-flex; align-items: center; gap: 9px; border: 1px solid rgba(140, 222, 203, .18); border-radius: 999px; background: rgba(67, 194, 158, .07); color: #b8f2d9; padding: 7px 12px; font-size: 11px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-    .eyebrow:before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px rgba(141,228,189,.9); }
-    h1 { font-size: clamp(54px, 6.2vw, 108px); line-height: 1.01; letter-spacing: -.065em; margin: 24px 0 20px; max-width: 640px; font-weight: 850; }
-    .gradient { color: transparent; background: linear-gradient(100deg, #b3a3ff 0%, #7f9aff 46%, #63e0df 100%); -webkit-background-clip: text; background-clip: text; }
-    .lead { max-width: 720px; margin: 0; color: var(--muted); font-size: clamp(17px, 1.35vw, 21px); line-height: 1.75; }
-    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 31px; }
-    .button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 49px; border-radius: 14px; padding: 13px 19px; font-size: 14px; font-weight: 780; transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
-    .button:hover { transform: translateY(-2px); }
-    .button-primary { color: #07101d; background: linear-gradient(105deg, #ad8cff, #5edee3); box-shadow: 0 12px 34px rgba(106, 143, 255, .2); }
-    .button-primary:hover { box-shadow: 0 17px 42px rgba(106, 143, 255, .31); }
-    .button-secondary { color: var(--text); border: 1px solid var(--line); background: rgba(255,255,255,.025); }
-    .button-secondary:hover { border-color: rgba(151, 141, 255, .45); }
-    .hero-note { margin-top: 17px; font-size: 12px; color: var(--muted-2); }
-    .hero-note strong { color: #d6def1; font-weight: 700; }
-    .hero-visual { width: 100%; min-width: 0; min-height: clamp(410px, 65vh, 680px); position: relative; display: flex; align-items: center; justify-content: center; isolation: isolate; }
-    .hero-glow { position: absolute; width: 390px; height: 390px; border-radius: 50%; background: linear-gradient(130deg, rgba(131,103,255,.32), rgba(52,207,218,.19)); filter: blur(72px); z-index: -1; }
-    .hero-device { position: absolute; border-radius: 34px; overflow: hidden; background: #080f1d; border: 1px solid rgba(185,198,235,.34); box-shadow: 0 36px 90px rgba(0,0,0,.55), 0 0 35px rgba(117,103,255,.18); }
-    .hero-device img { display: block; width: 100%; height: 100%; object-fit: cover; }
-    .hero-device.main { width: clamp(230px, 18vw, 310px); height: clamp(390px, 33vw, 520px); left: 9%; top: 8%; transform: rotate(-6deg); }
-    .hero-device.secondary { width: clamp(205px, 16vw, 280px); height: clamp(355px, 30vw, 470px); right: 8%; top: 17%; transform: rotate(6deg); }
-    .hero-float { position: absolute; z-index: 3; border: 1px solid rgba(183,196,229,.16); border-radius: 16px; background: rgba(15,25,44,.88); padding: 12px 15px; box-shadow: var(--shadow); backdrop-filter: blur(16px); }
-    .hero-float.one { right: 0; bottom: 42px; }
-    .hero-float.two { left: 0; bottom: 8px; }
-    .float-top { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); }
-    .float-value { margin-top: 3px; font-size: 13px; font-weight: 780; }
-    .float-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 9px var(--green); }
-    .hero-line { position: absolute; width: 90%; height: 1px; bottom: 14px; background: linear-gradient(90deg, transparent, rgba(100,203,226,.42), rgba(151,123,255,.48), transparent); filter: blur(1px); }
-    .trust-strip { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-top: -8px; margin-bottom: 26px; }
-    .trust-item { display:flex; align-items:center; gap:12px; border:1px solid var(--line); border-radius:16px; padding:14px 16px; background:rgba(15,24,42,.52); color:var(--muted); font-size:12px; }
-    .trust-icon { width:31px; height:31px; flex:0 0 31px; display:grid; place-items:center; border-radius:10px; color:#a9e9e6; background:rgba(65,202,205,.1); font-size:15px; }
-    section { padding: clamp(68px, 7.5vw, 132px) 0; scroll-margin-top: 86px; }
-    .section-head { display:flex; justify-content:space-between; align-items:end; gap:28px; margin-bottom:31px; }
-    .kicker { color:var(--cyan); text-transform:uppercase; font-size:10px; letter-spacing:.16em; font-weight:850; }
-    h2 { font-size:clamp(32px,4vw,46px); line-height:1.1; letter-spacing:-.05em; margin:9px 0 0; font-weight:820; }
-    .section-copy { color:var(--muted); max-width:475px; margin:0; font-size:14px; line-height:1.8; }
-    .features { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap: clamp(13px, 1.3vw, 22px); }
-    .feature { min-height:210px; border:1px solid var(--line); border-radius:21px; padding:22px; background:linear-gradient(155deg,rgba(23,34,60,.86),rgba(12,20,36,.82)); box-shadow:0 15px 42px rgba(0,0,0,.12); }
-    .feature-icon { width:42px; height:42px; display:grid; place-items:center; border-radius:14px; color:#d5d0ff; font-size:20px; background:linear-gradient(140deg,rgba(154,124,255,.2),rgba(83,211,223,.09)); border:1px solid rgba(167,155,255,.15); margin-bottom:17px; }
-    .feature h3 { margin:0 0 8px; font-size:16px; letter-spacing:-.025em; }
-    .feature p { color:var(--muted); margin:0; font-size:12px; line-height:1.75; }
-    .gallery-section { position:relative; }
-    .gallery-section:before { content:""; position:absolute; width:85%; height:1px; left:7.5%; top:0; background:linear-gradient(90deg,transparent,rgba(133,120,255,.35),rgba(89,210,221,.35),transparent); }
-    .gallery-note { display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; color:#c5cce0; background:rgba(149,128,255,.08); border:1px solid rgba(149,128,255,.19); font-size:11px; margin-bottom:22px; }
-    .gallery-note:before { content:"✦"; color:#b6a4ff; }
-    .gallery { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap: clamp(12px, 1.3vw, 22px); align-items:start; }
-    .shot-card { min-width:0; border:1px solid var(--line); border-radius:23px; padding:12px; background:linear-gradient(155deg,rgba(21,32,55,.9),rgba(10,17,31,.86)); box-shadow:0 25px 65px rgba(0,0,0,.22); }
-    .shot-image { position:relative; overflow:hidden; border-radius:16px; background:#080f1d; aspect-ratio:260/430; }
-    .shot-image img { width:100%; height:100%; display:block; object-fit:cover; transition:transform .5s ease; }
-    .shot-card:hover .shot-image img { transform:scale(1.035); }
-    .shot-tag { position:absolute; left:9px; top:9px; padding:5px 8px; border-radius:999px; color:#eef0ff; background:rgba(9,14,27,.82); border:1px solid rgba(255,255,255,.13); font-size:9px; letter-spacing:.03em; backdrop-filter:blur(10px); }
-
-    .shot-ui { height:100%; min-height:100%; padding:18px 13px 14px; color:#f5f7ff; background:radial-gradient(circle at 90% 0%,rgba(113,91,220,.34),transparent 42%),linear-gradient(160deg,#111c32,#080e1b); font-size:10px; }
-    .ui-status { display:flex; justify-content:space-between; color:#aebbd4; font-size:8px; margin-bottom:15px; }
-    .ui-brand { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:800; margin-bottom:13px; }
-    .ui-avatar { width:29px; height:29px; border-radius:50%; background:linear-gradient(135deg,#b49bff,#4ed6d9); display:inline-grid; place-items:center; color:#091321; font-weight:900; }
-    .ui-search { padding:8px 10px; border:1px solid rgba(190,204,236,.13); border-radius:10px; color:#8594b1; background:rgba(255,255,255,.04); margin-bottom:12px; }
-    .ui-row { display:flex; align-items:center; gap:9px; padding:10px 0; border-bottom:1px solid rgba(190,204,236,.09); }
-    .ui-row strong { display:block; font-size:9px; margin-bottom:3px; }
-    .ui-row small { color:#8f9db8; font-size:8px; }
-    .ui-pill { margin-left:auto; color:#07121d; background:#79e0c0; border-radius:99px; padding:3px 6px; font-size:7px; font-weight:800; }
-    .ui-story { height:190px; border-radius:14px; padding:13px; display:flex; flex-direction:column; justify-content:space-between; background:linear-gradient(155deg,rgba(18,28,48,.1),rgba(7,12,25,.8)),linear-gradient(135deg,#9c79c8,#4d8795 55%,#172c49); border:1px solid rgba(255,255,255,.16); }
-    .ui-story-top { display:flex; justify-content:space-between; font-size:8px; }
-    .ui-story-title { font-size:17px; line-height:1.1; font-weight:850; letter-spacing:-.04em; }
-    .ui-action { text-align:center; margin-top:12px; border-radius:10px; padding:9px; background:linear-gradient(100deg,#aa8aff,#62dce0); color:#081321; font-size:9px; font-weight:850; }
-    .ui-profile-head { text-align:center; padding:14px 0 17px; }
-    .ui-profile-avatar { width:67px; height:67px; display:grid; place-items:center; margin:0 auto 9px; border-radius:24px; background:linear-gradient(135deg,#a88bff,#5cd9dd); color:#091321; font-size:22px; font-weight:900; box-shadow:0 12px 30px rgba(101,126,255,.25); }
-    .ui-profile-head strong { display:block; font-size:13px; }
-    .ui-profile-head small { color:#91a0bd; font-size:8px; }
-    .ui-setting { padding:10px 11px; margin:7px 0; border:1px solid rgba(190,204,236,.1); border-radius:10px; background:rgba(255,255,255,.035); color:#cbd5e8; font-size:9px; }
-
-    .shot-card h3 { margin:14px 3px 4px; font-size:14px; letter-spacing:-.02em; }
-    .shot-card p { margin:0 3px 4px; color:var(--muted); font-size:11px; line-height:1.65; }
-    .roadmap { position:relative; overflow:hidden; border:1px solid rgba(148,135,255,.18); border-radius:30px; padding:38px; background:radial-gradient(650px 360px at 94% 0%,rgba(107,103,235,.16),transparent 65%),linear-gradient(145deg,rgba(20,29,53,.94),rgba(9,16,30,.95)); box-shadow:var(--shadow); }
-    .roadmap:after { content:""; position:absolute; width:390px; height:390px; right:-180px; bottom:-260px; border-radius:50%; border:1px solid rgba(107,211,225,.13); box-shadow:0 0 0 28px rgba(107,211,225,.025),0 0 0 58px rgba(107,211,225,.018); pointer-events:none; }
-    .roadmap-head { max-width:700px; margin-bottom:28px; position:relative; z-index:1; }
-    .roadmap-head p { max-width:630px; color:var(--muted); font-size:14px; line-height:1.8; margin:14px 0 0; }
-    .roadmap-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:13px; position:relative; z-index:1; }
-    .plan-card { min-height:210px; padding:21px; border-radius:19px; border:1px solid rgba(177,190,230,.13); background:rgba(10,17,32,.67); }
-    .plan-card.featured { background:linear-gradient(145deg,rgba(91,77,179,.22),rgba(11,23,42,.8)); border-color:rgba(161,142,255,.34); }
-    .plan-top { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:15px; }
-    .plan-icon { width:40px; height:40px; display:grid; place-items:center; border-radius:13px; font-size:20px; color:#c5b7ff; background:rgba(141,119,255,.14); }
-    .plan-label { font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#b6a5ff; border:1px solid rgba(157,135,255,.22); border-radius:999px; padding:5px 8px; }
-    .plan-card h3 { font-size:16px; margin:0 0 7px; }
-    .plan-card p { color:var(--muted); font-size:12px; line-height:1.75; margin:0; }
-    .roadmap-foot { position:relative; z-index:1; color:var(--muted-2); font-size:11px; margin:22px 0 0; }
-    .release-panel { display:grid; grid-template-columns:1fr auto; gap:26px; align-items:center; padding:30px; border:1px solid rgba(126,216,211,.2); border-radius:25px; background:linear-gradient(115deg,rgba(47,128,137,.12),rgba(105,83,186,.13)),rgba(14,22,40,.82); box-shadow:var(--shadow); }
-    .release-label { color:#9de8d1; text-transform:uppercase; font-size:10px; letter-spacing:.15em; font-weight:850; }
-    .release-version { font-size:42px; font-weight:850; letter-spacing:-.06em; margin:8px 0 0; }
-    .release-date { color:var(--muted-2); font-size:11px; margin-top:3px; }
-    .release-notes { color:var(--muted); font-size:13px; margin:12px 0 0; max-width:920px; }
-    .release-status { margin:18px 0 0; padding-top:14px; border-top:1px solid var(--line); color:var(--muted-2); font-size:12px; line-height:1.7; }
-    .release-status strong { color:#d8dff1; }
-    .build-caption { color:var(--muted-2); font-size:12px; margin:10px 0 0; }
-    .build-caption strong { color:#d8dff1; }
-    .release-notes ul { padding-left:18px; margin:8px 0 0; }
-    .release-notes li { margin:5px 0; }
-    .release-actions { display:flex; flex-direction:column; gap:9px; min-width:180px; }
+    .brand { display: inline-flex; align-items: center; gap: 11px; flex: 0 0 auto; font-size: 20px; font-weight: 850; letter-spacing: -.055em; }
+    .brand img { width: 43px; height: 43px; display: block; border-radius: 15px; box-shadow: 0 8px 22px rgba(82,105,218,.22); }
+    .brand-name { color: var(--text); }
+    .gradient {
+      color: transparent;
+      background: linear-gradient(100deg, #398fe9 0%, #5869e4 48%, #9560e5 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+    .nav { display: flex; align-items: center; gap: clamp(17px,2.4vw,32px); color: #687895; font-size: 12px; font-weight: 700; }
+    .nav a:not(.nav-cta) { transition: color .2s ease; }
+    .nav a:not(.nav-cta):hover { color: var(--indigo); }
+    .nav-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 11px 17px;
+      color: white;
+      background: linear-gradient(105deg,var(--blue),var(--indigo),var(--purple));
+      box-shadow: 0 9px 22px rgba(83,105,224,.22);
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(83,105,224,.29); }
+    .menu-toggle { display: none; width: 42px; height: 42px; border: 1px solid white; border-radius: 14px; background: rgba(255,255,255,.66); color: var(--indigo); font-size: 20px; cursor: pointer; }
+    .hero {
+      min-height: min(790px, calc(100svh - 78px));
+      display: grid;
+      grid-template-columns: minmax(0,1.02fr) minmax(430px,.98fr);
+      align-items: center;
+      gap: clamp(30px,5vw,72px);
+      padding-block: clamp(56px,8vh,100px) 55px;
+    }
+    .hero-copy { position: relative; z-index: 3; max-width: 650px; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid rgba(255,255,255,.92);
+      border-radius: 999px;
+      padding: 8px 13px;
+      color: #596da9;
+      background: rgba(255,255,255,.48);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 8px 22px rgba(87,111,180,.06);
+      backdrop-filter: blur(14px);
+      font-size: 10px;
+      font-weight: 850;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .eyebrow-dot { width: 7px; height: 7px; border-radius: 50%; background: #55bfa0; box-shadow: 0 0 0 4px rgba(85,191,160,.13), 0 0 13px rgba(85,191,160,.55); }
+    h1 {
+      margin: 24px 0 19px;
+      max-width: 700px;
+      font-size: clamp(52px,6.2vw,88px);
+      line-height: .99;
+      letter-spacing: -.075em;
+      font-weight: 880;
+    }
+    .hero h1 .line { display: block; }
+    .lead { max-width: 600px; margin: 0; color: #657491; font-size: clamp(16px,1.4vw,19px); line-height: 1.78; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+    .button {
+      min-height: 51px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 1px solid transparent;
+      border-radius: 16px;
+      padding: 13px 20px;
+      font-size: 13px;
+      font-weight: 800;
+      transition: transform .22s ease, box-shadow .22s ease, background .22s ease, border-color .22s ease;
+      cursor: pointer;
+    }
+    .button:hover { transform: translateY(-3px); }
+    .button-primary {
+      color: white;
+      background: linear-gradient(105deg,#2e9df5 0%,#5368e5 51%,#9861e7 100%);
+      box-shadow: 0 13px 28px rgba(78,105,222,.26), inset 0 1px 0 rgba(255,255,255,.34);
+    }
+    .button-primary:hover { box-shadow: 0 18px 36px rgba(78,105,222,.34), inset 0 1px 0 rgba(255,255,255,.4); }
+    .button-secondary {
+      color: #53638b;
+      border-color: rgba(255,255,255,.94);
+      background: rgba(255,255,255,.54);
+      box-shadow: inset 0 1px 0 white, 0 8px 24px rgba(89,108,167,.08);
+      backdrop-filter: blur(16px);
+    }
+    .button-secondary:hover { border-color: rgba(112,132,226,.36); background: rgba(255,255,255,.76); }
+    .hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 15px; margin-top: 21px; color: #8390aa; font-size: 11px; }
+    .hero-meta strong { color: #5367c8; font-weight: 850; }
+    .meta-separator { width: 4px; height: 4px; border-radius: 50%; background: #a8b4d2; }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .hero-tag { border: 1px solid rgba(255,255,255,.88); border-radius: 999px; padding: 7px 11px; color: #6d7d9d; background: rgba(255,255,255,.34); font-size: 10px; font-weight: 700; backdrop-filter: blur(10px); }
+    .hero-visual { min-width: 0; min-height: 610px; position: relative; display: flex; align-items: center; justify-content: center; isolation: isolate; }
+    .hero-orb {
+      position: absolute;
+      z-index: -1;
+      width: 440px;
+      height: 440px;
+      border-radius: 50%;
+      background: conic-gradient(from 210deg,rgba(101,157,255,.25),rgba(178,142,255,.40),rgba(121,217,241,.22),rgba(101,157,255,.25));
+      filter: blur(33px);
+      animation: orb-turn 24s linear infinite;
+    }
+    .hero-orb:after { content:""; position:absolute; inset:52px; border:1px solid rgba(255,255,255,.7); border-radius:50%; box-shadow:0 0 0 26px rgba(255,255,255,.12),0 0 0 52px rgba(255,255,255,.08); }
+    .device {
+      position: absolute;
+      overflow: hidden;
+      border: 7px solid rgba(255,255,255,.9);
+      border-radius: 35px;
+      background: #fff;
+      box-shadow: 0 35px 80px rgba(75,94,157,.23), 0 0 0 1px rgba(117,137,205,.12), inset 0 1px 0 white;
+      transform-style: preserve-3d;
+    }
+    .device img { width:100%; height:100%; display:block; object-fit:cover; border-radius:27px; }
+    .device-main { width: clamp(235px,22vw,295px); height: clamp(430px,42vw,535px); left: 8%; top: 5%; transform: rotate(-7deg); animation: device-float 8s ease-in-out infinite; }
+    .device-side { width: clamp(205px,18vw,252px); height: clamp(370px,36vw,465px); right: 6%; top: 19%; transform: rotate(7deg); animation: device-float-side 9s ease-in-out infinite; }
+    .device-glare { position:absolute; z-index:2; inset:-30% auto -30% -55%; width:40%; transform:rotate(18deg); background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent); filter:blur(3px); animation: sheen 7s ease-in-out infinite; pointer-events:none; }
+    .hero-float {
+      position:absolute;
+      z-index:5;
+      min-width:174px;
+      border:1px solid rgba(255,255,255,.94);
+      border-radius:18px;
+      padding:12px 15px;
+      color:var(--text);
+      background:rgba(255,255,255,.72);
+      box-shadow:0 18px 44px rgba(85,102,159,.16),inset 0 1px 0 white;
+      backdrop-filter:blur(22px) saturate(150%);
+      animation: float-card 6s ease-in-out infinite;
+    }
+    .hero-float.one { right:0; bottom:72px; }
+    .hero-float.two { left:0; bottom:18px; animation-delay:-2.8s; }
+    .float-top { display:flex; align-items:center; gap:8px; color:#7c8aa7; font-size:10px; font-weight:700; }
+    .float-value { margin-top:4px; color:#35446c; font-size:12px; font-weight:850; }
+    .float-dot { width:7px;height:7px;border-radius:50%;background:#44b992;box-shadow:0 0 0 4px rgba(68,185,146,.13); }
+    .hero-spark { position:absolute; width:10px;height:10px;border-radius:50%;background:#fff;box-shadow:0 0 22px 8px rgba(127,151,255,.32); }
+    .hero-spark.a { right:12%;top:11%; }
+    .hero-spark.b { left:7%;top:40%;width:6px;height:6px; }
+    .hero-caption { position:absolute; left:50%; bottom:-2px; transform:translateX(-50%); color:#929fba; font-size:9px; letter-spacing:.16em; font-weight:800; white-space:nowrap; }
+    .trust-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:0; padding-bottom:24px; }
+    .trust-item { min-width:0; display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,.91);border-radius:19px;padding:15px 17px;background:rgba(255,255,255,.45);box-shadow:inset 0 1px 0 white,0 10px 28px rgba(85,103,166,.055);backdrop-filter:blur(15px);color:#70809e;font-size:11px;font-weight:700; }
+    .trust-icon { width:35px;height:35px;flex:0 0 35px;display:grid;place-items:center;border-radius:12px;color:#596ad5;background:linear-gradient(140deg,rgba(84,158,246,.14),rgba(149,105,231,.15));font-size:16px; }
+    .ticker { overflow:hidden; border-block:1px solid rgba(255,255,255,.7); background:rgba(255,255,255,.26); }
+    .ticker-track { width:max-content; display:flex;align-items:center;gap:26px;padding:13px 0;color:#8492af;font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;animation:ticker 32s linear infinite; }
+    .ticker-track span { display:inline-flex;align-items:center;gap:26px; }
+    .ticker-track b { color:#8291e3;font-size:13px; }
+    section { padding: clamp(76px,8vw,116px) 0; scroll-margin-top:90px; }
+    .section-head { display:flex;justify-content:space-between;align-items:end;gap:32px;margin-bottom:32px; }
+    .kicker { color:#6878d9;font-size:10px;font-weight:900;letter-spacing:.18em;text-transform:uppercase; }
+    h2 { margin:9px 0 0;color:var(--text);font-size:clamp(33px,4.1vw,52px);line-height:1.06;letter-spacing:-.065em;font-weight:870; }
+    .section-copy { max-width:470px;margin:0;color:#7785a1;font-size:13px;line-height:1.8; }
+    .feature-grid { display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:15px; }
+    .feature {
+      position:relative;
+      min-height:226px;
+      overflow:hidden;
+      grid-column:span 4;
+      border:1px solid rgba(255,255,255,.94);
+      border-radius:25px;
+      padding:23px;
+      background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(242,246,255,.56));
+      box-shadow:0 14px 42px rgba(83,104,170,.075),inset 0 1px 0 white;
+      backdrop-filter:blur(18px);
+      transition:transform .28s ease,box-shadow .28s ease,border-color .28s ease;
+    }
+    .feature:hover { transform:translateY(-6px);box-shadow:0 22px 50px rgba(83,104,170,.13),inset 0 1px 0 white;border-color:white; }
+    .feature.wide { grid-column:span 6;min-height:245px; }
+    .feature.soft-purple { background:linear-gradient(140deg,rgba(234,230,255,.88),rgba(255,255,255,.68)); }
+    .feature.soft-blue { background:linear-gradient(140deg,rgba(222,239,255,.9),rgba(255,255,255,.67)); }
+    .feature.soft-lilac { background:linear-gradient(140deg,rgba(239,229,255,.88),rgba(255,255,255,.66)); }
+    .feature-icon { width:44px;height:44px;display:grid;place-items:center;border-radius:15px;color:white;background:linear-gradient(135deg,#39a5f5,#566be5 58%,#9565e7);box-shadow:0 9px 20px rgba(82,108,220,.18);font-size:19px;margin-bottom:17px; }
+    .feature h3 { margin:0 0 8px;color:#2d3a5b;font-size:16px;letter-spacing:-.03em; }
+    .feature p { max-width:430px;margin:0;color:#75839f;font-size:11px;line-height:1.8; }
+    .feature-status { position:absolute;top:21px;right:20px;border:1px solid rgba(255,255,255,.96);border-radius:999px;padding:5px 9px;color:#5974ac;background:rgba(255,255,255,.62);font-size:9px;font-weight:850;letter-spacing:.02em; }
+    .feature-art { position:absolute;right:-8px;bottom:-33px;width:42%;max-width:190px;opacity:.17;transform:rotate(-12deg);filter:saturate(1.2); }
+    .feature-art img { width:100%;display:block;border-radius:20px;box-shadow:0 16px 36px rgba(73,94,162,.18); }
+    .feature.wide .feature-art { width:34%;max-width:220px;opacity:.35;right:18px;bottom:-48px; }
+    .feature-foot { display:flex;align-items:center;gap:7px;margin-top:15px;color:#7e8ca7;font-size:10px;font-weight:750; }
+    .feature-foot i { width:6px;height:6px;border-radius:50%;background:#48b894;box-shadow:0 0 0 4px rgba(72,184,148,.11); }
+    .showcase-shell { border:1px solid rgba(255,255,255,.9);border-radius:34px;padding:clamp(24px,4vw,48px);background:linear-gradient(135deg,rgba(255,255,255,.62),rgba(229,236,255,.42));box-shadow:var(--shadow);backdrop-filter:blur(22px); }
+    .gallery-note { display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.95);border-radius:999px;padding:8px 12px;margin-bottom:24px;color:#7583a1;background:rgba(255,255,255,.48);font-size:10px;font-weight:700; }
+    .gallery-note:before { content:"✦";color:#7f72de; }
+    .gallery { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;align-items:start; }
+    .shot-card { min-width:0;padding:10px;border:1px solid rgba(255,255,255,.98);border-radius:22px;background:rgba(255,255,255,.54);box-shadow:0 12px 32px rgba(77,97,157,.08);transition:transform .3s ease,box-shadow .3s ease; }
+    .shot-card:hover { transform:translateY(-6px);box-shadow:0 20px 42px rgba(77,97,157,.14); }
+    .shot-image { position:relative;overflow:hidden;border-radius:15px;aspect-ratio:260/430;background:linear-gradient(145deg,#e5e9ff,#dbeaff); }
+    .shot-image img { width:100%;height:100%;display:block;object-fit:cover;transition:transform .55s ease; }
+    .shot-card:hover .shot-image img { transform:scale(1.045); }
+    .shot-tag { position:absolute;left:8px;top:8px;padding:5px 8px;border:1px solid rgba(255,255,255,.9);border-radius:999px;color:#52649a;background:rgba(255,255,255,.78);backdrop-filter:blur(12px);font-size:8px;font-weight:850; }
+    .shot-card h3 { margin:13px 3px 4px;color:#2f3c5e;font-size:13px;letter-spacing:-.025em; }
+    .shot-card p { margin:0 3px 4px;color:#7c89a4;font-size:10px;line-height:1.65; }
+    .experience { display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(28px,5vw,70px);align-items:center; }
+    .experience-copy h2 { max-width:590px; }
+    .experience-copy>p { max-width:535px;color:#74829f;font-size:13px;line-height:1.85;margin:17px 0 0; }
+    .experience-list { display:grid;gap:13px;margin-top:25px; }
+    .experience-item { display:flex;align-items:flex-start;gap:12px; }
+    .experience-check { width:28px;height:28px;flex:0 0 28px;display:grid;place-items:center;border:1px solid white;border-radius:10px;color:#5268d9;background:rgba(255,255,255,.65);box-shadow:0 6px 16px rgba(83,104,170,.08);font-size:13px;font-weight:900; }
+    .experience-item strong { display:block;color:#3a496c;font-size:12px;margin:1px 0 3px; }
+    .experience-item span { display:block;color:#7b89a5;font-size:10px;line-height:1.6; }
+    .call-visual { position:relative;min-height:520px;display:flex;align-items:center;justify-content:center;isolation:isolate; }
+    .call-visual:before { content:"";position:absolute;z-index:-1;width:390px;height:390px;border-radius:50%;background:radial-gradient(circle,rgba(118,144,248,.26),rgba(162,137,245,.16) 48%,transparent 72%);filter:blur(24px); }
+    .call-device { position:absolute;overflow:hidden;border:7px solid rgba(255,255,255,.93);border-radius:34px;background:white;box-shadow:0 30px 76px rgba(73,94,157,.21); }
+    .call-device img { width:100%;height:100%;display:block;object-fit:cover;border-radius:27px; }
+    .call-device.audio { width:clamp(205px,21vw,260px);height:clamp(370px,38vw,455px);left:7%;top:9%;transform:rotate(-7deg); }
+    .call-device.video { width:clamp(220px,23vw,285px);height:clamp(390px,40vw,480px);right:7%;top:12%;transform:rotate(6deg); }
+    .call-chip { position:absolute;z-index:5;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:9px;white-space:nowrap;padding:12px 16px;border:1px solid white;border-radius:999px;background:rgba(255,255,255,.76);box-shadow:0 14px 32px rgba(77,97,157,.15);backdrop-filter:blur(20px);color:#53658d;font-size:10px;font-weight:800; }
+    .call-chip i { width:7px;height:7px;border-radius:50%;background:#39b58c;box-shadow:0 0 0 4px rgba(57,181,140,.12); }
+    .roadmap {
+      position:relative;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.94);
+      border-radius:34px;
+      padding:clamp(25px,4vw,46px);
+      background:
+        radial-gradient(600px 360px at 100% 0%,rgba(153,134,255,.24),transparent 66%),
+        radial-gradient(500px 350px at 0% 100%,rgba(108,190,255,.17),transparent 65%),
+        linear-gradient(140deg,rgba(255,255,255,.82),rgba(234,239,255,.64));
+      box-shadow:var(--shadow);
+    }
+    .roadmap:after { content:"";position:absolute;width:370px;height:370px;right:-170px;bottom:-245px;border:1px solid rgba(119,137,220,.16);border-radius:50%;box-shadow:0 0 0 28px rgba(130,146,224,.055),0 0 0 60px rgba(130,146,224,.035);pointer-events:none; }
+    .roadmap-head { max-width:720px;margin-bottom:30px;position:relative;z-index:1; }
+    .roadmap-head p { max-width:620px;margin:14px 0 0;color:#7886a2;font-size:12px;line-height:1.8; }
+    .roadmap-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;position:relative;z-index:1; }
+    .plan-card { min-height:190px;padding:20px;border:1px solid rgba(255,255,255,.94);border-radius:22px;background:rgba(255,255,255,.56);box-shadow:inset 0 1px 0 white,0 10px 25px rgba(85,103,166,.05);transition:transform .25s ease,background .25s ease; }
+    .plan-card:hover { transform:translateY(-4px);background:rgba(255,255,255,.78); }
+    .plan-card.featured { background:linear-gradient(145deg,rgba(226,228,255,.86),rgba(255,255,255,.73));border-color:rgba(255,255,255,.98); }
+    .plan-top { display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:15px; }
+    .plan-icon { width:39px;height:39px;display:grid;place-items:center;border-radius:13px;color:white;background:linear-gradient(135deg,#42a6f4,#596be5,#9864e7);box-shadow:0 8px 18px rgba(81,105,218,.15);font-size:17px; }
+    .plan-label { padding:5px 8px;border:1px solid rgba(255,255,255,.95);border-radius:999px;color:#6678c6;background:rgba(255,255,255,.6);font-size:8px;font-weight:900;letter-spacing:.07em;text-transform:uppercase; }
+    .plan-card h3 { margin:0 0 7px;color:#334263;font-size:14px; }
+    .plan-card p { margin:0;color:#7b89a4;font-size:10px;line-height:1.7; }
+    .roadmap-foot { position:relative;z-index:1;margin:22px 0 0;color:#8995ac;font-size:10px; }
+    .release-panel {
+      position:relative;
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      align-items:center;
+      gap:28px;
+      overflow:hidden;
+      padding:clamp(24px,4vw,38px);
+      border:1px solid rgba(255,255,255,.98);
+      border-radius:30px;
+      background:
+        radial-gradient(500px 260px at 100% 0%,rgba(165,145,255,.22),transparent 70%),
+        linear-gradient(115deg,rgba(221,239,255,.88),rgba(236,229,255,.78) 54%,rgba(255,255,255,.8));
+      box-shadow:var(--shadow);
+    }
+    .release-panel:before { content:"";position:absolute;width:290px;height:290px;right:170px;top:-205px;border:1px solid rgba(255,255,255,.8);border-radius:50%;box-shadow:0 0 0 25px rgba(255,255,255,.14),0 0 0 52px rgba(255,255,255,.09);pointer-events:none; }
+    .release-main { position:relative;z-index:1; }
+    .release-label { display:inline-flex;align-items:center;gap:8px;color:#5368bd;font-size:9px;font-weight:900;letter-spacing:.15em;text-transform:uppercase; }
+    .release-label:before { content:"";width:7px;height:7px;border-radius:50%;background:#3db68d;box-shadow:0 0 0 4px rgba(61,182,141,.12); }
+    .release-version { margin:9px 0 0;color:#2b3a63;font-size:clamp(42px,5vw,58px);font-weight:900;letter-spacing:-.075em;line-height:1; }
+    .release-date { margin-top:7px;color:#8995ad;font-size:10px; }
+    .release-notes { max-width:790px;margin:17px 0 0;color:#687896;font-size:12px;line-height:1.8; }
+    .release-notes ul { margin:6px 0 0;padding-left:18px; }
+    .release-notes li { margin:4px 0; }
+    .release-status { max-width:780px;margin:17px 0 0;padding-top:13px;border-top:1px solid rgba(255,255,255,.85);color:#8491a9;font-size:10px;line-height:1.7; }
+    .release-status strong { color:#4e62bf; }
+    .release-actions { position:relative;z-index:1;display:flex;flex-direction:column;gap:9px;min-width:210px; }
     .release-actions .button { width:100%; }
-    .release-error { color:#e4c2aa; font-size:11px; }
-    .install-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:24px; }
-    .install-step { padding:19px; border:1px solid var(--line); background:rgba(15,24,42,.55); border-radius:18px; }
-    .step-number { color:var(--cyan); font-size:11px; font-weight:850; letter-spacing:.1em; }
-    .install-step h3 { font-size:14px; margin:7px 0 5px; }
-    .install-step p { color:var(--muted); font-size:11px; margin:0; line-height:1.7; }
-    .closing { text-align:center; padding:60px 20px 75px; }
-    .closing h2 { max-width:700px; margin:0 auto; }
-    .closing p { color:var(--muted); font-size:14px; max-width:540px; margin:15px auto 24px; }
-    footer { border-top:1px solid var(--line); padding:29px 0 34px; color:var(--muted-2); font-size:11px; }
-    .footer-inner { display:flex; align-items:center; justify-content:space-between; gap:22px; }
-    .footer-brand { display:flex; align-items:center; gap:10px; color:var(--text); font-size:15px; font-weight:800; }
-    .footer-brand img { width:34px; height:34px; border-radius:11px; }
-    .footer-links { display:flex; gap:18px; flex-wrap:wrap; }
-    .footer-links a:hover { color:var(--text); }
-    .credits { color:#b8c4dc; text-align:right; line-height:1.8; }
-    .loading { color:var(--muted); }
-    @media (max-width:1100px) {
-      .hero { grid-template-columns:1fr .9fr; gap:22px; }
-      .hero-device.main { left:3%; width:clamp(205px,22vw,280px); height:clamp(350px,38vw,475px); }
-      .hero-device.secondary { right:0; width:clamp(185px,19vw,250px); height:clamp(320px,35vw,430px); }
-      .features { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .release-actions .button-secondary { background:rgba(255,255,255,.56); }
+    .install-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-top:18px; }
+    .install-step { padding:19px;border:1px solid rgba(255,255,255,.95);border-radius:20px;background:rgba(255,255,255,.43);box-shadow:inset 0 1px 0 white; }
+    .step-number { color:#697cdb;font-size:9px;font-weight:900;letter-spacing:.13em; }
+    .install-step h3 { margin:7px 0 5px;color:#354465;font-size:13px; }
+    .install-step p { margin:0;color:#8190aa;font-size:10px;line-height:1.7; }
+    .closing { text-align:center;padding:80px 20px 100px; }
+    .closing-orb { width:70px;height:70px;display:grid;place-items:center;margin:0 auto 23px;border:1px solid white;border-radius:24px;color:white;background:linear-gradient(135deg,#3da4f5,#5b6be3,#9a64e6);box-shadow:0 15px 34px rgba(82,106,222,.23);font-size:27px; }
+    .closing h2 { max-width:800px;margin:0 auto; }
+    .closing p { max-width:555px;margin:16px auto 25px;color:#74829e;font-size:13px;line-height:1.8; }
+    footer { padding:28px 0 35px;border-top:1px solid rgba(255,255,255,.82);background:rgba(255,255,255,.25); }
+    .footer-inner { display:flex;align-items:center;justify-content:space-between;gap:22px; }
+    .footer-brand { display:flex;align-items:center;gap:10px;color:#354361;font-size:15px;font-weight:850; }
+    .footer-brand img { width:34px;height:34px;border-radius:11px; }
+    .footer-copy { margin-top:7px;color:#929eb4;font-size:9px; }
+    .footer-links { display:flex;gap:17px;flex-wrap:wrap;color:#7d8ba6;font-size:10px;font-weight:700; }
+    .footer-links a:hover { color:var(--indigo); }
+    .credits { color:#8190aa;text-align:right;font-size:9px;line-height:1.8; }
+    .loading { color:#8b98b2; }
+    .error-note { color:#b66b7a;font-size:10px; }
+    .reveal { opacity:1; transform:none; }
+    .has-js .reveal { opacity:0; transform:translateY(19px); transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1); }
+    .has-js .reveal.is-visible { opacity:1;transform:translateY(0); }
+    .delay-1 { transition-delay:.08s !important; }
+    .delay-2 { transition-delay:.16s !important; }
+    .delay-3 { transition-delay:.24s !important; }
+    @keyframes ambient-drift { from {transform:translate3d(-3%,0,0) scale(1)} to {transform:translate3d(5%,6%,0) scale(1.12)} }
+    @keyframes orb-turn { to { transform:rotate(360deg) } }
+    @keyframes device-float { 0%,100% { margin-top:0; } 50% { margin-top:-17px; } }
+    @keyframes device-float-side { 0%,100% { margin-top:0; } 50% { margin-top:18px; } }
+    @keyframes float-card { 0%,100% { translate:0 0; } 50% { translate:0 -9px; } }
+    @keyframes sheen { 0%,35% { left:-55%; } 62%,100% { left:125%; } }
+    @keyframes ticker { to { transform:translateX(-50%); } }
+    @media (max-width:1120px) {
+      .hero { grid-template-columns:minmax(0,1fr) minmax(390px,.9fr);gap:28px; }
+      .device-main { left:4%; }
+      .device-side { right:2%; }
+      .feature { grid-column:span 6; }
+      .feature.wide { grid-column:span 6; }
       .gallery { grid-template-columns:repeat(3,minmax(0,1fr)); }
-      .gallery .shot-card:nth-child(4), .gallery .shot-card:nth-child(5) { margin-top:4px; }
     }
-    @media (max-width:860px) {
-      .hero { grid-template-columns: minmax(0, 1fr); min-height: 0; padding-block: 48px 28px; gap: 18px; }
-      .hero-copy { width: 100%; max-width: 760px; margin-inline: auto; }
-      .hero-visual { width: min(100%, 680px); min-height: 420px; margin-inline: auto; }
-      .hero-device.main { width: 230px; height: 390px; left: 14%; top: 12px; }
-      .hero-device.secondary { width: 200px; height: 350px; right: 12%; top: 48px; }
-      .hero-float.one { right: 2%; bottom: 18px; }
-      .hero-float.two { left: 2%; bottom: 0; }
-    }
-    @media (max-width:720px) {
-      .wrap { width:100%; padding-inline:20px; }
-      .topbar { height:72px; }
-      .nav { gap:14px; }
-      .nav a:not(.nav-cta) { display:none; }
-      .hero { grid-template-columns:1fr; min-height:0; padding:54px 0 34px; }
-      .hero-visual { min-height:440px; margin-top:4px; }
-      .hero-device.main { left:16%; top:22px; width:210px; height:350px; }
-      .hero-device.secondary { right:10%; top:67px; width:188px; height:322px; }
-      .hero-float.one { right:2%; bottom:12px; }
-      .hero-float.two { left:0; bottom:-15px; }
-      .trust-strip { margin-top:28px; grid-template-columns:1fr; }
+    @media (max-width:850px) {
+      .topbar { min-height:70px;padding-inline:24px; }
+      .menu-toggle { display:block; }
+      .nav { display:none;position:absolute;top:calc(100% + 8px);right:18px;left:18px;align-items:stretch;gap:0;padding:9px;border:1px solid white;border-radius:20px;background:rgba(248,250,255,.92);box-shadow:var(--shadow);backdrop-filter:blur(24px); }
+      .nav.open { display:flex;flex-direction:column; }
+      .nav a { padding:12px 13px;border-radius:12px; }
+      .nav a:not(.nav-cta) { display:block; }
+      .nav-cta { justify-content:center;margin-top:4px; }
+      .hero { grid-template-columns:1fr;min-height:0;padding-block:55px 35px;gap:14px; }
+      .hero-copy { max-width:720px; }
+      .hero-visual { width:min(100%,650px);min-height:570px;margin:0 auto; }
+      .device-main { left:15%; }
+      .device-side { right:12%; }
+      .trust-strip { grid-template-columns:1fr; }
       .section-head { display:block; }
       .section-copy { margin-top:13px; }
-      section { padding:64px 0; }
-      .gallery { grid-template-columns:repeat(2,1fr); }
-      .roadmap { padding:25px; }
-      .features { grid-template-columns:repeat(2,minmax(0,1fr)); }
-      .roadmap-grid { grid-template-columns:repeat(2,1fr); }
+      .experience { grid-template-columns:1fr; }
+      .experience-copy { max-width:720px; }
+      .call-visual { min-height:500px; }
+      .roadmap-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
       .release-panel { grid-template-columns:1fr; }
-      .release-actions { flex-direction:row; flex-wrap:wrap; }
-      .release-actions .button { width:auto; flex:1; }
+      .release-actions { flex-direction:row;flex-wrap:wrap; }
+      .release-actions .button { flex:1; }
     }
-    @media (max-width:460px) {
-      .hero-visual { min-height:385px; }
-      .hero-device.main { width:183px; height:310px; left:11%; }
-      .hero-device.secondary { width:163px; height:281px; right:6%; top:60px; }
-      .hero-float { padding:9px 11px; }
-      .hero-float.one { right:-3px; bottom:5px; }
-      .hero-float.two { left:-3px; bottom:-20px; }
-      .features,.gallery,.roadmap-grid,.install-grid { grid-template-columns:1fr; }
-      .feature { min-height:0; }
-      .shot-card { max-width:340px; width:100%; margin:0 auto; }
-      .shot-image { aspect-ratio:260/430; }
-      .roadmap { padding:21px; }
+    @media (max-width:580px) {
+      .wrap { width:calc(100% - 36px); }
+      .topbar { padding-inline:18px; }
+      .brand { font-size:18px; }
+      .brand img { width:39px;height:39px; }
+      .hero { padding:43px 0 28px; }
+      h1 { font-size:clamp(44px,13vw,62px);margin-top:20px; }
+      .lead { font-size:15px;line-height:1.7; }
+      .hero-actions { display:grid;grid-template-columns:1fr; }
+      .hero-actions .button { width:100%; }
+      .hero-meta { gap:9px;font-size:10px; }
+      .hero-visual { min-height:470px; }
+      .hero-orb { width:310px;height:310px; }
+      .device-main { width:195px;height:360px;left:9%;top:12px;border-width:6px;border-radius:29px; }
+      .device-side { width:170px;height:315px;right:5%;top:62px;border-width:6px;border-radius:29px; }
+      .hero-float { min-width:145px;padding:10px 12px; }
+      .hero-float.one { right:-4px;bottom:25px; }
+      .hero-float.two { left:-5px;bottom:-7px; }
+      .float-value { font-size:10px; }
+      .trust-strip { margin-top:11px; }
+      section { padding:65px 0; }
+      h2 { font-size:35px; }
+      .feature-grid { gap:10px; }
+      .feature,.feature.wide { grid-column:span 12;min-height:190px;padding:20px; }
+      .feature-art { width:34%; }
+      .showcase-shell { padding:17px;border-radius:25px; }
+      .gallery { grid-template-columns:repeat(2,minmax(0,1fr));gap:9px; }
+      .shot-card { padding:7px;border-radius:17px; }
+      .shot-image { border-radius:12px; }
+      .shot-card h3 { font-size:11px;margin-top:10px; }
+      .shot-card p { font-size:9px; }
+      .shot-tag { font-size:7px;left:6px;top:6px;padding:4px 6px; }
+      .call-visual { min-height:420px; }
+      .call-device.audio { width:170px;height:310px;left:3%; }
+      .call-device.video { width:185px;height:330px;right:2%; }
+      .call-chip { bottom:3px;font-size:9px;padding:10px 13px; }
+      .roadmap { padding:21px;border-radius:27px; }
+      .roadmap-grid { grid-template-columns:1fr; }
+      .plan-card { min-height:0; }
+      .release-panel { padding:23px;border-radius:25px; }
+      .release-version { font-size:45px; }
       .release-actions { flex-direction:column; }
       .release-actions .button { width:100%; }
-      .footer-inner { flex-direction:column; align-items:flex-start; }
+      .install-grid { grid-template-columns:1fr; }
+      .closing { padding:65px 10px 80px; }
+      .footer-inner { align-items:flex-start;flex-direction:column; }
       .credits { text-align:left; }
-      .footer-links { gap:12px; }
-      h1 { font-size:50px; }
-      .lead { font-size:16px; }
+      .footer-links { gap:13px; }
     }
     @media (prefers-reduced-motion: reduce) {
-      *, *:before, *:after { scroll-behavior:auto !important; transition:none !important; animation:none !important; }
+      *,*:before,*:after { scroll-behavior:auto !important;animation:none !important;transition:none !important; }
+      .has-js .reveal { opacity:1;transform:none; }
     }
   </style>
 </head>
 <body>
-  <header class="wrap topbar">
-    <a class="brand" href="#top" aria-label="ArturChat — главная">
+  <div class="scroll-progress" aria-hidden="true"><span id="scroll-progress"></span></div>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="ArturChat — на главную">
       <img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp" alt="">
-      <span>Artur<span class="gradient">Chat</span></span>
+      <span class="brand-name">Artur<span class="gradient">Chat</span></span>
     </a>
-    <nav class="nav" aria-label="Главная навигация">
+    <nav class="nav" id="site-nav" aria-label="Главная навигация">
       <a href="#features">Возможности</a>
       <a href="#preview">Интерфейс</a>
-      <a href="#roadmap">Будущее</a>
-      <a href="#download" class="nav-cta">Скачать APK ↗</a>
+      <a href="#roadmap">Развитие</a>
+      <a href="#download" class="nav-cta">Скачать APK <span aria-hidden="true">↓</span></a>
     </nav>
+    <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Открыть меню" aria-expanded="false" aria-controls="site-nav">☰</button>
   </header>
 
   <main id="top">
-    <div class="wrap hero">
+    <section class="wrap hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <div class="eyebrow">Текущая сборка ArturChat · 0.7.1</div>
-        <h1>Общение,<br><span class="gradient">которое ближе.</span></h1>
-        <p class="lead">ArturChat объединяет переписку, голосовые и видеозвонки, профили, друзей и фотоистории. Уже работающие возможности — в одном приложении, а новые идеи постепенно становятся частью продукта.</p>
+        <div class="eyebrow"><span class="eyebrow-dot"></span> ArturChat · пространство для общения</div>
+        <h1 id="hero-title">
+          <span class="line">Будь ближе.</span>
+          <span class="line gradient">Где бы ты ни был.</span>
+        </h1>
+        <p class="lead">Сообщения, фотографии, голосовые и видеозвонки, друзья и фотоистории — в одном спокойном и красивом пространстве. ArturChat создан, чтобы важное общение всегда было под рукой.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#download">Скачать публичный APK <span aria-hidden="true">↓</span></a>
-          <a class="button button-secondary" href="#features">Возможности приложения <span aria-hidden="true">↗</span></a>
+          <a class="button button-primary" href="#download"><span aria-hidden="true">↓</span> Скачать для Android</a>
+          <a class="button button-secondary" href="#features">Открыть возможности <span aria-hidden="true">↗</span></a>
         </div>
-        <div class="hero-note">Последняя сборка проекта <strong id="current-version">0.7.1</strong> · Android 8.0 и выше</div>
+        <div class="hero-meta">
+          <span>Текущая версия <strong id="current-version">0.7.1</strong></span>
+          <span class="meta-separator"></span>
+          <span>Android 8.0 и выше</span>
+          <span class="meta-separator"></span>
+          <span>Официальный APK</span>
+        </div>
+        <div class="hero-tags">
+          <span class="hero-tag">Личные переписки</span>
+          <span class="hero-tag">Аудио и видео</span>
+          <span class="hero-tag">Друзья и истории</span>
+        </div>
       </div>
-      <div class="hero-visual" aria-label="Визуальный обзор ArturChat">
-        <div class="hero-glow"></div>
-        <div class="hero-device main">
-          <img src="assets/concept-chat.webp" alt="Визуальный макет экрана переписки ArturChat">
+
+      <div class="hero-visual" aria-label="Визуальный обзор интерфейса ArturChat">
+        <div class="hero-orb"></div>
+        <span class="hero-spark a" aria-hidden="true"></span>
+        <span class="hero-spark b" aria-hidden="true"></span>
+        <div class="device device-main">
+          <img src="assets/concept-chat.webp" alt="Экран переписки ArturChat" fetchpriority="high">
+          <span class="device-glare" aria-hidden="true"></span>
         </div>
-        <div class="hero-device secondary">
-          <img src="assets/concept-video-call.webp" alt="Визуальный макет экрана видеозвонка ArturChat">
+        <div class="device device-side">
+          <img src="assets/concept-video-call.webp" alt="Экран видеозвонка ArturChat" loading="eager">
         </div>
         <div class="hero-float one">
-          <div class="float-top"><span class="float-dot"></span> Видеозвонки</div>
-          <div class="float-value">Уже доступны в приложении</div>
+          <div class="float-top"><span class="float-dot"></span> На связи</div>
+          <div class="float-value">Голосом и видео</div>
         </div>
         <div class="hero-float two">
-          <div class="float-top">Фотоистории друзей</div>
-          <div class="float-value">На 24 часа ✦</div>
+          <div class="float-top">Только для друзей</div>
+          <div class="float-value">Личные фотоистории ✦</div>
         </div>
-        <div class="hero-line"></div>
-      </div>
-    </div>
-
-    <div class="wrap trust-strip" aria-label="Основные особенности">
-      <div class="trust-item"><div class="trust-icon">✉</div><span>Сообщения и отправка фотографий</span></div>
-      <div class="trust-item"><div class="trust-icon">◖</div><span>Голосовые и видеозвонки один на один</span></div>
-      <div class="trust-item"><div class="trust-icon">◎</div><span>Друзья, профили и фотоистории</span></div>
-    </div>
-
-    <section id="features" class="wrap">
-      <div class="section-head">
-        <div><div class="kicker">Сегодня в ArturChat</div><h2>Всё важное —<br>для настоящего общения.</h2></div>
-        <p class="section-copy">Мы начинаем с главного: удобной переписки, понятной обратной связи и возможности услышать друг друга. Остальное будем добавлять последовательно.</p>
-      </div>
-      <div class="features">
-        <article class="feature"><div class="feature-icon">✉</div><h3>Чаты в реальном времени</h3><p>Личные переписки с быстрым обновлением сообщений, историей диалога и индикаторами отправки, доставки и прочтения.</p></article>
-        <article class="feature"><div class="feature-icon">↩</div><h3>Действия с сообщениями</h3><p>Отвечайте на конкретное сообщение, копируйте текст, пересылайте и удаляйте одно или несколько сообщений.</p></article>
-        <article class="feature"><div class="feature-icon">◖</div><h3>Голосовые и видеозвонки</h3><p>Звоните один на один прямо из переписки. Видеорежим использует камеру и микрофон с отдельным управлением.</p></article>
-        <article class="feature"><div class="feature-icon">▧</div><h3>Фотографии в чате</h3><p>Отправляйте изображения из галереи, просматривайте их в переписке и открывайте в крупном формате.</p></article>
-        <article class="feature"><div class="feature-icon">◎</div><h3>Личный профиль</h3><p>Добавляйте фотографию, имя, уникальный псевдоним, статус и краткую информацию о себе.</p></article>
-        <article class="feature"><div class="feature-icon">♧</div><h3>Друзья и заявки</h3><p>Находите людей по псевдониму, отправляйте заявки и управляйте подтверждёнными дружескими связями.</p></article>
-        <article class="feature"><div class="feature-icon">◌</div><h3>Фотоистории на 24 часа</h3><p>Публикуйте фотографии для друзей. Истории доступны взаимным друзьям и автоматически исчезают через сутки.</p></article>
-        <article class="feature"><div class="feature-icon">↯</div><h3>Быстрый запуск чатов</h3><p>Список переписок, последние сообщения, профили и изображения сначала загружаются из локального кеша.</p></article>
-        <article class="feature"><div class="feature-icon">⟳</div><h3>Обновление в приложении</h3><p>Проверяйте новый официальный релиз и переходите к установке обновления без ручного поиска APK.</p></article>
+        <div class="hero-caption">ЛИЧНОЕ ОБЩЕНИЕ · ARTURCHAT</div>
       </div>
     </section>
 
-    <section id="preview" class="gallery-section">
-      <div class="wrap">
-        <div class="section-head">
-          <div><div class="kicker">Визуальный обзор</div><h2>Знакомьтесь с ArturChat<br>ближе.</h2></div>
-          <p class="section-copy">Здесь собраны экраны и визуальные макеты приложения. Подписи показывают, что уже работает в текущей сборке, а что ещё находится в проектировании.</p>
+    <div class="wrap trust-strip" aria-label="Ключевые возможности">
+      <div class="trust-item"><span class="trust-icon">✉</span><span>Переписки и отправка фотографий</span></div>
+      <div class="trust-item"><span class="trust-icon">◖</span><span>Прямые аудио- и видеозвонки один на один</span></div>
+      <div class="trust-item"><span class="trust-icon">◎</span><span>Друзья, личные профили и фотоистории</span></div>
+    </div>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span>Чаты <b>✦</b> Голосовые звонки <b>✦</b> Видеосвязь <b>✦</b> Друзья <b>✦</b> Фотоистории <b>✦</b> Личный профиль <b>✦</b></span>
+        <span>Чаты <b>✦</b> Голосовые звонки <b>✦</b> Видеосвязь <b>✦</b> Друзья <b>✦</b> Фотоистории <b>✦</b> Личный профиль <b>✦</b></span>
+      </div>
+    </div>
+
+    <section id="features" class="wrap">
+      <div class="section-head reveal">
+        <div>
+          <div class="kicker">Возможности ArturChat</div>
+          <h2>Всё для общения.<br><span class="gradient">Ничего лишнего.</span></h2>
         </div>
-        <div class="gallery-note">Часть изображений — визуальные макеты, а не скриншоты с устройства. Статусы функций указаны отдельно.</div>
+        <p class="section-copy">Мы собираем привычные способы быть на связи в одном приложении: от короткого сообщения до видеозвонка и личных историй для друзей.</p>
+      </div>
+
+      <div class="feature-grid">
+        <article class="feature wide soft-blue reveal">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">✉</div>
+          <h3>Переписки, которые не теряются</h3>
+          <p>Личные диалоги, фотографии, ответы на сообщения, пересылка и удаление. Отметки отправки, доставки и прочтения помогают понимать, что происходит с сообщением.</p>
+          <div class="feature-foot"><i></i> Сообщения и медиа в одном месте</div>
+          <div class="feature-art"><img src="assets/concept-chat.webp" alt="" loading="lazy"></div>
+        </article>
+        <article class="feature wide soft-purple reveal delay-1">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">◖</div>
+          <h3>Слышать и видеть друг друга</h3>
+          <p>Запускай аудио- или видеозвонок прямо из личной переписки. Управляй микрофоном и камерой во время разговора.</p>
+          <div class="feature-foot"><i></i> Аудио и видео один на один</div>
+          <div class="feature-art"><img src="assets/concept-video-call.webp" alt="" loading="lazy"></div>
+        </article>
+        <article class="feature reveal">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">♧</div>
+          <h3>Твой круг друзей</h3>
+          <p>Находи людей по псевдониму, отправляй заявки и управляй взаимными дружескими связями.</p>
+          <div class="feature-foot"><i></i> Заявки и подтверждённые друзья</div>
+        </article>
+        <article class="feature soft-lilac reveal delay-1">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">◎</div>
+          <h3>Личный профиль</h3>
+          <p>Фотография, имя, уникальный псевдоним, статус и информация о себе — твоя персональная страница.</p>
+          <div class="feature-art"><img src="assets/concept-profile.webp" alt="" loading="lazy"></div>
+        </article>
+        <article class="feature soft-blue reveal delay-2">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">◌</div>
+          <h3>Фотоистории для своих</h3>
+          <p>Делись моментами с взаимными друзьями. Фотографии доступны 24 часа, затем исчезают автоматически.</p>
+          <div class="feature-art"><img src="assets/concept-stories.webp" alt="" loading="lazy"></div>
+        </article>
+        <article class="feature reveal delay-3">
+          <span class="feature-status">Доступно сейчас</span>
+          <div class="feature-icon">⟳</div>
+          <h3>Обновления внутри приложения</h3>
+          <p>Проверяй наличие новой официальной версии и переходи к установке обновления без ручного поиска APK.</p>
+          <div class="feature-foot"><i></i> Всегда можно проверить свежий релиз</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="preview" class="wrap">
+      <div class="showcase-shell reveal">
+        <div class="section-head">
+          <div>
+            <div class="kicker">Визуальный язык</div>
+            <h2>Лёгкость в каждой детали.</h2>
+          </div>
+          <p class="section-copy">Современные градиенты, мягкие стеклянные поверхности и спокойная типографика. Интерфейс развивается в едином стиле — от авторизации до переписок.</p>
+        </div>
+        <div class="gallery-note">Концептуальные экраны показывают направление дизайна; актуальность функций отмечена в карточках.</div>
         <div class="gallery">
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-chat.webp" alt="Концепт экрана чата с сообщениями и медиа" loading="lazy"><span class="shot-tag">Доступно сейчас</span></div>
-            <h3>Переписка</h3><p>Сообщения, фотографии, ответы и действия с выбранными сообщениями.</p>
+            <div class="shot-image"><img src="assets/concept-chat.webp" alt="Концепт переписки ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <h3>Переписка</h3>
+            <p>Сообщения, фотографии, ответы и управление выбранными сообщениями.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-calls.webp" alt="Концепт экрана голосового звонка" loading="lazy"><span class="shot-tag">Доступно сейчас</span></div>
-            <h3>Голосовые звонки</h3><p>Голосовой вызов собеседника запускается прямо из личной переписки.</p>
+            <div class="shot-image"><img src="assets/concept-calls.webp" alt="Концепт аудиозвонка ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <h3>Аудиозвонки</h3>
+            <p>Личный вызов собеседника запускается прямо из чата.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-video-call.webp" alt="Концепт будущего видеозвонка с маленьким окном второго участника" loading="lazy"><span class="shot-tag">Доступно сейчас</span></div>
-            <h3>Видеозвонки</h3><p>Видеосвязь один на один с управлением камерой и микрофоном.</p>
+            <div class="shot-image"><img src="assets/concept-video-call.webp" alt="Концепт видеозвонка ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <h3>Видеозвонки</h3>
+            <p>Видеосвязь один на один с управлением камерой и микрофоном.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-profile.webp" alt="Концепт расширенного личного профиля пользователя" loading="lazy"><span class="shot-tag">Раздел доступен</span></div>
-            <h3>Личный профиль</h3><p>Фото, имя, псевдоним, статус и информация о себе. Дизайн экрана развивается.</p>
+            <div class="shot-image"><img src="assets/concept-profile.webp" alt="Концепт личного профиля ArturChat" loading="lazy"><span class="shot-tag">Раздел доступен</span></div>
+            <h3>Личный профиль</h3>
+            <p>Фотография, имя, псевдоним, статус и информация о себе.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-stories.webp" alt="Концепт раздела историй с публикациями друзей" loading="lazy"><span class="shot-tag">Фотоистории доступны</span></div>
-            <h3>Истории друзей</h3><p>Публикуйте фотоистории для взаимных друзей. Сейчас поддерживаются фотографии, срок жизни — 24 часа.</p>
-          </article>
-          <article class="shot-card">
-            <div class="shot-image"><div class="shot-ui">
-              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
-              <div class="ui-brand"><span class="ui-avatar">A</span> ArturChat</div>
-              <div class="ui-search">⌕ Поиск по диалогам</div>
-              <div class="ui-row"><span class="ui-avatar">M</span><div><strong>Марк</strong><small>Отправил фотографию</small></div><span class="ui-pill">2</span></div>
-              <div class="ui-row"><span class="ui-avatar">S</span><div><strong>София</strong><small>Увидимся сегодня?</small></div></div>
-              <div class="ui-row"><span class="ui-avatar">R</span><div><strong>Радмир</strong><small>Отлично, договорились</small></div></div>
-              <div class="ui-row"><span class="ui-avatar">D</span><div><strong>Друзья</strong><small>Новое сообщение в группе</small></div></div>
-            </div><span class="shot-tag">Концепт</span></div>
-            <h3>Все диалоги</h3><p>Быстрый доступ к перепискам, новым сообщениям и любимым контактам.</p>
-          </article>
-          <article class="shot-card">
-            <div class="shot-image"><div class="shot-ui">
-              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
-              <div class="ui-brand">Новая история <span style="margin-left:auto;color:#9e8aff">✕</span></div>
-              <div class="ui-story"><div class="ui-story-top"><span>● Ваша история</span><span>•••</span></div><div class="ui-story-title">Моменты,<br>которыми хочется<br>делиться.</div></div>
-              <div class="ui-action">Опубликовать историю</div>
-              <div style="text-align:center;color:#8f9db8;font-size:8px;margin-top:10px">Фото · Видео · Настройки аудитории</div>
-            </div><span class="shot-tag">Будущий экран</span></div>
-            <h3>Создание истории</h3><p>Выбирайте фото или видео, добавляйте подпись и делитесь моментом с друзьями.</p>
-          </article>
-          <article class="shot-card">
-            <div class="shot-image"><div class="shot-ui">
-              <div class="ui-status"><span>9:41</span><span>● ● ●</span></div>
-              <div class="ui-brand">Мой профиль</div>
-              <div class="ui-profile-head"><div class="ui-profile-avatar">A</div><strong>Ваше имя</strong><small>@username · На связи</small></div>
-              <div class="ui-setting">✎　Редактировать профиль</div>
-              <div class="ui-setting">◉　Фото и информация</div>
-              <div class="ui-setting">◈　Приватность профиля</div>
-              <div class="ui-setting">⚙　Настройки аккаунта</div>
-            </div><span class="shot-tag">Будущий экран</span></div>
-            <h3>Настройки профиля</h3><p>Управляйте личной информацией, статусом и тем, что видят другие пользователи.</p>
+            <div class="shot-image"><img src="assets/concept-stories.webp" alt="Концепт фотоисторий ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <h3>Фотоистории</h3>
+            <p>Публикации доступны взаимным друзьям в течение 24 часов.</p>
           </article>
         </div>
+      </div>
+    </section>
+
+    <section class="wrap experience">
+      <div class="experience-copy reveal">
+        <div class="kicker">Связь в твоём ритме</div>
+        <h2>Не просто написать.<br><span class="gradient">Быть рядом.</span></h2>
+        <p>Начни с сообщения, продолжи фотографией или перейди к разговору. ArturChat объединяет разные форматы общения так, чтобы переключаться между ними было естественно.</p>
+        <div class="experience-list">
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Личные чаты и фотографии</strong><span>Переписывайся, отвечай на конкретные сообщения и делись изображениями.</span></div></div>
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Голос и видео</strong><span>Вызывай собеседника напрямую из чата, не переключаясь на сторонние приложения.</span></div></div>
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Доверенный круг</strong><span>Истории доступны взаимным друзьям, а не всем подряд.</span></div></div>
+        </div>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#download">Попробовать ArturChat ↓</a>
+        </div>
+      </div>
+      <div class="call-visual reveal delay-1" aria-label="Предпросмотр аудио и видеозвонков">
+        <div class="call-device audio"><img src="assets/concept-calls.webp" alt="Макет экрана аудиозвонка" loading="lazy"></div>
+        <div class="call-device video"><img src="assets/concept-video-call.webp" alt="Макет экрана видеозвонка" loading="lazy"></div>
+        <div class="call-chip"><i></i> Аудио и видео · один на один</div>
       </div>
     </section>
 
     <section id="roadmap" class="wrap">
-      <div class="roadmap">
+      <div class="roadmap reveal">
         <div class="roadmap-head">
-          <div class="kicker">Следующие этапы</div>
-          <h2>Развитие продолжается.</h2>
-          <p>Основные инструменты общения уже доступны. Дальше будем расширять возможности историй, обмена файлами, уведомлений и группового взаимодействия. Это ориентиры развития, а не обещание конкретных дат.</p>
+          <div class="kicker">Что дальше</div>
+          <h2>Следующая глава<br><span class="gradient">ArturChat.</span></h2>
+          <p>Мы развиваем продукт последовательно: сначала укрепляем основу и повседневные сценарии, затем расширяем инструменты общения. Здесь — ближайшие направления, а не обещания точных дат.</p>
         </div>
         <div class="roadmap-grid">
           <article class="plan-card featured">
-            <div class="plan-top"><div class="plan-icon">▧</div><span class="plan-label">Следующий этап</span></div>
+            <div class="plan-top"><span class="plan-icon">◷</span><span class="plan-label">В разработке</span></div>
+            <h3>История звонков</h3>
+            <p>Единый журнал входящих и исходящих аудио- и видеовызовов с датой, статусом и длительностью разговора.</p>
+          </article>
+          <article class="plan-card">
+            <div class="plan-top"><span class="plan-icon">▧</span><span class="plan-label">В планах</span></div>
             <h3>Видеоистории</h3>
-            <p>Добавить публикацию коротких видео в ленту историй, сохранив ограничение доступа для друзей и срок доступности.</p>
+            <p>Добавить короткие видео в истории, сохранив доступ только для друзей и ограниченный срок публикации.</p>
           </article>
           <article class="plan-card">
-            <div class="plan-top"><div class="plan-icon">▤</div><span class="plan-label">В планах</span></div>
+            <div class="plan-top"><span class="plan-icon">▤</span><span class="plan-label">В планах</span></div>
             <h3>Документы и файлы</h3>
-            <p>Расширить обмен фотографиями до документов и других типов файлов с удобным просмотром и загрузкой.</p>
+            <p>Расширить обмен фотографиями до документов и других типов файлов с удобным просмотром.</p>
           </article>
           <article class="plan-card">
-            <div class="plan-top"><div class="plan-icon">♡</div><span class="plan-label">В планах</span></div>
+            <div class="plan-top"><span class="plan-icon">♡</span><span class="plan-label">В планах</span></div>
             <h3>Реакции на истории</h3>
-            <p>Добавить быстрые реакции и ответы на публикации, чтобы друзьям было проще поддерживать общение.</p>
+            <p>Добавить быстрые реакции и ответы, чтобы друзьям было проще делиться впечатлениями.</p>
           </article>
           <article class="plan-card">
-            <div class="plan-top"><div class="plan-icon">◉</div><span class="plan-label">В работе надёжности</span></div>
-            <h3>Уведомления</h3>
-            <p>Улучшать доставку уведомлений о новых сообщениях и входящих вызовах, в том числе когда приложение не открыто.</p>
-          </article>
-          <article class="plan-card">
-            <div class="plan-top"><div class="plan-icon">♧</div><span class="plan-label">В перспективе</span></div>
+            <div class="plan-top"><span class="plan-icon">♧</span><span class="plan-label">Развитие</span></div>
             <h3>Групповое общение</h3>
-            <p>Развивать управление участниками, настройки групп и инструменты для больших бесед.</p>
+            <p>Расширять управление участниками, настройки групп и инструменты для больших бесед.</p>
           </article>
           <article class="plan-card">
-            <div class="plan-top"><div class="plan-icon">✧</div><span class="plan-label">Постоянное развитие</span></div>
+            <div class="plan-top"><span class="plan-icon">✧</span><span class="plan-label">Постоянно</span></div>
             <h3>Приватность и удобство</h3>
-            <p>Продолжать улучшать настройки видимости профиля, скорость работы, доступность и визуальную систему приложения.</p>
+            <p>Улучшать настройки видимости, скорость работы, доступность и визуальную систему приложения.</p>
           </article>
         </div>
-        <p class="roadmap-foot">Пункты могут меняться по мере тестирования и обратной связи. Уже реализованные функции не относятся к этому списку.</p>
+        <p class="roadmap-foot">Приоритеты могут меняться по результатам тестирования и обратной связи. Журнал звонков находится в разработке; функции со статусом «В планах» ещё не входят в публичную сборку.</p>
       </div>
     </section>
 
     <section id="download" class="wrap">
-      <div class="section-head">
-        <div><div class="kicker">Официальная загрузка</div><h2>Публичный APK.</h2><p class="build-caption">В исходниках приложения сейчас версия <strong>0.7.1</strong>.</p></div>
-        <p class="section-copy">Кнопка ведёт на последний опубликованный релиз. Версия проекта и публичный релиз показаны раздельно, чтобы было понятно, что уже доступно для загрузки.</p>
+      <div class="section-head reveal">
+        <div><div class="kicker">Официальная загрузка</div><h2>Твой ArturChat.<br><span class="gradient">Уже рядом.</span></h2></div>
+        <p class="section-copy">Здесь всегда доступна последняя опубликованная версия. Сайт автоматически проверяет GitHub Releases и показывает только актуальный выпуск — без списка устаревших версий.</p>
       </div>
-      <div class="release-panel">
-        <div>
+      <div class="release-panel reveal">
+        <div class="release-main">
           <div class="release-label">Последняя опубликованная версия</div>
-          <div class="release-version" id="latest-version">0.6.12</div>
-          <div class="release-date" id="latest-date">06 ноября 2026</div>
-          <div class="release-notes" id="latest-summary">
-            <span class="loading">Загружаем описание последнего обновления…</span>
-          </div>
-          <p class="release-status" id="release-status">Текущая сборка проекта — <strong>0.7.1</strong>. Сведения о публикации проверяются автоматически.</p>
+          <div class="release-version" id="latest-version">0.7.1</div>
+          <div class="release-date" id="latest-date">Проверяем дату публикации…</div>
+          <div class="release-notes" id="latest-summary"><span class="loading">Загружаем описание последнего обновления…</span></div>
+          <p class="release-status" id="release-status" aria-live="polite">Проверяем текущую опубликованную версию.</p>
         </div>
         <div class="release-actions">
           <a id="release-download" class="button button-primary" href="https://github.com/arturwarlord/face_video/releases/latest/download/ArturChat.apk">↓ Скачать APK</a>
-          <a id="release-checksum" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest/download/ArturChat.apk.sha256">Контрольная сумма SHA-256 ↗</a>
-          <a id="release-details" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest">Описание релиза ↗</a>
+          <a id="release-checksum" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest/download/ArturChat.apk.sha256">Проверить SHA-256 ↗</a>
+          <a id="release-details" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest">Открыть релиз ↗</a>
         </div>
       </div>
       <div class="install-grid">
-        <article class="install-step"><div class="step-number">01 / ЗАГРУЗКА</div><h3>Скачайте APK</h3><p>Нажмите кнопку и дождитесь загрузки установочного файла на Android-устройство.</p></article>
-        <article class="install-step"><div class="step-number">02 / РАЗРЕШЕНИЕ</div><h3>Разрешите установку</h3><p>При первой установке Android может попросить разрешить установку приложений из браузера.</p></article>
-        <article class="install-step"><div class="step-number">03 / ГОТОВО</div><h3>Установите или обновите</h3><p>Откройте APK и подтвердите установку. Для обновления удалять текущую версию не нужно.</p></article>
+        <article class="install-step reveal"><div class="step-number">01 / ЗАГРУЗКА</div><h3>Скачай APK</h3><p>Нажми кнопку выше и дождись загрузки установочного файла на Android-устройство.</p></article>
+        <article class="install-step reveal delay-1"><div class="step-number">02 / РАЗРЕШЕНИЕ</div><h3>Разреши установку</h3><p>При первой установке Android может попросить разрешить установку приложений из браузера.</p></article>
+        <article class="install-step reveal delay-2"><div class="step-number">03 / ГОТОВО</div><h3>Установи или обнови</h3><p>Открой APK и подтверди установку. Для обновления удалять текущую версию не нужно.</p></article>
       </div>
     </section>
 
-    <section class="wrap closing">
-      <div class="kicker">ArturChat · Развитие продолжается</div>
-      <h2>Общение становится ближе.<br><span class="gradient">Вместе с вами.</span></h2>
-      <p>Следите за новыми возможностями, тестируйте обновления и делитесь идеями. Мы создаём ArturChat шаг за шагом.</p>
-      <a class="button button-primary" href="https://github.com/arturwarlord/face_video" target="_blank" rel="noopener">Перейти в GitHub ↗</a>
+    <section class="wrap closing reveal">
+      <div class="closing-orb">A</div>
+      <div class="kicker">ArturChat · Связь ближе</div>
+      <h2>Больше живого общения.<br><span class="gradient">Меньше расстояний.</span></h2>
+      <p>Присоединяйся, пробуй возможности приложения и помогай нам делать ArturChat лучше с каждым обновлением.</p>
+      <a class="button button-primary" href="#download">Скачать ArturChat <span aria-hidden="true">↓</span></a>
     </section>
   </main>
 
@@ -475,19 +773,21 @@
     <div class="wrap footer-inner">
       <div>
         <div class="footer-brand"><img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp" alt="">ArturChat</div>
-        <div style="margin-top:7px">© 2026 ArturChat. Все права защищены.</div>
+        <div class="footer-copy">© <span id="year">2026</span> ArturChat. Создаём пространство для общения.</div>
       </div>
       <div class="footer-links">
         <a href="#features">Возможности</a>
-        <a href="#roadmap">Планы</a>
-        <a href="https://github.com/arturwarlord/face_video" target="_blank" rel="noopener">GitHub</a>
+        <a href="#preview">Интерфейс</a>
+        <a href="#roadmap">Развитие</a>
+        <a href="https://github.com/arturwarlord/face_video" target="_blank" rel="noopener">GitHub ↗</a>
       </div>
-      <div class="credits">Разработчики: ARTUR A<br>Бета-тест: Rasul S, Radmir A</div>
+      <div class="credits">Разработчик: Artur Ai<br>Бета-тест: Rasul S, Radmir A</div>
     </div>
   </footer>
 
   <script>
     (function () {
+      "use strict";
       const owner = "arturwarlord";
       const repo = "face_video";
       const currentAppVersion = "0.7.1";
@@ -496,11 +796,12 @@
       const fallbackApk = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/ArturChat.apk";
       const fallbackChecksum = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/ArturChat.apk.sha256";
 
+      function byId(id) { return document.getElementById(id); }
       function formatDate(value) {
         if (!value) return "Дата публикации не указана";
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "Дата публикации не указана";
-        return new Intl.DateTimeFormat("ru-RU", {day:"2-digit", month:"long", year:"numeric"}).format(date);
+        return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long", year:"numeric" }).format(date);
       }
       function compareVersions(left, right) {
         const a = String(left).split(".").map(function (part) { return Number.parseInt(part, 10) || 0; });
@@ -527,36 +828,35 @@
             if (item) notes.push(item[1].trim());
           }
         }
-        return notes.slice(0, 6);
+        return notes.slice(0, 5);
       }
       function setLinks(apk, checksum, details) {
-        const download = document.getElementById("release-download");
+        const download = byId("release-download");
+        const sum = byId("release-checksum");
+        const rel = byId("release-details");
         if (download) download.href = apk || fallbackApk;
-        const sum = document.getElementById("release-checksum");
         if (sum) sum.href = checksum || fallbackChecksum;
-        const rel = document.getElementById("release-details");
         if (rel) rel.href = details || ("https://github.com/" + owner + "/" + repo + "/releases/latest");
       }
-      async function init() {
-        const currentVersion = document.getElementById("current-version");
-        if (currentVersion) currentVersion.textContent = currentAppVersion;
+      async function initRelease() {
+        if (byId("current-version")) byId("current-version").textContent = currentAppVersion;
         try {
           const responses = await Promise.all([
-            fetch(latestUrl, {headers:{"Accept":"application/vnd.github+json"}, cache:"no-store"}),
-            fetch(changelogUrl, {cache:"no-store"})
+            fetch(latestUrl, { headers:{"Accept":"application/vnd.github+json"}, cache:"no-store" }),
+            fetch(changelogUrl, { cache:"no-store" })
           ]);
           if (!responses[0].ok) throw new Error("GitHub Releases temporarily unavailable");
           const release = await responses[0].json();
           const markdown = responses[1].ok ? await responses[1].text() : "";
-          const version = String(release.tag_name || "0.6.12").replace(/^v/, "");
-          const assets = release.assets || [];
+          const version = String(release.tag_name || currentAppVersion).replace(/^v/, "");
+          const assets = Array.isArray(release.assets) ? release.assets : [];
           const apk = assets.find(function (asset) { return asset.name === "ArturChat.apk"; });
           const checksum = assets.find(function (asset) { return asset.name === "ArturChat.apk.sha256"; });
-          document.getElementById("latest-version").textContent = version;
-          document.getElementById("latest-date").textContent = formatDate(release.published_at);
+          if (byId("latest-version")) byId("latest-version").textContent = version;
+          if (byId("latest-date")) byId("latest-date").textContent = formatDate(release.published_at);
           const notes = releaseNotesFor(markdown, version);
-          const box = document.getElementById("latest-summary");
-          if (notes.length) {
+          const box = byId("latest-summary");
+          if (box && notes.length) {
             const list = document.createElement("ul");
             notes.forEach(function (note) {
               const item = document.createElement("li");
@@ -564,31 +864,78 @@
               list.appendChild(item);
             });
             box.replaceChildren(list);
-          } else {
-            box.textContent = "Опубликован официальный выпуск ArturChat. Подробное описание доступно на странице релиза.";
+          } else if (box) {
+            box.textContent = "Опубликован официальный выпуск ArturChat. Открой страницу релиза, чтобы посмотреть подробности.";
           }
-          const status = document.getElementById("release-status");
+          const status = byId("release-status");
           if (status) {
             if (compareVersions(version, currentAppVersion) >= 0) {
-              status.textContent = "Текущая версия проекта " + currentAppVersion + " уже опубликована и доступна для загрузки.";
+              status.textContent = "Последняя опубликованная версия — " + version + ". APK доступен для загрузки.";
             } else {
-              status.textContent = "Последняя сборка проекта — " + currentAppVersion + ". Публично доступен релиз " + version + "; новая сборка появится здесь после официальной публикации.";
+              status.textContent = "Последняя публичная версия — " + version + ". Информация обновится автоматически после публикации следующего релиза.";
             }
           }
           setLinks(
-            (apk && apk.browser_download_url) || fallbackApk,
-            (checksum && checksum.browser_download_url) || fallbackChecksum,
+            apk && apk.browser_download_url,
+            checksum && checksum.browser_download_url,
             release.html_url
           );
         } catch (error) {
           console.info("ArturChat release metadata is temporarily unavailable.", error);
-          document.getElementById("latest-summary").textContent = "Сведения о последнем опубликованном релизе временно недоступны. APK можно скачать на официальной странице релизов GitHub.";
-          const status = document.getElementById("release-status");
-          if (status) status.textContent = "Текущая сборка проекта — " + currentAppVersion + ". Статус публичного релиза сейчас не удалось проверить.";
+          if (byId("latest-summary")) byId("latest-summary").textContent = "Не удалось автоматически обновить сведения о релизе. Официальная страница загрузки GitHub остаётся доступна по кнопке ниже.";
+          if (byId("latest-date")) byId("latest-date").textContent = "Дата публикации уточняется";
+          if (byId("release-status")) byId("release-status").textContent = "Текущая версия проекта — " + currentAppVersion + ". Статус опубликованного релиза временно не удалось проверить.";
           setLinks(fallbackApk, fallbackChecksum, "https://github.com/" + owner + "/" + repo + "/releases/latest");
         }
       }
-      init();
+
+      function initMotion() {
+        const progress = byId("scroll-progress");
+        function updateProgress() {
+          const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+          const value = scrollable > 0 ? (window.scrollY / scrollable) * 100 : 0;
+          if (progress) progress.style.width = Math.min(100, Math.max(0, value)) + "%";
+        }
+        updateProgress();
+        window.addEventListener("scroll", updateProgress, { passive:true });
+
+        const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const revealItems = document.querySelectorAll(".reveal");
+        if (!reducedMotion && "IntersectionObserver" in window) {
+          const observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("is-visible");
+                observer.unobserve(entry.target);
+              }
+            });
+          }, { threshold:0.12, rootMargin:"0px 0px -35px 0px" });
+          revealItems.forEach(function (item) { observer.observe(item); });
+        } else {
+          revealItems.forEach(function (item) { item.classList.add("is-visible"); });
+        }
+
+        const toggle = byId("menu-toggle");
+        const nav = byId("site-nav");
+        if (toggle && nav) {
+          toggle.addEventListener("click", function () {
+            const open = nav.classList.toggle("open");
+            toggle.setAttribute("aria-expanded", String(open));
+            toggle.textContent = open ? "×" : "☰";
+          });
+          nav.querySelectorAll("a").forEach(function (link) {
+            link.addEventListener("click", function () {
+              nav.classList.remove("open");
+              toggle.setAttribute("aria-expanded", "false");
+              toggle.textContent = "☰";
+            });
+          });
+        }
+        if (byId("year")) byId("year").textContent = String(new Date().getFullYear());
+      }
+
+      initMotion();
+      initRelease();
     })();
   </script>
 </body>
