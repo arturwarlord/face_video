@@ -1,7 +1,6 @@
 package com.facevideo.app.model
 
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 data class ChatSummary(
     val id: String,
@@ -52,31 +51,46 @@ fun formatVoiceDuration(durationMs: Long): String {
 
 const val VOICE_WAVEFORM_BAR_COUNT = 64
 
-/** Converts MediaRecorder peak amplitude into a compact, perceptually scaled bar height. */
-fun normalizeVoiceAmplitude(amplitude: Int): Int {
-    val safeAmplitude = amplitude.coerceIn(0, 32_767)
-    if (safeAmplitude == 0) return 8
-    return (sqrt(safeAmplitude / 32_767.0) * 100.0)
-        .roundToInt()
-        .coerceIn(8, 100)
-}
-
-/** Resamples recorded amplitude snapshots to a fixed-width waveform for message storage and playback. */
+/**
+ * Converts raw MediaRecorder peak amplitudes into Telegram-style waveform bars.
+ * Each recording is normalized against its own peak so pauses, quiet syllables,
+ * and loud accents remain visually distinct instead of being flattened.
+ */
 fun buildVoiceWaveform(
     samples: List<Int>,
     barCount: Int = VOICE_WAVEFORM_BAR_COUNT
 ): List<Int> {
     val safeBarCount = barCount.coerceIn(16, 96)
-    if (samples.isEmpty()) return List(safeBarCount) { 14 }
-    val normalized = samples.map { it.coerceIn(8, 100) }
+    val raw = samples.map { it.coerceIn(0, 32_767) }
+    val peak = raw.maxOrNull() ?: 0
+    if (peak <= 0) return List(safeBarCount) { 8 }
+
+    // A sub-linear curve keeps quiet speech visible without flattening stronger peaks.
+    val normalized = raw.map { amplitude ->
+        val ratio = (amplitude.toDouble() / peak.toDouble()).coerceIn(0.0, 1.0)
+        val shaped = if (ratio < 0.025) 0.0 else ratio.pow(0.78)
+        (8 + (shaped * 92.0).roundToInt()).coerceIn(8, 100)
+    }
     if (normalized.size == 1) return List(safeBarCount) { normalized.first() }
 
+    // If there are more samples than bars, keep each time slice's local peak.
+    // If the recording is short, interpolate between real samples without inventing a pattern.
+    if (normalized.size >= safeBarCount) {
+        return List(safeBarCount) { index ->
+            val from = (index.toLong() * normalized.size / safeBarCount).toInt()
+            val until = (((index + 1L) * normalized.size / safeBarCount).toInt())
+                .coerceAtLeast(from + 1)
+                .coerceAtMost(normalized.size)
+            normalized.subList(from, until).maxOrNull() ?: 8
+        }
+    }
+
     return List(safeBarCount) { index ->
-        val sourcePosition = index.toDouble() * (normalized.size - 1).toDouble() / (safeBarCount - 1).toDouble()
-        val lowerIndex = sourcePosition.toInt().coerceIn(0, normalized.lastIndex)
-        val upperIndex = (lowerIndex + 1).coerceAtMost(normalized.lastIndex)
-        val fraction = sourcePosition - lowerIndex
-        (normalized[lowerIndex] * (1.0 - fraction) + normalized[upperIndex] * fraction)
+        val position = index.toDouble() * (normalized.size - 1).toDouble() / (safeBarCount - 1).toDouble()
+        val lower = position.toInt().coerceIn(0, normalized.lastIndex)
+        val upper = (lower + 1).coerceAtMost(normalized.lastIndex)
+        val fraction = position - lower
+        (normalized[lower] * (1.0 - fraction) + normalized[upper] * fraction)
             .roundToInt()
             .coerceIn(8, 100)
     }
