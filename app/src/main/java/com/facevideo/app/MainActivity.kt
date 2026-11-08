@@ -2780,7 +2780,7 @@ private fun LiveChatScreen(
                             }
                             Spacer(Modifier.height(6.dp))
                             VoiceWaveformBars(
-                                waveform = voiceAmplitudeSamples.toList(),
+                                waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList()),
                                 progress = 1f,
                                 modifier = Modifier.fillMaxWidth().height(26.dp)
                             )
