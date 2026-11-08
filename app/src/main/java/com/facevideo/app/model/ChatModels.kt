@@ -75,7 +75,6 @@ fun buildVoiceWaveform(
     if (normalized.size == 1) return List(safeBarCount) { normalized.first() }
 
     // If there are more samples than bars, keep each time slice's local peak.
-    // If the recording is short, interpolate between real samples without inventing a pattern.
     if (normalized.size >= safeBarCount) {
         return List(safeBarCount) { index ->
             val from = (index.toLong() * normalized.size / safeBarCount).toInt()
@@ -86,13 +85,12 @@ fun buildVoiceWaveform(
         }
     }
 
+    // For short recordings, distribute each real sample across its time slice.
+    // This keeps transient peaks visible instead of smoothing them away between bars.
     return List(safeBarCount) { index ->
-        val position = index.toDouble() * (normalized.size - 1).toDouble() / (safeBarCount - 1).toDouble()
-        val lower = position.toInt().coerceIn(0, normalized.lastIndex)
-        val upper = (lower + 1).coerceAtMost(normalized.lastIndex)
-        val fraction = position - lower
-        (normalized[lower] * (1.0 - fraction) + normalized[upper] * fraction)
-            .roundToInt()
-            .coerceIn(8, 100)
+        val sourceIndex = (index.toLong() * normalized.size / safeBarCount)
+            .toInt()
+            .coerceIn(0, normalized.lastIndex)
+        normalized[sourceIndex]
     }
 }
