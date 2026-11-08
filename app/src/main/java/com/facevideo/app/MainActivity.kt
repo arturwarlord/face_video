@@ -152,6 +152,9 @@ import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
 import com.facevideo.app.model.buildVoiceWaveform
 import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
+import com.facevideo.app.model.STORY_REACTION_OPTIONS
+import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.nextStoryReaction
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
 import java.util.UUID
@@ -1832,6 +1835,60 @@ private fun StoryViewerScreen(
 
     val current = stories.getOrNull(index)
     val canDelete = current?.userId == currentUserId
+    val canReact = current != null && current.userId != currentUserId
+    var reactionSummary by remember { mutableStateOf(StoryReactionSummary()) }
+    var isLoadingReactions by remember { mutableStateOf(false) }
+    var isSavingReaction by remember(current?.storyId) { mutableStateOf(false) }
+    var reactionError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(current?.storyId, currentUserId) {
+        val storyId = current?.storyId
+        if (storyId == null) {
+            reactionSummary = StoryReactionSummary()
+            isLoadingReactions = false
+            return@LaunchedEffect
+        }
+        isLoadingReactions = true
+        reactionError = null
+        runCatching {
+            repository.getStoryReactionSummary(storyId, currentUserId)
+        }.onSuccess {
+            reactionSummary = it
+        }.onFailure {
+            reactionError = it.message ?: "Не удалось загрузить реакции."
+            android.util.Log.w("ArturChatStories", "Could not load story reactions", it)
+        }
+        isLoadingReactions = false
+    }
+
+    fun onStoryReactionTapped(emoji: String) {
+        val story = current ?: return
+        if (!canReact || isLoadingReactions || isSavingReaction) return
+        val nextReaction = runCatching {
+            nextStoryReaction(reactionSummary.currentUserReaction, emoji)
+        }.getOrElse {
+            reactionError = it.message
+            return
+        }
+        scope.launch {
+            isSavingReaction = true
+            reactionError = null
+            runCatching {
+                repository.setStoryReaction(
+                    storyId = story.storyId,
+                    currentUserId = currentUserId,
+                    reaction = nextReaction
+                )
+            }.onSuccess {
+                reactionSummary = it
+            }.onFailure {
+                reactionError = it.message ?: "Не удалось сохранить реакцию."
+                android.util.Log.w("ArturChatStories", "Could not save story reaction", it)
+            }
+            isSavingReaction = false
+        }
+    }
+
     val ownerName = current?.let { it.displayName.ifBlank { it.username } } ?: "История"
     val ownerInitial = ownerName.trim().take(1).uppercase().ifBlank { "?" }
 
@@ -2073,6 +2130,76 @@ private fun StoryViewerScreen(
                         )
                     }
                     Spacer(Modifier.height(12.dp))
+                }
+
+                if (current != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.White.copy(alpha = 0.10f),
+                        shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            STORY_REACTION_OPTIONS.forEach { emoji ->
+                                val count = reactionSummary.counts[emoji] ?: 0
+                                val selected = reactionSummary.currentUserReaction == emoji
+                                Surface(
+                                    onClick = { onStoryReactionTapped(emoji) },
+                                    enabled = canReact && !isLoadingReactions && !isSavingReaction,
+                                    shape = RoundedCornerShape(15.dp),
+                                    color = if (selected) {
+                                        Color(0xFF6F7BE6).copy(alpha = 0.54f)
+                                    } else {
+                                        Color.White.copy(alpha = 0.08f)
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (selected) Color(0xFFD7E0FF).copy(alpha = 0.90f)
+                                        else Color.White.copy(alpha = 0.10f)
+                                    ),
+                                    modifier = Modifier.weight(1f).padding(horizontal = 1.dp)
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 3.dp, vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(emoji, fontSize = 17.sp, lineHeight = 19.sp)
+                                        if (count > 0) {
+                                            Spacer(Modifier.width(2.dp))
+                                            Text(
+                                                count.toString(),
+                                                color = Color.White.copy(alpha = 0.94f),
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (isSavingReaction) {
+                        Text(
+                            "Сохраняем реакцию…",
+                            color = Color.White.copy(alpha = 0.66f),
+                            fontSize = 8.sp,
+                            modifier = Modifier.padding(start = 5.dp, top = 4.dp)
+                        )
+                    }
+                    if (reactionError != null) {
+                        Text(
+                            reactionError.orEmpty(),
+                            color = Color(0xFFFFC3CD),
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(start = 5.dp, top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
                 }
 
                 Row(
