@@ -1,6 +1,7 @@
 package com.facevideo.app.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatModelsTest {
@@ -34,5 +35,31 @@ class ChatModelsTest {
     @Test
     fun negativeVoiceDurationIsClampedToZero() {
         assertEquals("0:00", formatVoiceDuration(-500L))
+    }
+
+    @Test
+    fun waveformUsesFixedBarCountAndPreservesSignalEnvelope() {
+        val waveform = buildVoiceWaveform(listOf(8, 20, 88, 100), 16)
+
+        assertEquals(16, waveform.size)
+        assertEquals(8, waveform.first())
+        assertEquals(100, waveform.last())
+        assertTrue(waveform.any { it in 80..100 })
+        assertTrue(waveform.all { it in 8..100 })
+    }
+
+    @Test
+    fun emptyWaveformUsesSafeFallbackBars() {
+        val waveform = buildVoiceWaveform(emptyList())
+
+        assertEquals(VOICE_WAVEFORM_BAR_COUNT, waveform.size)
+        assertTrue(waveform.all { it in 8..100 })
+    }
+
+    @Test
+    fun recorderAmplitudeIsScaledIntoVisibleBarRange() {
+        assertEquals(8, normalizeVoiceAmplitude(0))
+        assertEquals(100, normalizeVoiceAmplitude(32_767))
+        assertTrue(normalizeVoiceAmplitude(8_000) in 8..100)
     }
 }
