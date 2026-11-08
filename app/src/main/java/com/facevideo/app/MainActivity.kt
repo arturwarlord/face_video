@@ -1843,22 +1843,28 @@ private fun StoryViewerScreen(
 
     LaunchedEffect(current?.storyId, currentUserId) {
         val storyId = current?.storyId
+        reactionSummary = StoryReactionSummary()
+        reactionError = null
         if (storyId == null) {
-            reactionSummary = StoryReactionSummary()
             isLoadingReactions = false
             return@LaunchedEffect
         }
         isLoadingReactions = true
-        reactionError = null
         runCatching {
             repository.getStoryReactionSummary(storyId, currentUserId)
         }.onSuccess {
-            reactionSummary = it
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                reactionSummary = it
+            }
         }.onFailure {
-            reactionError = it.message ?: "Не удалось загрузить реакции."
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                reactionError = it.message ?: "Не удалось загрузить реакции."
+            }
             android.util.Log.w("ArturChatStories", "Could not load story reactions", it)
         }
-        isLoadingReactions = false
+        if (stories.getOrNull(index)?.storyId == storyId) {
+            isLoadingReactions = false
+        }
     }
 
     fun onStoryReactionTapped(emoji: String) {
@@ -1880,12 +1886,18 @@ private fun StoryViewerScreen(
                     reaction = nextReaction
                 )
             }.onSuccess {
-                reactionSummary = it
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    reactionSummary = it
+                }
             }.onFailure {
-                reactionError = it.message ?: "Не удалось сохранить реакцию."
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    reactionError = it.message ?: "Не удалось сохранить реакцию."
+                }
                 android.util.Log.w("ArturChatStories", "Could not save story reaction", it)
             }
-            isSavingReaction = false
+            if (stories.getOrNull(index)?.storyId == story.storyId) {
+                isSavingReaction = false
+            }
         }
     }
 
