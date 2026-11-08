@@ -1546,11 +1546,13 @@ private fun StoriesStrip(
                                 .padding(3.dp)
                                 .clip(CircleShape)
                         ) {
-                            StoryImage(
-                                story = latestOwnStory,
-                                viewerUserId = userId,
+                            Avatar(
+                                initials = (myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }
+                                    ?: myProfile?.username.orEmpty()).take(1).uppercase().ifBlank { "Я" },
+                                style = userId.hashCode().ushr(1) % 4,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                imageUrl = myProfile?.avatarUrl,
+                                imageCacheKey = userId
                             )
                         }
                     } else {
