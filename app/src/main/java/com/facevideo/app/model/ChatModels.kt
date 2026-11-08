@@ -66,10 +66,12 @@ fun buildVoiceWaveform(
     val peak = raw.maxOrNull() ?: 0
     if (peak <= 0) return List(safeBarCount) { 8 }
 
-    // A sub-linear curve keeps quiet speech visible without flattening stronger peaks.
+    // Gate the noise floor and use a stronger curve so quiet syllables stay short
+    // while stressed syllables and consonant bursts keep their distinctive peaks.
     val normalized = raw.map { amplitude ->
         val ratio = (amplitude.toDouble() / peak.toDouble()).coerceIn(0.0, 1.0)
-        val shaped = if (ratio < 0.025) 0.0 else ratio.pow(0.78)
+        val aboveNoiseFloor = ((ratio - 0.045) / 0.955).coerceIn(0.0, 1.0)
+        val shaped = aboveNoiseFloor.pow(1.24)
         (8 + (shaped * 92.0).roundToInt()).coerceIn(8, 100)
     }
     if (normalized.size == 1) return List(safeBarCount) { normalized.first() }
