@@ -41,12 +41,11 @@ fun decodeVoiceWaveformFromFile(
         val samplesPerWindow = (sampleRate * channels / 50).coerceAtLeast(channels)
 
         extractor.selectTrack(audioTrack)
-        decoder = MediaCodec.createDecoderByType(mime)
-        decoder.configure(inputFormat, null, null, 0)
-        decoder.start()
+        val codec = MediaCodec.createDecoderByType(mime)
+        decoder = codec
+        codec.configure(inputFormat, null, null, 0)
+        codec.start()
         decoderStarted = true
-
-        val codec = decoder
         val bufferInfo = MediaCodec.BufferInfo()
         val rmsWindows = ArrayList<Int>((sampleRate / 50 * 600L).toInt().coerceAtMost(30_000))
         var inputEnded = false
