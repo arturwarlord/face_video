@@ -190,6 +190,7 @@ private data class DeletedMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
@@ -203,6 +204,7 @@ private data class NewMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
     @SerialName("forwarded_from_name") val forwardedFromName: String? = null
 )
