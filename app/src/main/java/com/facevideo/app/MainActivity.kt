@@ -21,6 +21,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -35,6 +36,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -89,6 +92,8 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -108,6 +113,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.facevideo.app.calls.WebRtcAudioCallClient
@@ -1797,6 +1803,7 @@ private fun StoryViewerScreen(
             val ownerStories = repository.listVisibleStories(storyOwnerId = storyOwnerId)
             stories = ownerStories.sortedBy { it.createdAt }
             index = 0
+            errorMessage = null
             withContext(Dispatchers.IO) {
                 val otherCachedStories = cache.readStories(currentUserId)
                     .filterNot { it.userId == storyOwnerId }
@@ -1810,75 +1817,317 @@ private fun StoryViewerScreen(
     }
 
     val current = stories.getOrNull(index)
-    Column(
-        Modifier.fillMaxSize().background(Color(0xFF202A38)).padding(14.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("‹", color = Color.White, fontSize = 30.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    current?.let { it.displayName.ifBlank { it.username } } ?: "История",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+    val canDelete = current?.userId == currentUserId
+    val ownerName = current?.let { it.displayName.ifBlank { it.username } } ?: "История"
+    val ownerInitial = ownerName.trim().take(1).uppercase().ifBlank { "?" }
+
+    Box(
+        Modifier.fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF111B2A), Color(0xFF202E42), Color(0xFF111A29))
                 )
-                Text(current?.let { storyTimeLabel(it.createdAt) }.orEmpty(), color = Color.LightGray, fontSize = 10.sp)
-            }
-            if (current?.userId == currentUserId) {
-                TextButton(onClick = { showDeleteConfirmation = true }, enabled = !deleting) {
-                    Text("Удалить", color = Color.White, fontSize = 11.sp)
-                }
-            }
+            )
+    ) {
+        // A dimmed, softly blurred copy fills the letterbox area without cropping the original story.
+        if (current != null) {
+            StoryImage(
+                story = current,
+                viewerUserId = currentUserId,
+                modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.48f),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0x99101A29))
+            )
         }
 
-        if (isLoading) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+        Column(Modifier.fillMaxSize()) {
+            // Top progress and creator controls use a restrained glass surface.
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xE8101928), Color(0xAA101928), Color.Transparent)
+                        )
+                    )
+                    .padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 18.dp)
+            ) {
+                if (stories.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        stories.forEachIndexed { storyIndex, _ ->
+                            Box(
+                                Modifier.weight(1f)
+                                    .height(3.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            storyIndex < index -> Color.White
+                                            storyIndex == index -> Color(0xFFBFD7FF)
+                                            else -> Color.White.copy(alpha = 0.32f)
+                                        }
+                                    )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(13.dp))
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(38.dp),
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "‹",
+                                color = Color.White,
+                                fontSize = 29.sp,
+                                fontWeight = FontWeight.Light,
+                                modifier = Modifier.clickable(onClick = onBack).padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        Modifier.size(40.dp)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF39B4FF), Color(0xFF626FEF), Color(0xFFB276F0))
+                                ),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        Avatar(
+                            initials = ownerInitial,
+                            style = storyOwnerId.hashCode().ushr(1) % 4,
+                            modifier = Modifier.fillMaxSize(),
+                            imageUrl = current?.avatarUrl,
+                            imageCacheKey = storyOwnerId
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            ownerName,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            current?.let { storyTimeLabel(it.createdAt) }.orEmpty(),
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 10.sp,
+                            maxLines = 1
+                        )
+                    }
+                    if (canDelete) {
+                        Surface(
+                            onClick = { showDeleteConfirmation = true },
+                            enabled = !deleting,
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+                        ) {
+                            Text(
+                                if (deleting) "Удаляем…" else "Удалить",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
-        } else if (current != null) {
+
             Box(
-                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(18.dp)),
+                Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                StoryImage(current, currentUserId, Modifier.fillMaxSize(), ContentScale.Fit)
-                if (current.caption.isNotBlank()) {
+                when {
+                    isLoading -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Загружаем историю…",
+                                color = Color.White.copy(alpha = 0.76f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    current != null -> {
+                        Crossfade(
+                            targetState = current.storyId,
+                            animationSpec = tween(240),
+                            label = "story-media-transition"
+                        ) { storyId ->
+                            val visibleStory = stories.firstOrNull { it.storyId == storyId }
+                            if (visibleStory != null) {
+                                StoryImage(
+                                    story = visibleStory,
+                                    viewerUserId = currentUserId,
+                                    modifier = Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 2.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+
+                        // Tap left/right on the media to navigate, as in modern story viewers.
+                        Row(
+                            Modifier.fillMaxSize()
+                                .pointerInput(index, stories.size) {
+                                    detectTapGestures { tap ->
+                                        when {
+                                            tap.x < size.width * 0.34f ->
+                                                index = (index - 1).coerceAtLeast(0)
+                                            tap.x > size.width * 0.66f -> {
+                                                if (index < stories.lastIndex) index++ else onBack()
+                                            }
+                                        }
+                                    }
+                                }
+                                .pointerInput(storyOwnerId) {
+                                    var downwardDrag = 0f
+                                    detectVerticalDragGestures(
+                                        onDragEnd = {
+                                            if (downwardDrag > 110f) onBack()
+                                            downwardDrag = 0f
+                                        },
+                                        onVerticalDrag = { _, dragAmount ->
+                                            downwardDrag += dragAmount
+                                        }
+                                    )
+                                }
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    else -> {
+                        Column(
+                            Modifier.fillMaxWidth().padding(28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                errorMessage ?: "Истории пока нет или срок её действия истёк.",
+                                color = Color.White.copy(alpha = 0.82f),
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Surface(
+                                onClick = onBack,
+                                shape = RoundedCornerShape(18.dp),
+                                color = Color.White.copy(alpha = 0.14f)
+                            ) {
+                                Text("Вернуться", color = Color.White, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0x99101928), Color(0xE8101928))
+                        )
+                    )
+                    .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 12.dp)
+            ) {
+                if (current?.caption?.isNotBlank() == true) {
                     Surface(
-                        color = Color(0xCC202A38),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             current.caption,
                             color = Color.White,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(13.dp)
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
                 }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                TextButton(
-                    onClick = { index = (index - 1).coerceAtLeast(0) },
-                    enabled = index > 0
-                ) { Text("Назад", color = Color.White) }
-                Text("${index + 1} / ${stories.size}", color = Color.LightGray, fontSize = 11.sp)
-                TextButton(
-                    onClick = {
-                        if (index < stories.lastIndex) index++ else onBack()
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        onClick = { index = (index - 1).coerceAtLeast(0) },
+                        enabled = current != null && index > 0,
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = if (index > 0) 0.15f else 0.07f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                    ) {
+                        Text(
+                            "Назад",
+                            color = Color.White.copy(alpha = if (index > 0) 1f else 0.38f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp)
+                        )
                     }
-                ) { Text("Следующая", color = Color.White) }
-            }
-        } else {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(errorMessage ?: "Истории пока нет или срок её действия истёк.", color = Color.White, fontSize = 13.sp)
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+                    ) {
+                        Text(
+                            if (stories.isEmpty()) "— / —" else "${index + 1} / ${stories.size}",
+                            color = Color.White.copy(alpha = 0.78f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        onClick = {
+                            if (index < stories.lastIndex) index++ else onBack()
+                        },
+                        enabled = current != null,
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White.copy(alpha = 0.16f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (index < stories.lastIndex) "Следующая" else "Готово",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("›", color = Color.White, fontSize = 17.sp)
+                        }
+                    }
+                }
             }
         }
     }
