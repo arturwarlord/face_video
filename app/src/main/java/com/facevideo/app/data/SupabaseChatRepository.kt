@@ -91,9 +91,9 @@ data class FaceVideoStoryReaction(
 )
 
 @Serializable
-private data class NewFaceVideoStoryReaction(
-    @SerialName("story_id") val storyId: String,
-    val reaction: String
+private data class SetFaceVideoStoryReactionArguments(
+    @SerialName("p_story_id") val storyId: String,
+    @SerialName("p_reaction") val reaction: String?
 )
 
 @Serializable
@@ -377,23 +377,13 @@ class SupabaseChatRepository(
         require(reaction == null || reaction in STORY_REACTION_OPTIONS) {
             "Неподдерживаемая реакция на историю."
         }
-        if (reaction == null) {
-            client.from("face_video_story_reactions").delete {
-                filter {
-                    eq("story_id", storyId)
-                    eq("user_id", currentUserId)
-                }
-            }
-        } else {
-            client.from("face_video_story_reactions").insert(
-                NewFaceVideoStoryReaction(
-                    storyId = storyId,
-                    reaction = reaction
-                ),
-                upsert = true,
-                onConflict = "story_id,user_id"
+        client.postgrest.rpc(
+            "face_video_set_story_reaction",
+            SetFaceVideoStoryReactionArguments(
+                storyId = storyId,
+                reaction = reaction
             )
-        }
+        ).decodeAs<Boolean>()
         return getStoryReactionSummary(storyId, currentUserId)
     }
 
