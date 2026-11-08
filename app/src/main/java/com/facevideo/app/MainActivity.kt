@@ -3629,8 +3629,15 @@ private object DecodedVoiceWaveformCache {
 
 private fun shouldRebuildVoiceWaveform(waveform: List<Int>): Boolean {
     if (waveform.size !in 16..96) return true
-    val range = (waveform.maxOrNull() ?: 0) - (waveform.minOrNull() ?: 0)
-    return waveform.distinct().size < 12 || range < 26
+    val peak = waveform.maxOrNull() ?: 0
+    val floor = waveform.minOrNull() ?: 0
+    val range = peak - floor
+    // 0.7.7/0.7.8 waveforms used absolute recorder peaks and usually have no
+    // per-recording 0..100 envelope. Re-decode those once from the AAC source.
+    return waveform.distinct().size < 16 ||
+        range < 40 ||
+        peak < 96 ||
+        floor > 30
 }
 
 @Composable
