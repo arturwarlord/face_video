@@ -94,10 +94,10 @@
     img { max-width: 100%; }
     ::selection { color: white; background: #7168dd; }
     .wrap {
-      width: 100%;
-      max-width: none;
+      width: min(1600px, calc(100% - clamp(40px, 8vw, 144px)));
+      max-width: 1600px;
       margin-inline: auto;
-      padding-inline: clamp(22px, 4.5vw, 92px);
+      padding-inline: 0;
     }
     .scroll-progress { position: fixed; z-index: 70; inset: 0 auto auto 0; height: 3px; width: 100%; pointer-events: none; }
     .scroll-progress span { display: block; width: 0; height: 100%; border-radius: 0 4px 4px 0; background: linear-gradient(90deg,var(--blue),var(--indigo),var(--purple)); box-shadow: 0 0 14px rgba(91,111,232,.48); }
@@ -111,7 +111,7 @@
       justify-content: space-between;
       gap: 28px;
       width: 100%;
-      padding: 12px clamp(22px, 4.5vw, 92px);
+      padding: 12px max(clamp(22px, 4.5vw, 92px), calc((100vw - 1600px) / 2));
       border-bottom: 1px solid rgba(255,255,255,.72);
       background: rgba(242,245,255,.70);
       backdrop-filter: blur(24px) saturate(145%);
@@ -144,8 +144,10 @@
     .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 28px rgba(83,105,224,.29); }
     .menu-toggle { display: none; width: 42px; height: 42px; border: 1px solid white; border-radius: 14px; background: rgba(255,255,255,.66); color: var(--indigo); font-size: 20px; cursor: pointer; }
     .hero {
-      width: 100%;
-      max-width: none;
+      width: min(1600px, calc(100% - clamp(40px, 8vw, 144px)));
+      max-width: 1600px;
+      margin-inline: auto;
+      padding-inline: 0;
       min-height: max(720px, calc(100svh - 78px));
       display: grid;
       grid-template-columns: minmax(0,.94fr) minmax(0,1.06fr);
@@ -330,7 +332,7 @@
     .trust-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:0; padding-bottom:24px; }
     .trust-item { min-width:0; display:flex;align-items:center;gap:12px;border:1px solid rgba(255,255,255,.91);border-radius:19px;padding:15px 17px;background:rgba(255,255,255,.45);box-shadow:inset 0 1px 0 white,0 10px 28px rgba(85,103,166,.055);backdrop-filter:blur(15px);color:#70809e;font-size:11px;font-weight:700; }
     .trust-icon { width:35px;height:35px;flex:0 0 35px;display:grid;place-items:center;border-radius:12px;color:#596ad5;background:linear-gradient(140deg,rgba(84,158,246,.14),rgba(149,105,231,.15));font-size:16px; }
-    .ticker { width:100%;overflow:hidden;border-block:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.26); }
+    .ticker { position:relative;width:100vw;margin-inline:calc(50% - 50vw);overflow:hidden;border-block:1px solid rgba(255,255,255,.7);background:rgba(255,255,255,.26); }
     .ticker-track { width:max-content;display:flex;align-items:center;gap:0;padding:0;color:#8492af;font-size:10px;font-weight:850;letter-spacing:.16em;text-transform:uppercase;transform:translate3d(0,0,0);animation:ticker 42s linear 0s infinite;will-change:transform; }
     .ticker-track span { flex:0 0 100vw;width:100vw;min-width:100vw;display:flex;align-items:center;justify-content:space-around;gap:clamp(14px,2vw,30px);padding:13px clamp(20px,4.5vw,92px);white-space:nowrap; }
     .ticker-track b { color:#8291e3;font-size:13px; }
@@ -510,7 +512,7 @@
       .nav a { padding:12px 13px;border-radius:12px; }
       .nav a:not(.nav-cta) { display:block; }
       .nav-cta { justify-content:center;margin-top:4px; }
-      .hero { grid-template-columns:1fr;min-height:0;padding-block:55px 35px;gap:14px; }
+      .hero { width:100%;grid-template-columns:1fr;min-height:0;padding:55px 24px 35px;gap:14px; }
       .hero-copy { max-width:900px; }
       .hero-visual { width:100%;min-height:590px;margin:0 auto; }
       .device-main { left:19%; }
@@ -527,11 +529,11 @@
       .release-actions .button { flex:1; }
     }
     @media (max-width:580px) {
-      .wrap { width:100%;padding-inline:18px; }
+      .wrap { width:100%;max-width:none;padding-inline:18px; }
       .topbar { padding-inline:18px; }
       .brand { font-size:18px; }
       .brand img { width:39px;height:39px; }
-      .hero { padding:43px 18px 28px; }
+      .hero { width:100%;max-width:none;padding:43px 18px 28px; }
       h1 { font-size:clamp(44px,13vw,62px);margin-top:20px; }
       .lead { font-size:15px;line-height:1.7; }
       .hero-actions { display:grid;grid-template-columns:1fr; }
