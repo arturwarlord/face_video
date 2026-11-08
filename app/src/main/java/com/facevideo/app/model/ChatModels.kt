@@ -24,7 +24,9 @@ data class ChatMessage(
     val isMine: Boolean,
     val deliveryStatus: MessageDeliveryStatus? = null,
     val forwardedFromName: String? = null,
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    val attachmentMimeType: String? = null,
+    val attachmentDurationMs: Long? = null
 )
 
 fun filterChats(chats: List<ChatSummary>, query: String): List<ChatSummary> {
@@ -34,4 +36,11 @@ fun filterChats(chats: List<ChatSummary>, query: String): List<ChatSummary> {
         it.title.contains(normalized, ignoreCase = true) ||
             it.preview.contains(normalized, ignoreCase = true)
     }
+}
+
+fun formatVoiceDuration(durationMs: Long): String {
+    val totalSeconds = durationMs.coerceAtLeast(0L) / 1_000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return minutes.toString() + ":" + seconds.toString().padStart(2, '0')
 }
