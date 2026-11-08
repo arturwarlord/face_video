@@ -151,7 +151,6 @@ import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
 import com.facevideo.app.model.buildVoiceWaveform
-import com.facevideo.app.model.normalizeVoiceAmplitude
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -3582,19 +3581,20 @@ private fun VoiceWaveformBars(
 ) {
     val bars = remember(waveform) {
         if (waveform.size in 16..96) waveform.map { it.coerceIn(8, 100) }
-        else List(64) { 14 }
+        else List(VOICE_WAVEFORM_BAR_COUNT) { 8 }
     }
     val safeProgress = progress.coerceIn(0f, 1f)
     Canvas(modifier = modifier) {
         if (bars.isEmpty() || size.width <= 0f || size.height <= 0f) return@Canvas
         val step = size.width / bars.size
-        val strokeWidth = (step * 0.54f).coerceIn(1.6.dp.toPx(), 3.4.dp.toPx())
+        val strokeWidth = (step * 0.40f).coerceIn(1.15.dp.toPx(), 2.0.dp.toPx())
+        val minBarHeight = 2.dp.toPx()
+        val maxBarHeight = size.height * 0.92f
         val playedColor = Color(0xFF596FE3)
-        val futureColor = Color(0xFFC8D3EC)
+        val futureColor = Color(0xFFAEBBD4)
         bars.forEachIndexed { index, level ->
-            val fraction = level / 100f
-            val barHeight = (size.height * (0.18f + fraction * 0.82f))
-                .coerceIn(3.dp.toPx(), size.height * 0.96f)
+            val amplitude = ((level - 8) / 92f).coerceIn(0f, 1f)
+            val barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)
             val x = step * (index + 0.5f)
             val top = (size.height - barHeight) / 2f
             drawLine(
@@ -3603,13 +3603,6 @@ private fun VoiceWaveformBars(
                 end = Offset(x, top + barHeight),
                 strokeWidth = strokeWidth,
                 cap = StrokeCap.Round
-            )
-        }
-        if (safeProgress > 0f && safeProgress < 1f) {
-            drawCircle(
-                color = Color(0xFF5267D8),
-                radius = 2.6.dp.toPx(),
-                center = Offset(size.width * safeProgress, size.height / 2f)
             )
         }
     }
@@ -3726,41 +3719,47 @@ private fun ChatVoiceMessagePlayer(
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(40.dp).clip(CircleShape)
+                Modifier.size(34.dp).clip(CircleShape)
                     .background(Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
-                    .border(1.dp, Color.White.copy(alpha = 0.90f), CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.86f), CircleShape)
                     .clickable(enabled = !isLoading) { togglePlayback() },
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading) {
                     androidx.compose.material3.CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp
+                        modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 1.8.dp
                     )
                 } else ChatPlaybackGlyph(isPlaying)
             }
-            Spacer(Modifier.width(11.dp))
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Голосовое сообщение", color = InboxPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.weight(1f))
-                    Text(formatVoiceDuration(safeDurationMs), color = InboxAccentStrong, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(Modifier.height(4.dp))
                 VoiceWaveformBars(
                     waveform = waveform,
                     progress = progress,
-                    modifier = Modifier.fillMaxWidth().height(31.dp)
+                    modifier = Modifier.fillMaxWidth().height(18.dp)
                 )
-                Spacer(Modifier.height(1.dp))
-                Text(
-                    formatVoiceDuration(playbackPositionMs) + " / " + formatVoiceDuration(safeDurationMs),
-                    color = InboxMuted,
-                    fontSize = 9.sp
-                )
+                Spacer(Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        formatVoiceDuration(playbackPositionMs),
+                        color = InboxMuted,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        " / " + formatVoiceDuration(safeDurationMs),
+                        color = InboxMuted.copy(alpha = 0.78f),
+                        fontSize = 8.sp
+                    )
+                    if (isLoading) {
+                        Spacer(Modifier.width(6.dp))
+                        Text("Загрузка", color = InboxAccentStrong, fontSize = 8.sp)
+                    }
+                }
             }
         }
         if (playbackFailed) {
-            Text("Не удалось воспроизвести аудио", color = Color(0xFFB85E79), fontSize = 9.sp)
+            Text("Не удалось воспроизвести аудио", color = Color(0xFFB85E79), fontSize = 8.sp)
         }
     }
 }
@@ -3837,7 +3836,7 @@ private fun MessageBubble(
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
-                    .then(if (isVoiceAttachment) Modifier.widthIn(min = 250.dp, max = 310.dp) else Modifier.widthIn(max = 310.dp))
+                    .then(if (isVoiceAttachment) Modifier.widthIn(min = 205.dp, max = 276.dp) else Modifier.widthIn(max = 310.dp))
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
@@ -3865,10 +3864,12 @@ private fun MessageBubble(
             ) {
                 Column(
                     modifier = Modifier.padding(
-                        start = if (isVoiceAttachment) 12.dp else 14.dp,
-                        end = if (isVoiceAttachment) 12.dp else 14.dp,
-                        top = if (isVoiceAttachment) 10.dp else 7.dp,
-                        bottom = if (showTime) 5.dp else 8.dp
+                        start = if (isVoiceAttachment) 9.dp else 14.dp,
+                        end = if (isVoiceAttachment) 9.dp else 14.dp,
+                        top = if (isVoiceAttachment) 6.dp else 7.dp,
+                        bottom = if (isVoiceAttachment) {
+                            if (showTime) 2.dp else 4.dp
+                        } else if (showTime) 5.dp else 8.dp
                     )
                 ) {
                     if (message.forwardedFromName != null) {
@@ -3916,7 +3917,7 @@ private fun MessageBubble(
                                 repository = attachmentRepository
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(if (isVoiceMessage) 1.dp else 6.dp))
                     }
                     if (!isVoiceMessage || attachmentPath == null) {
                         Text(
@@ -3927,7 +3928,7 @@ private fun MessageBubble(
                     }
                     if (showTime) {
                         Row(
-                            modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
+                            modifier = Modifier.align(Alignment.End).padding(top = if (isVoiceAttachment) 0.dp else 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
@@ -4030,9 +4031,9 @@ private class ChatVoiceRecorder(private val cacheDirectory: File) {
     }
 
     fun readAmplitudeLevel(): Int {
-        val activeRecorder = recorder ?: return 8
-        val amplitude = runCatching { activeRecorder.maxAmplitude }.getOrDefault(0)
-        return normalizeVoiceAmplitude(amplitude)
+        val activeRecorder = recorder ?: return 0
+        // Keep the raw peak; per-recording normalization happens only when bars are built.
+        return runCatching { activeRecorder.maxAmplitude.coerceIn(0, 32_767) }.getOrDefault(0)
     }
 
     fun stop(): File {
