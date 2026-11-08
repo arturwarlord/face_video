@@ -151,6 +151,7 @@ import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
 import com.facevideo.app.model.buildVoiceWaveform
+import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
