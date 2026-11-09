@@ -20,6 +20,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
@@ -42,6 +44,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -319,6 +324,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Android 15+ enforces edge-to-edge for targetSdk 35+. Enable it
+        // consistently on older Android versions and let Compose apply safe insets.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
+
         captureCallNotificationAction(intent)
         setContent {
             MaterialTheme(
@@ -336,16 +356,20 @@ class MainActivity : ComponentActivity() {
                     color = AppBackground
                 ) {
                     Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color(0xFFE2DCFF),
-                                    Color(0xFFE2E9FF),
-                                    Color(0xFFE8F0FF),
-                                    Color(0xFFF2F5FF)
+                        Modifier.fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFFE2DCFF),
+                                        Color(0xFFE2E9FF),
+                                        Color(0xFFE8F0FF),
+                                        Color(0xFFF2F5FF)
+                                    )
                                 )
                             )
-                        )
+                            // Keep the gradient edge-to-edge, but keep all app
+                            // content clear of status/navigation bars and cutouts.
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
                     ) {
                         ArturChatUpdateHost {
                             SupabaseAuthGate { userEmail, userId, onSignOut ->
