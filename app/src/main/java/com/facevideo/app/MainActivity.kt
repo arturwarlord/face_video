@@ -2402,7 +2402,8 @@ private fun LiveChatRow(
         }
             ChatChromeActionButton(
                 onClick = { showMenu = true },
-                size = 34.dp
+                size = 34.dp,
+                transparent = true
             ) {
                 InboxMoreGlyph()
             }
@@ -2861,7 +2862,7 @@ private fun LiveChatScreen(
                         Text("Сообщения отмечены", color = InboxMuted, fontSize = 9.sp)
                     }
                 } else {
-                    ChatChromeActionButton(onClick = onBack, filled = false, size = 40.dp) {
+                    ChatChromeActionButton(onClick = onBack, filled = false, transparent = true, size = 40.dp) {
                         InboxBackGlyph()
                     }
                     Spacer(Modifier.width(9.dp))
@@ -2927,11 +2928,11 @@ private fun LiveChatScreen(
                         }
                     }
                     Spacer(Modifier.width(7.dp))
-                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false, size = 40.dp) {
+                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false, transparent = true, size = 40.dp) {
                         ChatCallGlyph(video = false, tint = InboxAccentStrong)
                     }
                     Spacer(Modifier.width(6.dp))
-                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false, size = 40.dp) {
+                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false, transparent = true, size = 40.dp) {
                         ChatCallGlyph(video = true, tint = InboxAccentStrong)
                     }
                 }
@@ -6453,6 +6454,7 @@ private fun ChatChromeActionButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     filled: Boolean = false,
+    transparent: Boolean = false,
     size: Dp = 40.dp,
     content: @Composable () -> Unit
 ) {
@@ -6463,14 +6465,14 @@ private fun ChatChromeActionButton(
         modifier = modifier.size(size)
             .clip(RoundedCornerShape(15.dp))
             .then(
-                if (filled) {
-                    Modifier.background(
+                when {
+                    filled -> Modifier.background(
                         if (enabled) gradient else Brush.linearGradient(
                             listOf(Color(0xFFB7C4DF), Color(0xFF9EACC9))
                         )
                     )
-                } else {
-                    Modifier.background(Color.White.copy(alpha = 0.30f))
+                    transparent -> Modifier
+                    else -> Modifier.background(Color.White.copy(alpha = 0.30f))
                 }
             )
             .clickable(enabled = enabled, onClick = onClick),
