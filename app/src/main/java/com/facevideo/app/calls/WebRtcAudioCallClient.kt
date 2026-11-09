@@ -7,7 +7,6 @@ import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -16,7 +15,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -67,7 +65,6 @@ class WebRtcAudioCallClient(
     // Video is strictly opt-in per call row. Audio calls retain the old media path.
     private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
-    @Volatile private var iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
@@ -80,13 +77,7 @@ class WebRtcAudioCallClient(
     private val remoteDescriptionSet = AtomicBoolean(false)
     private val candidateLock = Any()
     private val remoteSdpCandidateKeys = mutableSetOf<String>()
-    @Volatile private var remoteIceUfrag: String? = null
-    private val remoteRestartDescriptionObserved = AtomicBoolean(false)
-    private val restartNegotiationInProgress = AtomicBoolean(false)
     private var connectionTimeoutJob: Job? = null
-    private var recoveryJob: Job? = null
-    private val restartAttempted = AtomicBoolean(false)
-    private val restartRequestSent = AtomicBoolean(false)
     @Volatile private var lastIceConnectionState = PeerConnection.IceConnectionState.NEW
     @Volatile private var lastIceGatheringState = PeerConnection.IceGatheringState.NEW.name
     @Volatile private var lastRemoteDescriptionType = "none"
@@ -188,7 +179,6 @@ class WebRtcAudioCallClient(
         callScope.cancel()
         signalJob?.cancel()
         connectionTimeoutJob?.cancel()
-        recoveryJob?.cancel()
         runCatching { peerConnection?.close() }
         runCatching { peerConnection?.dispose() }
         runCatching { localAudioTrack?.dispose() }
@@ -235,8 +225,6 @@ class WebRtcAudioCallClient(
      */
     private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
     )
 
@@ -275,39 +263,26 @@ class WebRtcAudioCallClient(
                         PeerConnection.IceConnectionState.CONNECTED,
                         PeerConnection.IceConnectionState.COMPLETED -> {
                             connectionTimeoutJob?.cancel()
-                            recoveryJob?.cancel()
-                            restartNegotiationInProgress.set(false)
-                            setStatus(
-                                if (restartAttempted.get()) {
-                                    "Соединение восстановлено"
-                                } else {
-                                    "Звонок активен"
-                                }
-                            )
+                            setStatus("Звонок активен")
                         }
                         PeerConnection.IceConnectionState.CHECKING -> {
                             setStatus("Проверяем прямое соединение…")
                             scheduleDirectConnectionTimeout()
                         }
                         PeerConnection.IceConnectionState.DISCONNECTED -> {
-                            setStatus("Соединение прервано. Запускаем восстановление…")
-                            scheduleIceRecovery("ICE DISCONNECTED", ICE_RECOVERY_GRACE_MS)
+                            setStatus("Соединение прервано. Проверяем прямой маршрут…")
                             scheduleDirectConnectionTimeout()
                         }
                         PeerConnection.IceConnectionState.FAILED -> {
                             connectionTimeoutJob?.cancel()
-                            if (restartAttempted.get()) {
-                                // ICE can re-emit FAILED while the restarted offer/answer
-                                // is still being applied. Keep the one recovery attempt
-                                // alive until its full connectivity-check timeout.
-                                setStatus("Проверяем новый прямой маршрут…")
-                                scheduleDirectConnectionTimeout()
-                            } else {
-                                setStatus("Связь потеряна. Перезапускаем сетевое согласование…")
-                                scheduleIceRecovery("ICE FAILED", 1_000L)
-                            }
+                            reportDirectConnectionFailure("ICE перешёл в FAILED")
                         }
                         PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
+                        else -> Unit
+                    }
+                }
+
+                override fun onIceConnectionReceivingChange                        PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
                         else -> Unit
                     }
                 }
@@ -329,9 +304,7 @@ class WebRtcAudioCallClient(
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                     lastIceGatheringState = state.name
                     Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
-                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
-                        iceGatheringCompleted.complete(Unit)
-                    }
+
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
@@ -573,7 +546,7 @@ class WebRtcAudioCallClient(
                 if (isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В приглашении отсутствует SDP offer.")
-                Log.i(TAG, "Applying remote SDP offer, chars=${description.length}")
+                Log.i(TAG, "Applying remote SDP offer, chars=\${description.length}")
                 setRemoteDescription(SessionDescription.Type.OFFER, description) {
                     createAnswer()
                     scheduleDirectConnectionTimeout()
@@ -584,7 +557,7 @@ class WebRtcAudioCallClient(
                 if (!isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В ответе отсутствует SDP answer.")
-                Log.i(TAG, "Applying remote SDP answer, chars=${description.length}")
+                Log.i(TAG, "Applying remote SDP answer, chars=\${description.length}")
                 setRemoteDescription(SessionDescription.Type.ANSWER, description) {
                     setStatus("Завершаем подключение…")
                     scheduleDirectConnectionTimeout()
@@ -592,17 +565,13 @@ class WebRtcAudioCallClient(
             }
 
             "ice" -> {
-                val recoveryRequest = signal.payload["recoveryRequest"]?.jsonPrimitive?.contentOrNull
-                if (recoveryRequest == "ice-restart" && isCaller) {
-                    initiateIceRestart("Собеседник запросил восстановление ICE")
-                    return
-                }
+                // Candidate signals are independent of offer/answer. Ignore old
+                // recovery-control rows so they cannot start a second offer.
                 val mid = signal.payload["sdpMid"]?.jsonPrimitive?.contentOrNull
                 val lineIndex = signal.payload["sdpMLineIndex"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
                 val candidateText = signal.payload["candidate"]?.jsonPrimitive?.contentOrNull
                 if (mid != null && lineIndex != null && candidateText != null) {
-                    val candidate = IceCandidate(mid, lineIndex, candidateText)
-                    receiveRemoteCandidate(candidate)
+                    receiveRemoteCandidate(IceCandidate(mid, lineIndex, candidateText))
                 }
             }
         }
@@ -656,55 +625,20 @@ class WebRtcAudioCallClient(
         fallbackDescription: SessionDescription
     ) {
         callScope.launch {
-            setStatus(
-                if (restartAttempted.get()) {
-                    "Согласуем новый сетевой маршрут…"
-                } else {
-                    "Отправляем параметры прямого соединения…"
-                }
-            )
-            // Trickle ICE sends candidates independently through Supabase, so
-            // the offer/answer does not wait for gathering to finish.
-            val gatheringFinished = withTimeoutOrNull(LOCAL_ICE_GATHER_WAIT_MS) {
-                iceGatheringCompleted.await()
-                true
-            } ?: false
+            setStatus("Отправляем параметры прямого соединения…")
+            // Restore the proven P2P order: send SDP as soon as local
+            // description is set; ICE candidates are trickled independently.
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
-            val localSdpLines = localSdp.lineSequence().toList()
-            val videoStart = localSdpLines.indexOfFirst { it.startsWith("m=video ") }
-            val videoEnd = if (videoStart >= 0) {
-                (videoStart + 1 until localSdpLines.size)
-                    .firstOrNull { localSdpLines[it].startsWith("m=") } ?: localSdpLines.size
-            } else {
-                videoStart
-            }
-            val localVideoSection = if (videoStart >= 0) {
-                localSdpLines.subList(videoStart, videoEnd)
-            } else {
-                emptyList()
-            }
-            val localVideoMLine = localVideoSection.firstOrNull()
-            val localVideoCodecs = localVideoSection
-                .filter { it.startsWith("a=rtpmap:") }
-                .joinToString(",") { it.removePrefix("a=rtpmap:") }
-            val localVideoDirection = localVideoSection.firstOrNull {
-                it == "a=sendrecv" || it == "a=sendonly" || it == "a=recvonly" || it == "a=inactive"
-            }
-            Log.i(TAG, "Local SDP video: mLine=$localVideoMLine; codecs=$localVideoCodecs; direction=$localVideoDirection")
             Log.i(
                 TAG,
-                "Local ICE gather finished=$gatheringFinished; SDP candidate count=$candidatesInSdp"
-            )
-            Log.i(
-                TAG,
-                "Sending P2P $signalType SDP: candidatesInSdp=$candidatesInSdp, " +
-                    "candidateCallbacks=${gatheredCandidateCount.get()}; remaining candidates use trickle ICE"
+                "Sending P2P $signalType SDP immediately: candidatesInSdp=$candidatesInSdp; " +
+                    "remaining candidates use trickle ICE"
             )
             if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
-                Log.w(TAG, "No ICE candidates found in SDP or callbacks yet.")
+                Log.i(TAG, "No ICE candidates embedded yet; waiting for trickle ICE callbacks.")
             }
 
             runCatching {
@@ -716,10 +650,7 @@ class WebRtcAudioCallClient(
                     payload = buildJsonObject { put("description", localSdp) }
                 )
             }.onSuccess {
-                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
-                if (signalType == "answer" && restartAttempted.get()) {
-                    restartNegotiationInProgress.set(false)
-                }
+                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp embedded ICE candidates")
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
             }
@@ -732,17 +663,8 @@ class WebRtcAudioCallClient(
         onSuccess: () -> Unit
     ) {
         val connection = peerConnection ?: return
-        val nextRemoteUfrag = extractIceUfrag(sdp)
         val embeddedCandidateCount = synchronized(candidateLock) {
             remoteDescriptionSet.set(false)
-            if (nextRemoteUfrag != null) {
-                val previousUfrag = remoteIceUfrag
-                if (previousUfrag != null && previousUfrag != nextRemoteUfrag) {
-                    remoteRestartDescriptionObserved.set(true)
-                    restartAttempted.set(true)
-                    restartNegotiationInProgress.set(true)
-                }
-            }
             remoteSdpCandidateKeys.clear()
             sdp.lineSequence()
                 .filter { it.startsWith("a=candidate:") }
@@ -751,22 +673,16 @@ class WebRtcAudioCallClient(
             remoteSdpCandidateKeys.size
         }
         lastRemoteDescriptionType = type.canonicalForm()
-        Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
+        Log.i(TAG, "Remote SDP \${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
-                synchronized(candidateLock) {
-                    if (nextRemoteUfrag != null) remoteIceUfrag = nextRemoteUfrag
-                }
-                Log.i(TAG, "Remote SDP ${type.canonicalForm()} applied successfully")
+                Log.i(TAG, "Remote SDP \${type.canonicalForm()} applied successfully")
                 flushRemoteCandidates()
-                if (type == SessionDescription.Type.ANSWER && restartAttempted.get()) {
-                    restartNegotiationInProgress.set(false)
-                }
                 onSuccess()
             }
 
             override fun onSetFailure(error: String) {
-                Log.e(TAG, "Remote SDP ${type.canonicalForm()} rejected: $error")
+                Log.e(TAG, "Remote SDP \${type.canonicalForm()} rejected: $error")
                 reportError("Не удалось применить параметры удалённого соединения: $error")
             }
             override fun onCreateSuccess(description: SessionDescription) = Unit
@@ -831,7 +747,6 @@ class WebRtcAudioCallClient(
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}($lastRemoteDescriptionType); " +
             "signaling=$signalingState; gathering=$lastIceGatheringState; signal=$lastHandledSignal; " +
-            "restartAttempted=${restartAttempted.get()}; restartNegotiation=${restartNegotiationInProgress.get()}; " +
             "selectedPair=$selectedPairSummary; локальные host/srflx/other=" +
             "${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
             "удалённые received/queuedTotal/pendingNow/accepted/rejected/alreadyInSdp=" +
@@ -844,118 +759,6 @@ class WebRtcAudioCallClient(
         Log.w(TAG, "$reason. ${diagnosticSummary()}")
         reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}")
     }
-
-    /**
-     * Only the original caller creates ICE restart offers. The callee asks for
-     * recovery using an ICE signal with a control payload, so both peers do not
-     * race to create offers on the same PeerConnection.
-     */
-    private fun scheduleIceRecovery(reason: String, delayMs: Long) {
-        recoveryJob?.cancel()
-        recoveryJob = callScope.launch {
-            delay(delayMs)
-            val state = lastIceConnectionState
-            if (state != PeerConnection.IceConnectionState.DISCONNECTED &&
-                state != PeerConnection.IceConnectionState.FAILED
-            ) {
-                return@launch
-            }
-            if (restartAttempted.get()) {
-                scheduleDirectConnectionTimeout()
-                return@launch
-            }
-            if (isCaller) {
-                initiateIceRestart(reason)
-            } else {
-                sendIceRestartRequest(reason)
-            }
-        }
-    }
-
-    private fun sendIceRestartRequest(reason: String) {
-        if (!restartRequestSent.compareAndSet(false, true)) return
-        restartAttempted.set(true)
-        restartNegotiationInProgress.set(true)
-        // If the caller's restart offer is already being applied, a late
-        // request must not reset the remote-description gate after that offer.
-        val remoteRestartAlreadyObserved = synchronized(candidateLock) {
-            val observed = remoteRestartDescriptionObserved.get()
-            if (!observed) remoteDescriptionSet.set(false)
-            observed
-        }
-        if (remoteRestartAlreadyObserved) {
-            Log.i(TAG, "Skipping duplicate ICE restart request; fresh remote SDP already observed")
-            setStatus("Согласуем новый сетевой маршрут…")
-            scheduleDirectConnectionTimeout()
-            return
-        }
-        callScope.launch {
-            runCatching {
-                repository.sendSignal(
-                    callId = call.id,
-                    senderId = currentUserId,
-                    recipientId = peerUserId,
-                    signalType = "ice",
-                    payload = buildJsonObject {
-                        put("recoveryRequest", "ice-restart")
-                    }
-                )
-            }.onSuccess {
-                Log.i(TAG, "ICE restart requested from caller: $reason")
-                setStatus("Запросили у собеседника восстановление соединения…")
-                scheduleDirectConnectionTimeout()
-            }.onFailure {
-                reportError("Не удалось запросить восстановление звонка: ${it.message}")
-            }
-        }
-    }
-
-    private fun initiateIceRestart(reason: String) {
-        if (!isCaller) return
-        if (!restartAttempted.compareAndSet(false, true)) {
-            // Simultaneous recovery requests are expected when both phones
-            // observe the same failure. Keep the existing single restart alive.
-            scheduleDirectConnectionTimeout()
-            return
-        }
-
-        restartNegotiationInProgress.set(true)
-        recoveryJob?.cancel()
-        connectionTimeoutJob?.cancel()
-        callScope.launch {
-            val connection = peerConnection
-            if (connection == null || closed.get()) {
-                reportDirectConnectionFailure("Нет активного PeerConnection для ICE restart")
-                return@launch
-            }
-
-            try {
-                // A new completion signal is required for the restarted ICE
-                // generation; the first gathering cycle has already completed.
-                iceGatheringCompleted = CompletableDeferred()
-                // Do not add candidates from the remote restart generation to
-                // the old answer. They must remain queued until the new answer
-                // is installed below via setRemoteDescription().
-                synchronized(candidateLock) {
-                    remoteDescriptionSet.set(false)
-                }
-                Log.w(TAG, "Starting one ICE restart: $reason")
-                setStatus("Пробуем восстановить прямое соединение…")
-                connection.restartIce()
-                createOffer()
-                scheduleDirectConnectionTimeout()
-            } catch (error: Exception) {
-                reportDirectConnectionFailure("Не удалось запустить ICE restart: ${error.message}")
-            }
-        }
-    }
-
-    private fun extractIceUfrag(sdp: String): String? =
-        sdp.lineSequence()
-            .firstOrNull { it.startsWith("a=ice-ufrag:") }
-            ?.substringAfter("a=ice-ufrag:")
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
 
     private fun describeCandidate(candidateSdp: String): String {
         val parts = candidateSdp.trim().split(Regex("\\s+"))
@@ -979,15 +782,9 @@ class WebRtcAudioCallClient(
             val state = lastIceConnectionState
             if (state == PeerConnection.IceConnectionState.NEW ||
                 state == PeerConnection.IceConnectionState.CHECKING ||
-                state == PeerConnection.IceConnectionState.DISCONNECTED ||
-                state == PeerConnection.IceConnectionState.FAILED
+                state == PeerConnection.IceConnectionState.DISCONNECTED
             ) {
-                val reason = if (restartAttempted.get()) {
-                    "Не удалось выбрать прямую пару ICE-кандидатов после повторного согласования"
-                } else {
-                    "Не удалось выбрать прямую пару ICE-кандидатов за 30 секунд"
-                }
-                reportDirectConnectionFailure(reason)
+                reportDirectConnectionFailure("Не удалось выбрать прямую пару ICE-кандидатов за 30 секунд")
             }
         }
     }
@@ -1018,8 +815,6 @@ class WebRtcAudioCallClient(
     companion object {
         private const val TAG = "ArturChatWebRTC"
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
-        private const val ICE_RECOVERY_GRACE_MS = 6_000L
-        private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val DIRECT_P2P_FAILED_MESSAGE =
             "Не удалось установить прямое соединение между телефонами. " +

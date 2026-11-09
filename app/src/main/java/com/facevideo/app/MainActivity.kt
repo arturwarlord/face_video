@@ -4437,41 +4437,33 @@ private fun ActiveAudioCallScreen(
             }
         }
         Spacer(Modifier.weight(1f))
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Color(0xCFFFFFFF),
-            shape = RoundedCornerShape(28.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
-            shadowElevation = 8.dp
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 13.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CallControlButton(
-                    label = if (muted) "Микрофон выкл." else "Микрофон",
-                    active = !muted,
-                    labelColor = MainText,
-                    onClick = onToggleMute
-                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
-                CallControlButton(
-                    label = if (speakerEnabled) "Динамик" else "Телефон",
-                    active = speakerEnabled,
-                    labelColor = MainText,
-                    onClick = onToggleSpeaker
-                ) { tint -> CallSpeakerGlyph(tint = tint, enabled = speakerEnabled) }
-                CallControlButton(
-                    label = "Завершить",
-                    destructive = true,
-                    labelColor = MainText,
-                    onClick = onEnd
-                ) { tint ->
-                    Text("×", color = tint, fontSize = 31.sp, fontWeight = FontWeight.Light)
-                }
+            CallControlButton(
+                label = if (muted) "Микрофон выкл." else "Микрофон",
+                active = !muted,
+                labelColor = MainText,
+                onClick = onToggleMute
+            ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+            CallControlButton(
+                label = if (speakerEnabled) "Динамик" else "Телефон",
+                active = speakerEnabled,
+                labelColor = MainText,
+                onClick = onToggleSpeaker
+            ) { tint -> CallSpeakerGlyph(tint = tint, enabled = speakerEnabled) }
+            CallControlButton(
+                label = "Завершить",
+                destructive = true,
+                labelColor = MainText,
+                onClick = onEnd
+            ) { tint ->
+                Text("×", color = tint, fontSize = 31.sp, fontWeight = FontWeight.Light)
             }
         }
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(5.dp))        Spacer(Modifier.height(5.dp))
         Text("Звонок один на один · WebRTC", color = Muted, fontSize = 9.sp)
     }
 }
@@ -4562,44 +4554,41 @@ private fun ActiveVideoCallScreen(
             }
         }
 
-        Surface(
+        Row(
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 12.dp),
-            color = Color(0xC916202D),
-            shape = RoundedCornerShape(28.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-            shadowElevation = 10.dp
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 11.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CallControlButton(
-                    label = if (muted) "Микрофон выкл." else "Микрофон",
-                    active = !muted,
-                    onClick = onToggleMute
-                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
-                CallControlButton(
-                    label = if (cameraEnabled) "Камера" else "Камера выкл.",
-                    active = cameraEnabled,
-                    onClick = onToggleCamera
-                ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
-                CallControlButton(
-                    label = "Сменить",
-                    active = false,
-                    onClick = onSwitchCamera
-                ) { tint -> CallSwitchGlyph(tint = tint) }
-                CallControlButton(
-                    label = "Завершить",
-                    destructive = true,
-                    onClick = onEnd
-                ) { tint ->
-                    Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
-                }
+            CallControlButton(
+                label = if (muted) "Микрофон выкл." else "Микрофон",
+                active = !muted,
+                onClick = onToggleMute
+            ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+            CallControlButton(
+                label = if (cameraEnabled) "Камера" else "Камера выкл.",
+                active = cameraEnabled,
+                onClick = onToggleCamera
+            ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
+            CallControlButton(
+                label = "Сменить",
+                active = false,
+                onClick = onSwitchCamera
+            ) { tint -> CallSwitchGlyph(tint = tint) }
+            CallControlButton(
+                label = "Завершить",
+                destructive = true,
+                onClick = onEnd
+            ) { tint ->
+                Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
             }
         }
+    }
+}
+
+@Composable
+private fun CallControlButton(        }
     }
 }
 
