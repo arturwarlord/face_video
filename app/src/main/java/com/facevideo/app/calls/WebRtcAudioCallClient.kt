@@ -3,6 +3,8 @@ package com.facevideo.app.calls
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
@@ -39,6 +41,7 @@ import org.webrtc.VideoSource
 import org.webrtc.VideoTrack
 import org.webrtc.CandidatePairChangeEvent
 import org.webrtc.IceCandidate
+import org.webrtc.IceCandidateErrorEvent
 import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
@@ -72,7 +75,21 @@ class WebRtcAudioCallClient(
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
     private val localOtherCandidates = AtomicInteger(0)
+    private val localIpv4Candidates = AtomicInteger(0)
+    private val localIpv6Candidates = AtomicInteger(0)
+    private val localUdpCandidates = AtomicInteger(0)
+    private val localTcpCandidates = AtomicInteger(0)
     private val remoteCandidatesReceived = AtomicInteger(0)
+    private val remoteHostCandidates = AtomicInteger(0)
+    private val remoteSrflxCandidates = AtomicInteger(0)
+    private val remotePrflxCandidates = AtomicInteger(0)
+    private val remoteRelayCandidates = AtomicInteger(0)
+    private val remoteIpv4Candidates = AtomicInteger(0)
+    private val remoteIpv6Candidates = AtomicInteger(0)
+    private val remoteUdpCandidates = AtomicInteger(0)
+    private val remoteTcpCandidates = AtomicInteger(0)
+    @Volatile private var remoteNetworkType = "unknown"
+    @Volatile private var lastStunErrorSummary = "none"
     private val remoteCandidatesQueued = AtomicInteger(0)
     private val remoteCandidatesApplied = AtomicInteger(0)
     private val remoteCandidatesRejected = AtomicInteger(0)
@@ -80,6 +97,7 @@ class WebRtcAudioCallClient(
     private val remoteDescriptionSet = AtomicBoolean(false)
     private val candidateLock = Any()
     private val remoteSdpCandidateKeys = mutableSetOf<String>()
+    private val remoteCandidateKeys = mutableSetOf<String>()
     private var connectionTimeoutJob: Job? = null
     private var recoveryJob: Job? = null
     private val restartAttempted = AtomicBoolean(false)
@@ -331,9 +349,11 @@ class WebRtcAudioCallClient(
                         "srflx" -> localSrflxCandidates.incrementAndGet()
                         else -> localOtherCandidates.incrementAndGet()
                     }
+                    recordCandidateMetadata(candidate.sdp, local = true)
+                    val candidateMeta = describeCandidate(candidate.sdp)
                     Log.i(
                         TAG,
-                        "P2P ICE candidate gathered: type=$candidateType, " +
+                        "P2P ICE candidate gathered: $candidateMeta, " +
                             "mid=${candidate.sdpMid}, line=${candidate.sdpMLineIndex}"
                     )
                     callScope.launch {
@@ -347,10 +367,18 @@ class WebRtcAudioCallClient(
                                     put("sdpMid", candidate.sdpMid)
                                     put("sdpMLineIndex", candidate.sdpMLineIndex)
                                     put("candidate", candidate.sdp)
+                                    put("networkType", currentNetworkType())
                                 }
                             )
                         }.onFailure { reportError(it.message ?: "Не удалось отправить сигнальное сообщение.") }
                     }
+                }
+
+                override fun onIceCandidateError(event: IceCandidateErrorEvent) {
+                    // Do not log the local address from this event.
+                    val server = event.url.substringAfter("://").substringBefore("/")
+                    lastStunErrorSummary = "$server:${event.errorCode}"
+                    Log.w(TAG, "STUN candidate gathering error: $lastStunErrorSummary; ${event.errorText}")
                 }
 
                 override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) = Unit
@@ -560,7 +588,8 @@ class WebRtcAudioCallClient(
                 if (isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В приглашении отсутствует SDP offer.")
-                Log.i(TAG, "Applying remote SDP offer, chars=${description.length}")
+                remoteNetworkType = signal.payload["networkType"]?.jsonPrimitive?.contentOrNull ?: "unknown"
+                Log.i(TAG, "Applying remote SDP offer from $remoteNetworkType, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.OFFER, description) {
                     createAnswer()
                     scheduleDirectConnectionTimeout()
@@ -571,7 +600,8 @@ class WebRtcAudioCallClient(
                 if (!isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В ответе отсутствует SDP answer.")
-                Log.i(TAG, "Applying remote SDP answer, chars=${description.length}")
+                remoteNetworkType = signal.payload["networkType"]?.jsonPrimitive?.contentOrNull ?: "unknown"
+                Log.i(TAG, "Applying remote SDP answer from $remoteNetworkType, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.ANSWER, description) {
                     setStatus("Завершаем подключение…")
                     scheduleDirectConnectionTimeout()
@@ -583,6 +613,9 @@ class WebRtcAudioCallClient(
                 if (recoveryRequest == "ice-restart" && isCaller) {
                     initiateIceRestart("Собеседник запросил восстановление ICE")
                     return
+                }
+                signal.payload["networkType"]?.jsonPrimitive?.contentOrNull?.let {
+                    remoteNetworkType = it
                 }
                 val mid = signal.payload["sdpMid"]?.jsonPrimitive?.contentOrNull
                 val lineIndex = signal.payload["sdpMLineIndex"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
@@ -700,7 +733,10 @@ class WebRtcAudioCallClient(
                     senderId = currentUserId,
                     recipientId = peerUserId,
                     signalType = signalType,
-                    payload = buildJsonObject { put("description", localSdp) }
+                    payload = buildJsonObject {
+                        put("description", localSdp)
+                        put("networkType", currentNetworkType())
+                    }
                 )
             }.onSuccess {
                 Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
@@ -722,7 +758,12 @@ class WebRtcAudioCallClient(
             sdp.lineSequence()
                 .filter { it.startsWith("a=candidate:") }
                 .map { it.removePrefix("a=") }
-                .forEach { remoteSdpCandidateKeys.add(it) }
+                .forEach {
+                    remoteSdpCandidateKeys.add(it)
+                    if (remoteCandidateKeys.add(it)) {
+                        recordCandidateMetadata(it, local = false)
+                    }
+                }
             remoteSdpCandidateKeys.size
         }
         Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
@@ -745,6 +786,8 @@ class WebRtcAudioCallClient(
 
     private fun receiveRemoteCandidate(candidate: IceCandidate) {
         remoteCandidatesReceived.incrementAndGet()
+        val isNewCandidate = synchronized(candidateLock) { remoteCandidateKeys.add(candidate.sdp) }
+        if (isNewCandidate) recordCandidateMetadata(candidate.sdp, local = false)
         val queued = synchronized(candidateLock) {
             if (!remoteDescriptionSet.get()) {
                 if (pendingRemoteCandidates.none { it.sdp == candidate.sdp }) {
@@ -796,14 +839,67 @@ class WebRtcAudioCallClient(
 
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
+        val networkPair = "${currentNetworkType()}↔$remoteNetworkType"
+        val commonFamilies = buildList {
+            if (localIpv4Candidates.get() > 0 && remoteIpv4Candidates.get() > 0) add("IPv4")
+            if (localIpv6Candidates.get() > 0 && remoteIpv6Candidates.get() > 0) add("IPv6")
+        }.joinToString("/").ifBlank { "нет" }
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}; signal=$lastHandledSignal; " +
             "restartAttempted=${restartAttempted.get()}; selectedPair=$selectedPairSummary; " +
-            "локальные host/srflx/other=" +
-            "${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
-            "удалённые получено/в очереди/принято/отклонено/уже в SDP=" +
-            "${remoteCandidatesReceived.get()}/${pending}/${remoteCandidatesApplied.get()}/" +
-            "${remoteCandidatesRejected.get()}/${remoteCandidatesAlreadyInSdp.get()}"
+            "сети=$networkPair; общие IP-семейства=$commonFamilies; " +
+            "local v4/v6=${localIpv4Candidates.get()}/${localIpv6Candidates.get()} " +
+            "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
+            "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
+            "udp/tcp=${remoteUdpCandidates.get()}/${remoteTcpCandidates.get()}; " +
+            "local host/srflx/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
+            "remote host/srflx/prflx/relay=${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
+            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; STUN error=$lastStunErrorSummary; " +
+            "remote received/queued/pending/accepted/rejected/alreadyInSdp=" +
+            "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
+            "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
+            "${remoteCandidatesAlreadyInSdp.get()}"
+    }
+
+    private fun currentNetworkType(): String {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "unknown"
+        val network = manager.activeNetwork ?: return "offline"
+        val capabilities = manager.getNetworkCapabilities(network) ?: return "unknown"
+        return when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+            else -> "other"
+        }
+    }
+
+    private fun recordCandidateMetadata(candidateSdp: String, local: Boolean) {
+        val parts = candidateSdp.trim().split(Regex("\\s+"))
+        val protocol = parts.getOrNull(2)?.lowercase()
+        val address = parts.getOrNull(4).orEmpty()
+        val type = Regex("""\styp\s+(host|srflx|prflx|relay)""")
+            .find(candidateSdp)?.groupValues?.getOrNull(1)
+        val isIpv4 = Regex("""^\d{1,3}(?:\.\d{1,3}){3}$""").matches(address)
+        val isIpv6 = address.contains(":")
+        if (local) {
+            if (isIpv4) localIpv4Candidates.incrementAndGet()
+            if (isIpv6) localIpv6Candidates.incrementAndGet()
+            if (protocol == "udp") localUdpCandidates.incrementAndGet()
+            if (protocol == "tcp") localTcpCandidates.incrementAndGet()
+        } else {
+            if (isIpv4) remoteIpv4Candidates.incrementAndGet()
+            if (isIpv6) remoteIpv6Candidates.incrementAndGet()
+            if (protocol == "udp") remoteUdpCandidates.incrementAndGet()
+            if (protocol == "tcp") remoteTcpCandidates.incrementAndGet()
+            when (type) {
+                "host" -> remoteHostCandidates.incrementAndGet()
+                "srflx" -> remoteSrflxCandidates.incrementAndGet()
+                "prflx" -> remotePrflxCandidates.incrementAndGet()
+                "relay" -> remoteRelayCandidates.incrementAndGet()
+            }
+        }
     }
 
     private fun reportDirectConnectionFailure(reason: String) {
