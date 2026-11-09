@@ -827,7 +827,7 @@ class WebRtcAudioCallClient(
 
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
-        val signalingState = peerConnection?.signalingState?.name ?: "none"
+        val signalingState = peerConnection?.signalingState()?.name ?: "none"
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}($lastRemoteDescriptionType); " +
             "signaling=$signalingState; gathering=$lastIceGatheringState; signal=$lastHandledSignal; " +
