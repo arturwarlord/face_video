@@ -282,11 +282,6 @@ class WebRtcAudioCallClient(
                     }
                 }
 
-                override fun onIceConnectionReceivingChange                        PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
-                        else -> Unit
-                    }
-                }
-
                 override fun onIceConnectionReceivingChange(receiving: Boolean) {
                     lastReceiving = receiving
                     Log.i(TAG, "P2P ICE receiving=$receiving")
@@ -546,7 +541,7 @@ class WebRtcAudioCallClient(
                 if (isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В приглашении отсутствует SDP offer.")
-                Log.i(TAG, "Applying remote SDP offer, chars=\${description.length}")
+                Log.i(TAG, "Applying remote SDP offer, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.OFFER, description) {
                     createAnswer()
                     scheduleDirectConnectionTimeout()
@@ -557,7 +552,7 @@ class WebRtcAudioCallClient(
                 if (!isCaller) return
                 val description = signal.payload["description"]?.jsonPrimitive?.contentOrNull
                     ?: return reportError("В ответе отсутствует SDP answer.")
-                Log.i(TAG, "Applying remote SDP answer, chars=\${description.length}")
+                Log.i(TAG, "Applying remote SDP answer, chars=${description.length}")
                 setRemoteDescription(SessionDescription.Type.ANSWER, description) {
                     setStatus("Завершаем подключение…")
                     scheduleDirectConnectionTimeout()
@@ -673,16 +668,16 @@ class WebRtcAudioCallClient(
             remoteSdpCandidateKeys.size
         }
         lastRemoteDescriptionType = type.canonicalForm()
-        Log.i(TAG, "Remote SDP \${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
+        Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
-                Log.i(TAG, "Remote SDP \${type.canonicalForm()} applied successfully")
+                Log.i(TAG, "Remote SDP ${type.canonicalForm()} applied successfully")
                 flushRemoteCandidates()
                 onSuccess()
             }
 
             override fun onSetFailure(error: String) {
-                Log.e(TAG, "Remote SDP \${type.canonicalForm()} rejected: $error")
+                Log.e(TAG, "Remote SDP ${type.canonicalForm()} rejected: $error")
                 reportError("Не удалось применить параметры удалённого соединения: $error")
             }
             override fun onCreateSuccess(description: SessionDescription) = Unit
