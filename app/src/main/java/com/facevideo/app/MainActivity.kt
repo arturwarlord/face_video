@@ -55,6 +55,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1598,7 +1599,9 @@ private fun StoryViewerScreen(
             Modifier.fillMaxWidth().padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("‹", color = Color.White, fontSize = 30.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+            Box(Modifier.size(48.dp).clickable(onClick = onBack), contentAlignment = Alignment.Center) {
+                Text("‹", color = Color.White, fontSize = 30.sp)
+            }
             Column(Modifier.weight(1f)) {
                 Text(
                     current?.let { it.displayName.ifBlank { it.username } } ?: "История",
@@ -1609,7 +1612,15 @@ private fun StoryViewerScreen(
                 Text(current?.let { storyTimeLabel(it.createdAt) }.orEmpty(), color = Color.LightGray, fontSize = 10.sp)
             }
             if (current?.userId == currentUserId) {
-                TextButton(onClick = { showDeleteConfirmation = true }, enabled = !deleting) {
+                TextButton(
+                    onClick = { showDeleteConfirmation = true },
+                    enabled = !deleting,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent
+                    )
+                ) {
                     Text("Удалить", color = Color.White, fontSize = 11.sp)
                 }
             }
@@ -1648,13 +1659,23 @@ private fun StoryViewerScreen(
             ) {
                 TextButton(
                     onClick = { index = (index - 1).coerceAtLeast(0) },
-                    enabled = index > 0
+                    enabled = index > 0,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent
+                    )
                 ) { Text("Назад", color = Color.White) }
                 Text("${index + 1} / ${stories.size}", color = Color.LightGray, fontSize = 11.sp)
                 TextButton(
                     onClick = {
                         if (index < stories.lastIndex) index++ else onBack()
-                    }
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent
+                    )
                 ) { Text("Следующая", color = Color.White) }
             }
         } else {
