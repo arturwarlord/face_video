@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Speech bubble outline stays inside Android's adaptive-icon safe zone. -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M39,24 H70 C79.4,24 87,31.6 87,41 V54 C87,63.4 79.4,71 70,71 H49 L33,84 L37,71 H39 C29.6,71 22,63.4 22,54 V41 C22,31.6 29.6,24 39,24 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="3.6" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M41,45 m-3.4,0 a3.4,3.4 0,1 0,6.8 0 a3.4,3.4 0,1 0,-6.8 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M53,45 m-3.4,0 a3.4,3.4 0,1 0,6.8 0 a3.4,3.4 0,1 0,-6.8 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M65,45 m-3.4,0 a3.4,3.4 0,1 0,6.8 0 a3.4,3.4 0,1 0,-6.8 0" />
+
+    <!-- Small camera tile overlaps the lower-right corner without touching the mask edge. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M61,56 H73 C76,56 78,58 78,61 V72 C78,75 76,77 73,77 H61 C58,77 56,75 56,72 V61 C56,58 58,56 61,56 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M78,62 L88,58 V75 L78,71 Z" />
+    <path
+        android:fillColor="#4656D7"
+        android:pathData="M64,61 H71 C73,61 74,62 74,64 V69 C74,71 73,72 71,72 H64 C62,72 61,71 61,69 V64 C61,62 62,61 64,61 Z" />
+    <path
+        android:fillColor="#4656D7"
+        android:pathData="M74,64 L82,61 V72 L74,69 Z" />
+</vector>

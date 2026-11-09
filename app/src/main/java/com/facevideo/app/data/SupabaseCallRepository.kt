@@ -118,6 +118,31 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             .decodeList<FaceVideoCall>()
             .firstOrNull()
 
+    suspend fun listMyCalls(userId: String): List<FaceVideoCall> {
+        val outgoing = client.from("face_video_calls").select {
+            filter { eq("caller_id", userId) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoCall>()
+        val incoming = client.from("face_video_calls").select {
+            filter { eq("callee_id", userId) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoCall>()
+
+        // Both participant queries are authorized by the calls table RLS.
+        // Merge them by id and keep the newest history entries first.
+        return (outgoing + incoming)
+            .distinctBy { it.id }
+            .sortedByDescending { it.createdAt }
+            .take(100)
+    }
+
+    suspend fun getProfiles(userIds: Set<String>): Map<String, FaceVideoProfile> {
+        if (userIds.isEmpty()) return emptyMap()
+        return client.from("face_video_profiles").select {
+            filter { isIn("id", userIds.toList()) }
+        }.decodeList<FaceVideoProfile>().associateBy { it.id }
+    }
+
     suspend fun getProfile(userId: String): FaceVideoProfile? =
         client.from("face_video_profiles")
             .select {

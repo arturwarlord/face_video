@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.serialization.SerialName
+import com.facevideo.app.model.STORY_REACTION_OPTIONS
+import com.facevideo.app.model.StoryReactionEntry
+import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.summarizeStoryReactions
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -79,6 +83,20 @@ data class FaceVideoStoryCard(
 )
 
 @Serializable
+data class FaceVideoStoryReaction(
+    @SerialName("story_id") val storyId: String,
+    @SerialName("user_id") val userId: String,
+    val reaction: String,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+private data class SetFaceVideoStoryReactionArguments(
+    @SerialName("p_story_id") val storyId: String,
+    @SerialName("p_reaction") val reaction: String?
+)
+
+@Serializable
 private data class NewFaceVideoStory(
     val id: String,
     @SerialName("user_id") val userId: String,
@@ -102,6 +120,7 @@ data class FaceVideoMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("deleted_by") val deletedBy: String? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
@@ -189,6 +208,7 @@ private data class DeletedMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null
 )
 
@@ -202,6 +222,7 @@ private data class NewMessage(
     @SerialName("attachment_file_name") val attachmentFileName: String? = null,
     @SerialName("attachment_size") val attachmentSize: Long? = null,
     @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
+    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
     @SerialName("forwarded_from_name") val forwardedFromName: String? = null
 )
@@ -328,6 +349,42 @@ class SupabaseChatRepository(
                 mediaPath = story.mediaPath
             )
         }
+    }
+
+    /** Counts reactions visible to the current viewer and returns their own selection. */
+    suspend fun getStoryReactionSummary(
+        storyId: String,
+        currentUserId: String
+    ): StoryReactionSummary {
+        val rows = client.from("face_video_story_reactions").select {
+            filter { eq("story_id", storyId) }
+        }.decodeList<FaceVideoStoryReaction>()
+        return summarizeStoryReactions(
+            rows.map { StoryReactionEntry(userId = it.userId, reaction = it.reaction) },
+            currentUserId
+        )
+    }
+
+    /**
+     * Stores one reaction per authenticated user and story.
+     * The database defaults user_id to auth.uid(); RLS rejects reactions to own or inaccessible stories.
+     */
+    suspend fun setStoryReaction(
+        storyId: String,
+        currentUserId: String,
+        reaction: String?
+    ): StoryReactionSummary {
+        require(reaction == null || reaction in STORY_REACTION_OPTIONS) {
+            "Неподдерживаемая реакция на историю."
+        }
+        client.postgrest.rpc(
+            "face_video_set_story_reaction",
+            SetFaceVideoStoryReactionArguments(
+                storyId = storyId,
+                reaction = reaction
+            )
+        ).decodeAs<Boolean>()
+        return getStoryReactionSummary(storyId, currentUserId)
     }
 
     /** Signed URLs are short-lived; only create them when a story image is about to load. */
@@ -614,6 +671,7 @@ class SupabaseChatRepository(
                     attachmentFileName = source.attachmentFileName,
                     attachmentSize = source.attachmentSize,
                     attachmentDurationMs = source.attachmentDurationMs,
+                    attachmentWaveform = source.attachmentWaveform,
                     forwardedFromSenderId = source.senderId,
                     forwardedFromName = sourceName
                 )
@@ -763,6 +821,7 @@ class SupabaseChatRepository(
         fileName: String,
         fileSize: Long,
         durationMs: Long,
+        waveform: List<Int>,
         replyToMessageId: String? = null
     ): FaceVideoMessage {
         require(audioPath.startsWith(chatId + "/")) {
@@ -773,6 +832,9 @@ class SupabaseChatRepository(
         }
         require(durationMs in 1_000L..600_000L) {
             "Длительность голосового сообщения должна быть от 1 секунды до 10 минут."
+        }
+        require(waveform.size in 16..96 && waveform.all { it in 0..100 }) {
+            "Некорректная звуковая дорожка голосового сообщения."
         }
         val safeName = fileName.trim().take(255).ifBlank { "voice-message.m4a" }
         return client.from("face_video_messages")
@@ -785,7 +847,8 @@ class SupabaseChatRepository(
                     attachmentMimeType = "audio/mp4",
                     attachmentFileName = safeName,
                     attachmentSize = fileSize,
-                    attachmentDurationMs = durationMs
+                    attachmentDurationMs = durationMs,
+                    attachmentWaveform = waveform
                 )
             ) {
                 select()

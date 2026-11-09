@@ -20,12 +20,24 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -55,7 +67,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -81,10 +92,15 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
@@ -94,8 +110,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.facevideo.app.calls.WebRtcAudioCallClient
@@ -132,38 +150,60 @@ import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
 import com.facevideo.app.model.MessageDeliveryStatus
 import com.facevideo.app.model.formatVoiceDuration
+import com.facevideo.app.model.buildVoiceWaveform
+import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
+import com.facevideo.app.model.STORY_REACTION_OPTIONS
+import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.nextStoryReaction
+import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CancellationException
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.presenceDataFlow
 import io.github.jan.supabase.realtime.track
 import io.github.jan.supabase.realtime.realtime
 
 // ArturChat palette inspired by the supplied pastel sky reference.
-private val AppBackground = Color(0xFFF4E9E5)
-private val Panel = Color(0xFFFFFCFA)
-private val PanelLight = Color(0xFFE5EAF0)
-private val IncomingMessage = Color(0xFFE5EAF0)
-private val AccentSlate = Color(0xFF5D6C84)
-private val MainText = Color(0xFF344052)
-private val Muted = Color(0xFF68758A)
-private val PaletteBlush = Color(0xFFF5D2D0)
-private val PaletteSlate = Color(0xFF7987A1)
-private val PaletteBlueGray = Color(0xFF9EAFC5)
-private val PaletteMist = Color(0xFFC9D3DF)
+private val AppBackground = Color(0xFFF0F3FF)
+private val Panel = Color(0xFFFAFBFF)
+private val PanelLight = Color(0xFFEDF1FF)
+private val IncomingMessage = Color(0xFFE5EAF6)
+private val AccentSlate = Color(0xFF5266D8)
+private val MainText = Color(0xFF253047)
+private val Muted = Color(0xFF77839A)
+private val PaletteBlush = Color(0xFFE6DFFF)
+private val PaletteSlate = Color(0xFFC8D7F2)
+private val PaletteBlueGray = Color(0xFFD2E3F8)
+private val PaletteMist = Color(0xFFE0E7F6)
 private val AvatarColors = listOf(
     PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist
 )
 
-private enum class MainTab(val title: String, val symbol: String) {
-    CHATS("Чаты", "✉"),
-    CALLS("Звонки", "◉"),
-    CONTACTS("Друзья", "◎"),
-    PROFILE("Профиль", "◌")
+// Inbox-only design tokens. Kept separate from the call/chat surfaces so this
+// visual pass cannot unintentionally restyle the already-working call screens.
+private val InboxBackground = Color(0xFFF2F4FF)
+private val InboxSurface = Color(0xFFFFFFFF)
+private val InboxSurfaceSoft = Color(0xFFE8EBFF)
+private val InboxMessageIncoming = Color(0xFFDDE3EA)
+private val InboxAccent = Color(0xFF5267DB)
+private val InboxAccentStrong = Color(0xFF3F50C9)
+private val InboxPrimary = Color(0xFF202936)
+private val InboxSecondary = Color(0xFF485464)
+private val InboxMuted = Color(0xFF788493)
+private val InboxBorder = Color(0xFFE1E6EC)
+private val InboxOnline = Color(0xFF2F9A72)
+private val InboxDanger = Color(0xFFBE5E67)
+
+private enum class MainTab(val title: String) {
+    CHATS("Чаты"),
+    CALLS("Звонки"),
+    CONTACTS("Друзья"),
+    PROFILE("Профиль")
 }
 
 private data class MessageReplyPreview(
@@ -291,19 +331,37 @@ class MainActivity : ComponentActivity() {
                     onSurface = MainText
                 )
             ) {
-                ArturChatUpdateHost {
-                    SupabaseAuthGate { userEmail, userId, onSignOut ->
-                        FaceVideoApp(
-                            userEmail = userEmail,
-                            userId = userId,
-                            onSignOut = onSignOut,
-                            callNotificationActionFlow = pendingCallNotificationAction,
-                            onCallNotificationActionHandled = { nonce ->
-                                if (pendingCallNotificationAction.value?.nonce == nonce) {
-                                    pendingCallNotificationAction.value = null
-                                }
-                            }
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = AppBackground
+                ) {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xFFE2DCFF),
+                                    Color(0xFFE2E9FF),
+                                    Color(0xFFE8F0FF),
+                                    Color(0xFFF2F5FF)
+                                )
+                            )
                         )
+                    ) {
+                        ArturChatUpdateHost {
+                            SupabaseAuthGate { userEmail, userId, onSignOut ->
+                                FaceVideoApp(
+                                    userEmail = userEmail,
+                                    userId = userId,
+                                    onSignOut = onSignOut,
+                                    callNotificationActionFlow = pendingCallNotificationAction,
+                                    onCallNotificationActionHandled = { nonce ->
+                                        if (pendingCallNotificationAction.value?.nonce == nonce) {
+                                            pendingCallNotificationAction.value = null
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -364,7 +422,7 @@ private fun FaceVideoApp(
     }
     var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
     var showCallInfo by remember { mutableStateOf(false) }
-    var callInfoMessage by remember { mutableStateOf("Видеозвонки будут подключены следующим этапом. Сейчас доступны персональные аудиозвонки.") }
+    val callInfoMessage = "Открой личную переписку и нажми значок трубки для аудиозвонка или камеры для видеозвонка."
 
     val supabase = SupabaseClientProvider.client
     val liveRepository = remember(supabase) { supabase?.let { SupabaseChatRepository(it) } }
@@ -920,7 +978,79 @@ private fun FaceVideoApp(
                 onCall = { showCallInfo = true }
             )
         } else {
-            Column(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFFE2DCFF),
+                                Color(0xFFE2E9FF),
+                                Color(0xFFE8F0FF),
+                                Color(0xFFF2F5FF),
+                                Color(0xFFE8E9FF)
+                            )
+                        )
+                    )
+                    .drawBehind {
+                        val w = size.width
+                        val h = size.height
+                        val glowTopLeft = Offset(-w * 0.10f, h * 0.10f)
+                        val glowTopRight = Offset(w * 1.02f, h * 0.22f)
+                        val glowCenter = Offset(w * 0.46f, h * 0.56f)
+                        val glowBottomLeft = Offset(-w * 0.08f, h * 0.94f)
+
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFB49BFF).copy(alpha = 0.58f),
+                                    Color(0xFFC9BFFF).copy(alpha = 0.22f),
+                                    Color.Transparent
+                                ),
+                                center = glowTopLeft,
+                                radius = w * 0.90f
+                            ),
+                            radius = w * 0.90f,
+                            center = glowTopLeft
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF9BCBFF).copy(alpha = 0.56f),
+                                    Color(0xFFB8D9FF).copy(alpha = 0.18f),
+                                    Color.Transparent
+                                ),
+                                center = glowTopRight,
+                                radius = w * 0.82f
+                            ),
+                            radius = w * 0.82f,
+                            center = glowTopRight
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFD0B8FF).copy(alpha = 0.30f),
+                                    Color.Transparent
+                                ),
+                                center = glowCenter,
+                                radius = w * 0.78f
+                            ),
+                            radius = w * 0.78f,
+                            center = glowCenter
+                        )
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFB8D8FF).copy(alpha = 0.30f),
+                                    Color.Transparent
+                                ),
+                                center = glowBottomLeft,
+                                radius = w * 0.70f
+                            ),
+                            radius = w * 0.70f,
+                            center = glowBottomLeft
+                        )
+                    }
+            ) {
                 Box(Modifier.weight(1f)) {
                     when (selectedTab) {
                         MainTab.CHATS -> {
@@ -937,7 +1067,13 @@ private fun FaceVideoApp(
                                 ChatListScreen(onOpenChat = { openedChat = it })
                             }
                         }
-                        MainTab.CALLS -> CallsScreen(onCall = { showCallInfo = true })
+                        MainTab.CALLS -> {
+                            CallsScreen(
+                                repository = callRepository,
+                                userId = userId,
+                                onOpenProfile = { openedProfileUserId = it }
+                            )
+                        }
                         MainTab.CONTACTS -> {
                             if (liveRepository != null && userId != null) {
                                 FriendsScreen(
@@ -1058,6 +1194,7 @@ private fun LiveChatListScreen(
     var isLoading by remember(cache, userId) { mutableStateOf(cachedChats.isEmpty()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
     var showNewChat by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -1093,36 +1230,55 @@ private fun LiveChatListScreen(
         }
     }
 
+    // The parent main-tab container paints one continuous background behind
+    // the list and bottom navigation. Keep this surface transparent to avoid
+    // a nested rectangular panel inside the main gradient.
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 15.dp, bottom = 9.dp),
+            Modifier.fillMaxWidth()
+                .padding(start = 20.dp, end = 18.dp, top = 7.dp, bottom = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 "ARTURCHAT",
-                color = AccentSlate,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                color = InboxAccentStrong.copy(alpha = 0.88f),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.55.sp
             )
-            Surface(
-                color = Color(0xFFE5EAF0),
-                shape = RoundedCornerShape(50),
-                border = BorderStroke(1.dp, Color(0xFF9EAFC5))
+            // Keep a comfortable touch target while drawing only the icon:
+            // no circular fill, gradient rim, shadow or outline.
+            Box(
+                modifier = Modifier.size(40.dp)
+                    .clickable(
+                        interactionSource = null,
+                        indication = null
+                    ) { showSearch = !showSearch },
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(AccentSlate))
-                    Spacer(Modifier.width(6.dp))
-                    Text("ONLINE", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.9.sp)
-                }
+                InboxSearchGlyph(iconSize = 18.dp)
             }
         }
 
-        SearchField(value = query, onValueChange = { query = it }, compact = true)
+        AnimatedVisibility(
+            visible = showSearch,
+            enter = fadeIn(animationSpec = tween(190)) +
+                slideInVertically(animationSpec = tween(240)) { fullHeight -> -fullHeight / 3 } +
+                expandVertically(animationSpec = tween(240), expandFrom = Alignment.Top),
+            exit = fadeOut(animationSpec = tween(130)) +
+                slideOutVertically(animationSpec = tween(180)) { fullHeight -> -fullHeight / 4 } +
+                shrinkVertically(animationSpec = tween(180), shrinkTowards = Alignment.Top)
+        ) {
+            Column {
+                SearchField(
+                    value = query,
+                    onValueChange = { query = it },
+                    compact = true
+                )
+                Spacer(Modifier.height(7.dp))
+            }
+        }
 
         if (!contactsMode) {
             StoriesStrip(
@@ -1137,7 +1293,7 @@ private fun LiveChatListScreen(
             when {
                 isLoading && chats.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+                        androidx.compose.material3.CircularProgressIndicator(color = InboxAccent)
                     }
                 }
                 visibleChats.isEmpty() && loadError != null -> {
@@ -1150,7 +1306,7 @@ private fun LiveChatListScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(loadError.orEmpty(), color = Muted, fontSize = 11.sp)
                         Spacer(Modifier.height(14.dp))
-                        TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = AccentSlate) }
+                        TextButton(onClick = { reloadKey++ }) { Text("Повторить", color = InboxAccent) }
                     }
                 }
                 visibleChats.isEmpty() -> {
@@ -1182,28 +1338,61 @@ private fun LiveChatListScreen(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 4.dp)
                             )
                         }
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Недавние",
+                                color = InboxPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                "${visibleChats.size} чатов",
+                                color = InboxMuted,
+                                fontSize = 10.sp
+                            )
+                        }
                         LazyColumn(
                             Modifier.weight(1f),
-                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 5.dp, bottom = 86.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 82.dp),
+                            verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             items(visibleChats, key = { it.id }) { chat ->
-                                LiveChatRow(
-                                    chat = chat,
-                                    unreadSummary = unreadSummaries[chat.id],
-                                    onClick = { openCachedChat(chat) },
-                                    onDelete = {
-                                        scope.launch {
-                                            runCatching { repository.hideChatForMe(chat.id, userId) }
-                                                .onSuccess {
-                                                    chats = chats.filterNot { it.id == chat.id }
-                                                    withContext(Dispatchers.IO) { cache.saveChats(userId, chats) }
-                                                    reloadKey++
-                                                }
-                                                .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
+                                Column(Modifier.fillMaxWidth()) {
+                                    LiveChatRow(
+                                        chat = chat,
+                                        unreadSummary = unreadSummaries[chat.id],
+                                        onClick = { openCachedChat(chat) },
+                                        onDelete = {
+                                            scope.launch {
+                                                runCatching { repository.hideChatForMe(chat.id, userId) }
+                                                    .onSuccess {
+                                                        chats = chats.filterNot { it.id == chat.id }
+                                                        withContext(Dispatchers.IO) { cache.saveChats(userId, chats) }
+                                                        reloadKey++
+                                                    }
+                                                    .onFailure { loadError = it.message ?: "Не удалось удалить чат." }
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        Modifier.fillMaxWidth().height(1.dp).background(
+                                            Brush.horizontalGradient(
+                                                listOf(
+                                                    Color.Transparent,
+                                                    Color.White.copy(alpha = 0.78f),
+                                                    Color(0xFFD6DDF0).copy(alpha = 0.58f),
+                                                    Color.Transparent
+                                                )
+                                            )
+                                        )
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                }
                             }
                         }
                     }
@@ -1211,17 +1400,29 @@ private fun LiveChatListScreen(
             }
 
             Surface(
-                color = AccentSlate,
-                shape = CircleShape,
-                shadowElevation = 8.dp,
+                color = Color.Transparent,
+                shape = RoundedCornerShape(28.dp),
+                shadowElevation = 6.dp,
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = 18.dp)
-                    .size(56.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 12.dp)
+                    .height(54.dp)
                     .clickable { showNewChat = true }
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("✎", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Medium)
+                Row(
+                    Modifier
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
+                            )
+                        )
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    NewChatGlyph()
+                    Spacer(Modifier.width(10.dp))
+                    Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -1317,51 +1518,73 @@ private fun StoriesStrip(
         .map { group -> group.sortedByDescending { it.createdAt }.first() }
         .sortedByDescending { it.createdAt }
 
-    Column(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 10.dp)) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 6.dp),
+            Modifier.fillMaxWidth().padding(start = 19.dp, end = 18.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("ИСТОРИИ", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+            Text("Истории", color = InboxPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text(
-                "Обновить",
-                color = Muted,
-                fontSize = 9.sp,
+                "Обновить ↻",
+                color = InboxMuted,
+                fontSize = 10.sp,
                 modifier = Modifier.clickable { refreshKey++ }.padding(4.dp)
             )
         }
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 15.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
         ) {
+            val latestOwnStory = ownStories.maxByOrNull { it.createdAt }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(66.dp).clickable {
-                    if (ownStories.isNotEmpty()) onOpenStories(userId) else imagePicker.launch("image/*")
+                modifier = Modifier.width(70.dp).clickable {
+                    if (latestOwnStory != null) onOpenStories(userId) else imagePicker.launch("image/*")
                 }
             ) {
                 Box(contentAlignment = Alignment.BottomEnd) {
-                    Box(
-                        Modifier.size(58.dp).background(
-                            Brush.linearGradient(listOf(PaletteBlush, PaletteBlueGray)),
-                            CircleShape
-                        ).padding(3.dp)
-                    ) {
-                        Avatar(
-                            myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }?.take(1)?.uppercase() ?: "Я",
-                            0,
-                            Modifier.fillMaxSize(),
-                            imageUrl = myProfile?.avatarUrl,
-                            imageCacheKey = myProfile?.id
-                        )
+                    if (latestOwnStory != null) {
+                        Box(
+                            Modifier.size(66.dp)
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFF28A9FF), Color(0xFF5D68EC), Color(0xFFB06BEF))
+                                    ),
+                                    CircleShape
+                                )
+                                .padding(3.dp)
+                                .clip(CircleShape)
+                        ) {
+                            Avatar(
+                                initials = (myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }
+                                    ?: myProfile?.username.orEmpty()).take(1).uppercase().ifBlank { "Я" },
+                                style = userId.hashCode().ushr(1) % 4,
+                                modifier = Modifier.fillMaxSize(),
+                                imageUrl = myProfile?.avatarUrl,
+                                imageCacheKey = userId
+                            )
+                        }
+                    } else {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.82f),
+                            shape = RoundedCornerShape(20.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                            modifier = Modifier.size(62.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                InboxCameraGlyph()
+                            }
+                        }
                     }
                     Surface(
-                        color = AccentSlate,
+                        color = InboxAccent,
                         shape = CircleShape,
-                        border = BorderStroke(2.dp, AppBackground),
-                        modifier = Modifier.size(22.dp).clickable { imagePicker.launch("image/*") }
+                        border = BorderStroke(2.dp, Color(0xFFF2F3FF)),
+                        modifier = Modifier.size(22.dp).clickable {
+                            imagePicker.launch("image/*")
+                        }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text("+", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -1369,17 +1592,22 @@ private fun StoriesStrip(
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("Моя история", color = MainText, fontSize = 10.sp, maxLines = 1)
+                Text(
+                    if (latestOwnStory != null) "Добавить ещё" else "Моя история",
+                    color = InboxPrimary,
+                    fontSize = 9.sp,
+                    maxLines = 1
+                )
             }
 
             friendGroups.forEach { story ->
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(66.dp).clickable { onOpenStories(story.userId) }
+                    modifier = Modifier.width(68.dp).clickable { onOpenStories(story.userId) }
                 ) {
                     Box(
-                        Modifier.size(58.dp).background(
-                            Brush.linearGradient(listOf(PaletteBlush, PaletteSlate, PaletteBlueGray)),
+                        Modifier.size(62.dp).background(
+                            Brush.linearGradient(listOf(Color(0xFF38A8FF), Color(0xFF766AF0), Color(0xFFB47BEF))),
                             CircleShape
                         ).padding(3.dp)
                     ) {
@@ -1395,7 +1623,7 @@ private fun StoriesStrip(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         story.displayName.ifBlank { story.username },
-                        color = MainText,
+                        color = InboxPrimary,
                         fontSize = 10.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -1406,7 +1634,7 @@ private fun StoriesStrip(
         if (loadError != null) {
             Text(
                 loadError.orEmpty(),
-                color = Muted,
+                color = InboxMuted,
                 fontSize = 9.sp,
                 modifier = Modifier.padding(start = 18.dp, top = 4.dp)
             )
@@ -1461,10 +1689,11 @@ private fun StoriesStrip(
                                     }
                                 }
                             }.onSuccess { published ->
-                                stories = listOf(published) + stories
+                                stories = listOf(published) + stories.filterNot { it.storyId == published.storyId }
                                 withContext(Dispatchers.IO) { cache.saveStories(userId, stories) }
                                 showComposer = false
                                 selectedUri = null
+                                refreshKey++
                                 Toast.makeText(context, "История опубликована", Toast.LENGTH_SHORT).show()
                             }.onFailure { error ->
                                 Toast.makeText(
@@ -1492,7 +1721,8 @@ private fun StoryImage(
     story: FaceVideoStoryCard,
     viewerUserId: String,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    fillWithBlurredCopy: Boolean = false
 ) {
     val context = LocalContext.current
     val mediaCache = remember(context) { ArturChatImageCache(context) }
@@ -1523,12 +1753,23 @@ private fun StoryImage(
     }
     val loaded = bitmap
     if (loaded != null) {
-        Image(
-            bitmap = loaded.asImageBitmap(),
-            contentDescription = "История",
-            modifier = modifier,
-            contentScale = contentScale
-        )
+        Box(modifier.fillMaxSize()) {
+            if (fillWithBlurredCopy) {
+                Image(
+                    bitmap = loaded.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.54f),
+                    contentScale = ContentScale.Crop
+                )
+                Box(Modifier.fillMaxSize().background(Color(0x66101928)))
+            }
+            Image(
+                bitmap = loaded.asImageBitmap(),
+                contentDescription = "История",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale
+            )
+        }
     } else {
         Box(modifier.background(Color(0xFF293444)), contentAlignment = Alignment.Center) {
             androidx.compose.material3.CircularProgressIndicator(color = Color.White)
@@ -1579,6 +1820,7 @@ private fun StoryViewerScreen(
             val ownerStories = repository.listVisibleStories(storyOwnerId = storyOwnerId)
             stories = ownerStories.sortedBy { it.createdAt }
             index = 0
+            errorMessage = null
             withContext(Dispatchers.IO) {
                 val otherCachedStories = cache.readStories(currentUserId)
                     .filterNot { it.userId == storyOwnerId }
@@ -1592,95 +1834,448 @@ private fun StoryViewerScreen(
     }
 
     val current = stories.getOrNull(index)
-    Column(
-        Modifier.fillMaxSize().background(Color(0xFF202A38)).padding(14.dp)
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(Modifier.size(48.dp).clickable(onClick = onBack), contentAlignment = Alignment.Center) {
-                Text("‹", color = Color.White, fontSize = 30.sp)
+    val canDelete = current?.userId == currentUserId
+    val canReact = current != null && current.userId != currentUserId
+    var reactionSummary by remember { mutableStateOf(StoryReactionSummary()) }
+    var isLoadingReactions by remember { mutableStateOf(false) }
+    var isSavingReaction by remember(current?.storyId) { mutableStateOf(false) }
+    var reactionError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(current?.storyId, currentUserId) {
+        val storyId = current?.storyId
+        reactionSummary = StoryReactionSummary()
+        reactionError = null
+        if (storyId == null) {
+            isLoadingReactions = false
+            return@LaunchedEffect
+        }
+        isLoadingReactions = true
+        try {
+            val summary = repository.getStoryReactionSummary(storyId, currentUserId)
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                reactionSummary = summary
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    current?.let { it.displayName.ifBlank { it.username } } ?: "История",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                reactionError = error.message ?: "Не удалось загрузить реакции."
+            }
+            android.util.Log.w("ArturChatStories", "Could not load story reactions", error)
+        } finally {
+            if (stories.getOrNull(index)?.storyId == storyId) {
+                isLoadingReactions = false
+            }
+        }
+    }
+
+    fun onStoryReactionTapped(emoji: String) {
+        val story = current ?: return
+        if (!canReact || isLoadingReactions || isSavingReaction) return
+        val nextReaction = runCatching {
+            nextStoryReaction(reactionSummary.currentUserReaction, emoji)
+        }.getOrElse {
+            reactionError = it.message
+            return
+        }
+        scope.launch {
+            isSavingReaction = true
+            reactionError = null
+            try {
+                val updated = repository.setStoryReaction(
+                    storyId = story.storyId,
+                    currentUserId = currentUserId,
+                    reaction = nextReaction
                 )
-                Text(current?.let { storyTimeLabel(it.createdAt) }.orEmpty(), color = Color.LightGray, fontSize = 10.sp)
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    reactionSummary = updated
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    reactionError = error.message ?: "Не удалось сохранить реакцию."
+                }
+                android.util.Log.w("ArturChatStories", "Could not save story reaction", error)
+            } finally {
+                if (stories.getOrNull(index)?.storyId == story.storyId) {
+                    isSavingReaction = false
+                }
             }
-            if (current?.userId == currentUserId) {
-                TextButton(
-                    onClick = { showDeleteConfirmation = true },
-                    enabled = !deleting,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        containerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
+        }
+    }
+
+    val ownerName = current?.let { it.displayName.ifBlank { it.username } } ?: "История"
+    val ownerInitial = ownerName.trim().take(1).uppercase().ifBlank { "?" }
+
+    Box(
+        Modifier.fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF111B2A), Color(0xFF202E42), Color(0xFF111A29))
+                )
+            )
+    ) {
+        // One decoded story image renders both the fitted foreground and the blurred ambient backdrop.
+        if (current != null) {
+            Crossfade(
+                targetState = current.storyId,
+                animationSpec = tween(240),
+                label = "story-media-transition"
+            ) { storyId ->
+                val visibleStory = stories.firstOrNull { it.storyId == storyId }
+                if (visibleStory != null) {
+                    StoryImage(
+                        story = visibleStory,
+                        viewerUserId = currentUserId,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        fillWithBlurredCopy = true
                     )
-                ) {
-                    Text("Удалить", color = Color.White, fontSize = 11.sp)
                 }
             }
         }
 
-        if (isLoading) {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+        Column(Modifier.fillMaxSize()) {
+            // Top progress and creator controls use a restrained glass surface.
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xE8101928), Color(0xAA101928), Color.Transparent)
+                        )
+                    )
+                    .padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 18.dp)
+            ) {
+                if (stories.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        stories.forEachIndexed { storyIndex, _ ->
+                            Box(
+                                Modifier.weight(1f)
+                                    .height(3.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        when {
+                                            storyIndex < index -> Color.White
+                                            storyIndex == index -> Color(0xFFBFD7FF)
+                                            else -> Color.White.copy(alpha = 0.32f)
+                                        }
+                                    )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(13.dp))
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(48.dp).clickable(onClick = onBack),
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        border = null
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "‹",
+                                color = Color.White,
+                                fontSize = 29.sp,
+                                fontWeight = FontWeight.Light,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        Modifier.size(40.dp)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF39B4FF), Color(0xFF626FEF), Color(0xFFB276F0))
+                                ),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        Avatar(
+                            initials = ownerInitial,
+                            style = storyOwnerId.hashCode().ushr(1) % 4,
+                            modifier = Modifier.fillMaxSize(),
+                            imageUrl = current?.avatarUrl,
+                            imageCacheKey = storyOwnerId
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            ownerName,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            current?.let { storyTimeLabel(it.createdAt) }.orEmpty(),
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 10.sp,
+                            maxLines = 1
+                        )
+                    }
+                    if (canDelete) {
+                        Surface(
+                            onClick = { showDeleteConfirmation = true },
+                            enabled = !deleting,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.Transparent,
+                            border = null
+                        ) {
+                            Text(
+                                if (deleting) "Удаляем…" else "Удалить",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
-        } else if (current != null) {
+
             Box(
-                Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(18.dp)),
+                Modifier.weight(1f).fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                StoryImage(current, currentUserId, Modifier.fillMaxSize(), ContentScale.Fit)
-                if (current.caption.isNotBlank()) {
+                when {
+                    isLoading -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Загружаем историю…",
+                                color = Color.White.copy(alpha = 0.76f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    current != null -> {
+                        // Tap left/right on the media to navigate, as in modern story viewers.
+                        Row(
+                            Modifier.fillMaxSize()
+                                .pointerInput(index, stories.size) {
+                                    detectTapGestures { tap ->
+                                        when {
+                                            tap.x < size.width * 0.34f ->
+                                                index = (index - 1).coerceAtLeast(0)
+                                            tap.x > size.width * 0.66f -> {
+                                                if (index < stories.lastIndex) index++ else onBack()
+                                            }
+                                        }
+                                    }
+                                }
+                                .pointerInput(storyOwnerId) {
+                                    var downwardDrag = 0f
+                                    detectVerticalDragGestures(
+                                        onDragEnd = {
+                                            if (downwardDrag > 110f) onBack()
+                                            downwardDrag = 0f
+                                        },
+                                        onVerticalDrag = { _, dragAmount ->
+                                            downwardDrag += dragAmount
+                                        }
+                                    )
+                                }
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    else -> {
+                        Column(
+                            Modifier.fillMaxWidth().padding(28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                errorMessage ?: "Истории пока нет или срок её действия истёк.",
+                                color = Color.White.copy(alpha = 0.82f),
+                                fontSize = 13.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Surface(
+                                onClick = onBack,
+                                modifier = Modifier.heightIn(min = 48.dp),
+                                shape = RoundedCornerShape(18.dp),
+                                color = Color.Transparent,
+                                border = null
+                            ) {
+                                Text("Вернуться", color = Color.White, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0x99101928), Color(0xE8101928))
+                        )
+                    )
+                    .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 12.dp)
+            ) {
+                if (current?.caption?.isNotBlank() == true) {
                     Surface(
-                        color = Color(0xCC202A38),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp)
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             current.caption,
                             color = Color.White,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(13.dp)
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
                         )
                     }
+                    Spacer(Modifier.height(12.dp))
                 }
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                TextButton(
-                    onClick = { index = (index - 1).coerceAtLeast(0) },
-                    enabled = index > 0,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        containerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
-                    )
-                ) { Text("Назад", color = Color.White) }
-                Text("${index + 1} / ${stories.size}", color = Color.LightGray, fontSize = 11.sp)
-                TextButton(
-                    onClick = {
-                        if (index < stories.lastIndex) index++ else onBack()
-                    },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        containerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
-                    )
-                ) { Text("Следующая", color = Color.White) }
-            }
-        } else {
-            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(errorMessage ?: "Истории пока нет или срок её действия истёк.", color = Color.White, fontSize = 13.sp)
+
+                if (current != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.Transparent,
+                        shape = RoundedCornerShape(20.dp),
+                        border = null
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            STORY_REACTION_OPTIONS.forEach { emoji ->
+                                val count = reactionSummary.counts[emoji] ?: 0
+                                val selected = reactionSummary.currentUserReaction == emoji
+                                Surface(
+                                    onClick = { onStoryReactionTapped(emoji) },
+                                    enabled = canReact && !isLoadingReactions && !isSavingReaction,
+                                    shape = RoundedCornerShape(15.dp),
+                                    color = Color.Transparent,
+                                    border = null,
+                                    modifier = Modifier.weight(1f).padding(horizontal = 1.dp).heightIn(min = 48.dp)
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 3.dp, vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            emoji,
+                                            fontSize = if (selected) 19.sp else 17.sp,
+                                            lineHeight = if (selected) 21.sp else 19.sp
+                                        )
+                                        if (count > 0) {
+                                            Spacer(Modifier.width(2.dp))
+                                            Text(
+                                                count.toString(),
+                                                color = Color.White.copy(alpha = 0.94f),
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (isSavingReaction) {
+                        Text(
+                            "Сохраняем реакцию…",
+                            color = Color.White.copy(alpha = 0.66f),
+                            fontSize = 8.sp,
+                            modifier = Modifier.padding(start = 5.dp, top = 4.dp)
+                        )
+                    }
+                    if (reactionError != null) {
+                        Text(
+                            reactionError.orEmpty(),
+                            color = Color(0xFFFFC3CD),
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(start = 5.dp, top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        onClick = { index = (index - 1).coerceAtLeast(0) },
+                        enabled = current != null && index > 0,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.Transparent,
+                        border = null
+                    ) {
+                        Text(
+                            "Назад",
+                            color = Color.White.copy(alpha = if (index > 0) 1f else 0.38f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        border = null
+                    ) {
+                        Text(
+                            if (stories.isEmpty()) "— / —" else "${index + 1} / ${stories.size}",
+                            color = Color.White.copy(alpha = 0.78f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Surface(
+                        onClick = {
+                            if (index < stories.lastIndex) index++ else onBack()
+                        },
+                        enabled = current != null,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.Transparent,
+                        border = null
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (index < stories.lastIndex) "Следующая" else "Готово",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("›", color = Color.White, fontSize = 17.sp)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1744,25 +2339,32 @@ private fun LiveChatRow(
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
-            .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(80.dp)
+            .combinedClickable(onClick = onClick, onLongClick = { showMenu = true }),
+        color = Color.Transparent,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 0.dp
     ) {
+        Row(
+            Modifier.fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         Avatar(
             initials,
             chat.id.hashCode().ushr(1) % 4,
-            Modifier.size(53.dp),
+            Modifier.size(52.dp),
             imageUrl = chat.peerAvatarUrl,
             imageCacheKey = chat.peerUserId
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(chat.title, color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Spacer(Modifier.height(5.dp))
+            Text(chat.title, color = InboxPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Spacer(Modifier.height(6.dp))
             Text(
                 preview.text.ifBlank { "Начните переписку" },
-                color = if (unreadCount > 0) MainText else Muted,
+                color = if (unreadCount > 0) InboxSecondary else InboxMuted,
                 fontSize = 12.sp,
                 fontWeight = if (unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
                 maxLines = 1,
@@ -1773,26 +2375,53 @@ private fun LiveChatRow(
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 preview.timestamp?.let { formatChatMessageTime(it) }.orEmpty(),
-                color = if (unreadCount > 0) AccentSlate else Muted,
+                color = if (unreadCount > 0) InboxAccent else InboxMuted,
                 fontSize = 10.sp
             )
             formatUnreadBadge(unreadCount)?.let { badgeText ->
                 Spacer(Modifier.height(6.dp))
-                Surface(color = AccentSlate, shape = CircleShape) {
-                    Text(
-                        badgeText,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                    )
+                Surface(
+                    color = InboxAccent,
+                    shape = CircleShape,
+                    modifier = Modifier.height(21.dp).widthIn(min = 21.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.height(21.dp).padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            badgeText,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            lineHeight = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
-        Text("⋮", color = Muted, fontSize = 20.sp, modifier = Modifier.clickable { showMenu = true }.padding(start = 8.dp))
+            ChatChromeActionButton(
+                onClick = { showMenu = true },
+                size = 34.dp
+            ) {
+                InboxMoreGlyph()
+            }
+        }
     }
-    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-        DropdownMenuItem(text = { Text("Удалить чат") }, onClick = { showMenu = false; confirmDelete = true })
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = { showMenu = false },
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        DropdownMenuItem(
+            text = { Text("Удалить чат", color = InboxPrimary) },
+            onClick = { showMenu = false; confirmDelete = true },
+            colors = androidx.compose.material3.MenuDefaults.itemColors(
+                textColor = InboxPrimary
+            )
+        )
     }
     if (confirmDelete) {
         AlertDialog(
@@ -1974,6 +2603,7 @@ private fun LiveChatScreen(
     var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
     var voiceRecordingStartedAt by remember(chat.id) { mutableStateOf(0L) }
     var voiceRecordingDurationMs by remember(chat.id) { mutableStateOf(0L) }
+    val voiceAmplitudeSamples = remember(chat.id) { mutableStateListOf<Int>() }
 
     DisposableEffect(chat.id, voiceRecorder) {
         onDispose { voiceRecorder.cancel() }
@@ -2070,6 +2700,7 @@ private fun LiveChatScreen(
             voiceRecorder.start()
             voiceRecordingStartedAt = SystemClock.elapsedRealtime()
             voiceRecordingDurationMs = 0L
+            voiceAmplitudeSamples.clear()
             isVoiceRecording = true
             errorMessage = null
         } catch (error: Exception) {
@@ -2090,11 +2721,13 @@ private fun LiveChatScreen(
         isVoiceRecording = false
         voiceRecorder.cancel()
         voiceRecordingDurationMs = 0L
+        voiceAmplitudeSamples.clear()
     }
 
     fun sendVoiceRecording() {
         if (!isVoiceRecording || isSending) return
         val durationMs = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
+        val recorderSamplesFallback = voiceAmplitudeSamples.toList()
         isVoiceRecording = false
         voiceRecordingDurationMs = durationMs
         isSending = true
@@ -2105,6 +2738,9 @@ private fun LiveChatScreen(
                 val completedFile = withContext(Dispatchers.IO) { voiceRecorder.stop() }
                 recordedFile = completedFile
                 require(durationMs >= 1_000L) { "Запишите голосовое сообщение хотя бы одну секунду." }
+                val waveform = withContext(Dispatchers.IO) {
+                    decodeVoiceWaveformFromFile(completedFile)
+                } ?: buildVoiceWaveform(recorderSamplesFallback)
                 val audioBytes = withContext(Dispatchers.IO) { completedFile.readBytes() }
                 val audioPath = repository.uploadChatVoice(chat.id, userId, audioBytes)
                 val persistedMessage = repository.sendVoiceMessage(
@@ -2113,6 +2749,7 @@ private fun LiveChatScreen(
                     fileName = "voice-message.m4a",
                     fileSize = audioBytes.size.toLong(),
                     durationMs = durationMs,
+                    waveform = waveform,
                     replyToMessageId = replyingTo?.id
                 )
                 locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
@@ -2125,6 +2762,7 @@ private fun LiveChatScreen(
                 withContext(Dispatchers.IO) { recordedFile?.delete() }
                 isSending = false
                 voiceRecordingDurationMs = 0L
+                voiceAmplitudeSamples.clear()
             }
         }
     }
@@ -2134,64 +2772,172 @@ private fun LiveChatScreen(
             while (isVoiceRecording) {
                 val elapsed = (SystemClock.elapsedRealtime() - voiceRecordingStartedAt).coerceAtLeast(0L)
                 voiceRecordingDurationMs = elapsed
+                voiceAmplitudeSamples.add(voiceRecorder.readAmplitudeLevel())
                 if (elapsed >= MAX_CHAT_VOICE_DURATION_MS) {
                     sendVoiceRecording()
                     break
                 }
-                delay(200L)
+                delay(40L)
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().imePadding()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (selectedMessageIds.isNotEmpty()) {
-                Text("×", color = AccentSlate, fontSize = 30.sp, modifier = Modifier.clickable { selectedMessageIds = emptySet() }.padding(horizontal = 8.dp))
-                Text(
-                    "${selectedMessageIds.size} выбрано",
-                    color = MainText,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Text("‹", color = AccentSlate, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
-                Avatar(
-                    chat.title.take(2).uppercase(),
-                    chat.id.hashCode().ushr(1) % 4,
-                    Modifier.size(43.dp).clickable(enabled = peerUserId != null && !chat.isGroup) {
-                        peerUserId?.let(onOpenProfile)
-                    },
-                    imageUrl = peerAvatarUrl,
-                    imageCacheKey = peerUserId
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(
-                    Modifier.weight(1f).clickable(enabled = peerUserId != null && !chat.isGroup) {
-                        peerUserId?.let(onOpenProfile)
-                    }
-                ) {
-                    Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
-                    Text(
-                        when {
-                            chat.isGroup -> "Групповой чат"
-                            peerUserId == null -> "Проверяем статус…"
-                            peerIsOnline -> "В сети"
-                            !presenceAvailable -> "Статус обновляется…"
-                            else -> "Не в сети"
-                        },
-                        color = if (peerIsOnline) AccentSlate else Muted,
-                        fontSize = 10.sp
+
+    Column(
+        Modifier.fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFE2DCFF),
+                        Color(0xFFE2E9FF),
+                        Color(0xFFE8F0FF),
+                        Color(0xFFF2F5FF),
+                        Color(0xFFE8E9FF)
                     )
+                )
+            )
+            .drawBehind {
+                val w = size.width
+                val h = size.height
+                val topLeft = Offset(-w * 0.12f, h * 0.08f)
+                val topRight = Offset(w * 1.04f, h * 0.22f)
+                val center = Offset(w * 0.48f, h * 0.62f)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFB49BFF).copy(alpha = 0.42f), Color.Transparent),
+                        center = topLeft,
+                        radius = w * 0.86f
+                    ),
+                    radius = w * 0.86f,
+                    center = topLeft
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFF9BCBFF).copy(alpha = 0.40f), Color.Transparent),
+                        center = topRight,
+                        radius = w * 0.78f
+                    ),
+                    radius = w * 0.78f,
+                    center = topRight
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color(0xFFD0B8FF).copy(alpha = 0.24f), Color.Transparent),
+                        center = center,
+                        radius = w * 0.78f
+                    ),
+                    radius = w * 0.78f,
+                    center = center
+                )
+            }
+            .imePadding()
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            color = Color.Transparent,
+            shape = RoundedCornerShape(28.dp),
+            shadowElevation = 0.dp
+        ) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (selectedMessageIds.isNotEmpty()) {
+                    ChatChromeActionButton(
+                        onClick = { selectedMessageIds = emptySet() },
+                        filled = false
+                    ) {
+                        Text("×", color = InboxAccentStrong, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "${selectedMessageIds.size} выбрано",
+                            color = InboxPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                        Text("Сообщения отмечены", color = InboxMuted, fontSize = 9.sp)
+                    }
+                } else {
+                    ChatChromeActionButton(onClick = onBack, filled = false, size = 40.dp) {
+                        InboxBackGlyph()
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Box(
+                        Modifier.size(48.dp)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF32ADFF), Color(0xFF596BE8), Color(0xFF9A68E9))
+                                ),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        Avatar(
+                            chat.title.take(2).uppercase(),
+                            chat.id.hashCode().ushr(1) % 4,
+                            Modifier.fillMaxSize().clip(CircleShape)
+                                .clickable(enabled = peerUserId != null && !chat.isGroup) {
+                                    peerUserId?.let(onOpenProfile)
+                                },
+                            imageUrl = peerAvatarUrl,
+                            imageCacheKey = peerUserId
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(
+                        Modifier.weight(1f).clickable(enabled = peerUserId != null && !chat.isGroup) {
+                            peerUserId?.let(onOpenProfile)
+                        }
+                    ) {
+                        Text(
+                            chat.title,
+                            color = InboxPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(6.dp).background(
+                                    if (peerIsOnline) InboxOnline else InboxMuted.copy(alpha = 0.68f),
+                                    CircleShape
+                                )
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                when {
+                                    chat.isGroup -> "Групповой чат"
+                                    peerUserId == null -> "Проверяем статус…"
+                                    peerIsOnline -> "В сети"
+                                    !presenceAvailable -> "Статус обновляется…"
+                                    else -> "Не в сети"
+                                },
+                                color = if (peerIsOnline) InboxOnline else InboxMuted,
+                                fontSize = 9.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(7.dp))
+                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false, size = 40.dp) {
+                        ChatCallGlyph(video = false, tint = InboxAccentStrong)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false, size = 40.dp) {
+                        ChatCallGlyph(video = true, tint = InboxAccentStrong)
+                    }
                 }
-                Text("☎", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable { onCall(false) }.padding(7.dp))
-                Text("▣", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable { onCall(true) }.padding(7.dp))
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFC9D3DF)))
+        Spacer(Modifier.height(3.dp))
 
         if (orderedMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -2227,7 +2973,8 @@ private fun LiveChatScreen(
                             forwardedFromName = message.forwardedFromName,
                             isDeleted = message.deletedAt != null,
                             attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
-                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null
+                            attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null,
+                            attachmentWaveform = if (message.deletedAt == null) message.attachmentWaveform else null
                         ),
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
@@ -2329,10 +3076,10 @@ private fun LiveChatScreen(
         if (selectedMessageIds.isNotEmpty()) {
             val selectedRows = orderedMessages.filter { it.id in selectedMessageIds }
             Surface(
-                color = PanelLight,
+                color = Color.White.copy(alpha = 0.90f),
                 shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, Color(0xFFC9D3DF)),
-                shadowElevation = 4.dp,
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                shadowElevation = 5.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Row(
@@ -2420,122 +3167,150 @@ private fun LiveChatScreen(
         if (isSending) {
             Text(
                 "Отправляем сообщение или аудио…",
-                color = Muted,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                color = InboxMuted,
+                fontSize = 9.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp)
             )
         }
 
         if (isVoiceRecording) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                color = Color.White.copy(alpha = 0.58f),
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                shadowElevation = 8.dp
             ) {
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    color = Panel,
-                    shape = RoundedCornerShape(22.dp),
-                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF))
+                            )
+                        )
+                        .padding(9.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFE36C8A)))
+                            Spacer(Modifier.width(7.dp))
+                            Text("Идёт запись", color = InboxPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                formatVoiceDuration(voiceRecordingDurationMs),
+                                color = Color(0xFFCB587A),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        VoiceWaveformBars(
+                            waveform = buildVoiceWaveform(voiceAmplitudeSamples.toList()),
+                            progress = 1f,
+                            modifier = Modifier.fillMaxWidth().height(24.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(
+                        onClick = { cancelVoiceRecording() },
+                        filled = false
                     ) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFA85F6E)))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Запись голоса", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Text(formatVoiceDuration(voiceRecordingDurationMs), color = AccentSlate, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("×", color = Color(0xFFCC6681), fontSize = 24.sp, fontWeight = FontWeight.Light)
                     }
-                }
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    color = PanelLight,
-                    shape = CircleShape,
-                    modifier = Modifier.size(42.dp).clickable { cancelVoiceRecording() }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("×", color = MainText, fontSize = 25.sp)
-                    }
-                }
-                Spacer(Modifier.width(7.dp))
-                Surface(
-                    color = AccentSlate,
-                    shape = CircleShape,
-                    modifier = Modifier.size(42.dp).clickable { sendVoiceRecording() }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    ChatChromeActionButton(
+                        onClick = { sendVoiceRecording() },
+                        enabled = !isSending,
+                        filled = true
+                    ) {
+                        ChatSendGlyph()
                     }
                 }
             }
         } else {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                color = Color.White.copy(alpha = 0.60f),
+                shape = RoundedCornerShape(28.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.90f)),
+                shadowElevation = 4.dp
             ) {
-                Surface(
-                    color = PanelLight,
-                    shape = CircleShape,
-                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
-                        imagePicker.launch("image/*")
-                    }
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                            )
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("+", color = AccentSlate, fontSize = 25.sp)
+                    ChatChromeActionButton(
+                        onClick = { if (!isSending) imagePicker.launch("image/*") },
+                        enabled = !isSending,
+                        filled = false,
+                        size = 40.dp
+                    ) {
+                        InboxCameraGlyph(tint = InboxAccentStrong, iconSize = 22.dp)
                     }
-                }
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    Modifier.weight(1f),
-                    color = Panel,
-                    shape = RoundedCornerShape(22.dp),
-                    border = BorderStroke(1.dp, Color(0xFFC9D3DF))
-                ) {
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = { draft = it },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
-                            capitalization = KeyboardCapitalization.None,
-                            imeAction = ImeAction.Send
-                        ),
-                        keyboardActions = KeyboardActions(onSend = { sendMessage() }),
-                        textStyle = TextStyle(color = MainText, fontSize = 14.sp),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
-                        decorationBox = { inner ->
-                            Box {
-                                if (draft.isEmpty()) Text("Сообщение...", color = Muted, fontSize = 14.sp)
-                                inner()
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        color = Color.White.copy(alpha = 0.88f),
+                        shape = RoundedCornerShape(23.dp),
+                        border = BorderStroke(1.dp, Color.White)
+                    ) {
+                        BasicTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                capitalization = KeyboardCapitalization.None,
+                                imeAction = ImeAction.Send
+                            ),
+                            keyboardActions = KeyboardActions(onSend = { sendMessage() }),
+                            textStyle = TextStyle(
+                                color = InboxPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp),
+                            decorationBox = { inner ->
+                                Box(contentAlignment = Alignment.CenterStart) {
+                                    if (draft.isEmpty()) {
+                                        Text("Сообщение…", color = InboxMuted, fontSize = 12.sp)
+                                    }
+                                    inner()
+                                }
                             }
-                        }
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Surface(
-                    color = PanelLight,
-                    shape = CircleShape,
-                    modifier = Modifier.size(42.dp).clickable(enabled = !isSending) {
-                        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                            startVoiceRecording()
-                        } else {
-                            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
+                        )
                     }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("🎙", color = AccentSlate, fontSize = 18.sp)
+                    Spacer(Modifier.width(8.dp))
+                    ChatChromeActionButton(
+                        onClick = {
+                            if (!isSending) {
+                                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    startVoiceRecording()
+                                } else {
+                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        },
+                        enabled = !isSending,
+                        filled = false
+                    ) {
+                        ChatMicrophoneGlyph(tint = InboxAccentStrong)
                     }
-                }
-                Spacer(Modifier.width(7.dp))
-                Box(
-                    Modifier.size(43.dp).clip(CircleShape)
-                        .background(if (isSending || draft.isBlank()) Muted else AccentSlate)
-                        .clickable(enabled = !isSending && draft.isNotBlank()) { sendMessage() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(8.dp))
+                    ChatChromeActionButton(
+                        onClick = { sendMessage() },
+                        enabled = !isSending && draft.isNotBlank(),
+                        filled = true
+                    ) {
+                        ChatSendGlyph()
+                    }
                 }
             }
         }
@@ -2627,28 +3402,28 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
 }
 
 @Composable
-private fun SearchField(value: String, onValueChange: (String) -> Unit, compact: Boolean = false) {
+private fun SearchField(value: String, onValueChange: (String) -> Unit, compact: Boolean = false, placeholder: String = "Поиск по чатам") {
     Surface(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = if (compact) 2.dp else 0.dp),
-        color = Panel,
+        Modifier.fillMaxWidth().padding(horizontal = if (compact) 18.dp else 20.dp, vertical = if (compact) 2.dp else 0.dp).heightIn(min = if (compact) 46.dp else 0.dp),
+        color = if (compact) InboxSurface else Panel,
         shape = RoundedCornerShape(if (compact) 13.dp else 16.dp),
-        border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+        border = BorderStroke(1.dp, if (compact) InboxBorder else Color(0xFFC9D3DF))
     ) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            textStyle = TextStyle(color = MainText, fontSize = if (compact) 13.sp else 14.sp),
+            textStyle = TextStyle(color = if (compact) InboxPrimary else MainText, fontSize = if (compact) 13.sp else 14.sp),
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = if (compact) 13.dp else 15.dp,
-                vertical = if (compact) 10.dp else 14.dp
+                vertical = if (compact) 12.dp else 14.dp
             ),
             decorationBox = { inner ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("⌕", color = AccentSlate, fontSize = if (compact) 19.sp else 22.sp)
+                    Text("⌕", color = if (compact) InboxAccent else AccentSlate, fontSize = if (compact) 19.sp else 22.sp)
                     Spacer(Modifier.width(if (compact) 8.dp else 10.dp))
                     Box(Modifier.weight(1f)) {
-                        if (value.isEmpty()) Text("Поиск по чатам", color = Muted, fontSize = if (compact) 12.sp else 14.sp)
+                        if (value.isEmpty()) Text(placeholder, color = if (compact) InboxMuted else Muted, fontSize = if (compact) 12.sp else 14.sp)
                         inner()
                     }
                 }
@@ -2661,7 +3436,7 @@ private fun SearchField(value: String, onValueChange: (String) -> Unit, compact:
 private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)
-            .background(Color(0xFFF8F3F0)).padding(horizontal = 11.dp, vertical = 13.dp),
+            .background(Color(0xFFF4F6FF)).padding(horizontal = 11.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Avatar(chat.initials, chat.avatarStyle, Modifier.size(53.dp), highlighted = chat.online)
@@ -2763,17 +3538,32 @@ private fun ChatScreen(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("‹", color = AccentSlate, fontSize = 34.sp, modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 8.dp))
+            ChatHeaderIconButton(onClick = onBack) {
+                InboxBackGlyph()
+            }
+            Spacer(Modifier.width(8.dp))
             Avatar(chat.initials, chat.avatarStyle, Modifier.size(43.dp), highlighted = chat.online)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(chat.title, color = MainText, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                 Text(if (chat.online) "в сети" else "был(а) недавно", color = if (chat.online) AccentSlate else Muted, fontSize = 11.sp)
             }
-            Text("☎", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
-            Text("▣", color = AccentSlate, fontSize = 21.sp, modifier = Modifier.clickable(onClick = onCall).padding(7.dp))
+            Spacer(Modifier.width(7.dp))
+            ChatHeaderIconButton(onClick = onCall) {
+                ChatCallGlyph(video = false)
+            }
+            Spacer(Modifier.width(5.dp))
+            ChatHeaderIconButton(onClick = onCall) {
+                ChatCallGlyph(video = true)
+            }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFC9D3DF)))
+        Box(
+            Modifier.fillMaxWidth().height(1.dp).background(
+                Brush.horizontalGradient(
+                    listOf(Color.Transparent, Color.White.copy(alpha = 0.94f), Color(0xFFD6DDF0), Color.Transparent)
+                )
+            )
+        )
 
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
@@ -2797,15 +3587,15 @@ private fun ChatScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(color = PanelLight, shape = CircleShape, modifier = Modifier.size(42.dp)) {
-                Box(contentAlignment = Alignment.Center) { Text("+", color = AccentSlate, fontSize = 25.sp) }
+            InboxHeaderActionButton(onClick = {}) {
+                Text("+", color = InboxAccentStrong, fontSize = 22.sp, fontWeight = FontWeight.Light)
             }
             Spacer(Modifier.width(9.dp))
             Surface(
                 Modifier.weight(1f),
                 color = Panel,
                 shape = RoundedCornerShape(22.dp),
-                border = BorderStroke(1.dp, Color(0xFFC9D3DF))
+                border = BorderStroke(1.dp, Color(0xFFD6DDF0))
             ) {
                 BasicTextField(
                     value = draft,
@@ -2830,12 +3620,14 @@ private fun ChatScreen(
             }
             Spacer(Modifier.width(9.dp))
             Box(
-                Modifier.size(43.dp).clip(CircleShape).background(AccentSlate).clickable {
-                    if (draft.isNotBlank()) {
-                        messages.add(ChatMessage(UUID.randomUUID().toString(), draft.trim(), "сейчас", true))
-                        draft = ""
-                    }
-                },
+                Modifier.size(46.dp).clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
+                    .clickable {
+                        if (draft.isNotBlank()) {
+                            messages.add(ChatMessage(UUID.randomUUID().toString(), draft.trim(), "сейчас", true))
+                            draft = ""
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text("➤", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -2929,21 +3721,126 @@ private fun ChatImagePreview(
 }
 
 @Composable
+private fun VoiceWaveformBars(
+    waveform: List<Int>,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
+    val bars = remember(waveform) {
+        if (waveform.size in 16..96) waveform.map { it.coerceIn(8, 100) }
+        else List(VOICE_WAVEFORM_BAR_COUNT) { 8 }
+    }
+    val safeProgress = progress.coerceIn(0f, 1f)
+    Canvas(modifier = modifier) {
+        if (bars.isEmpty() || size.width <= 0f || size.height <= 0f) return@Canvas
+        val step = size.width / bars.size
+        val strokeWidth = (step * 0.58f).coerceIn(1.0.dp.toPx(), 1.7.dp.toPx())
+        val minBarHeight = 2.4.dp.toPx()
+        val maxBarHeight = size.height * 0.96f
+        val playedColor = Color(0xFF5266DE)
+        val futureColor = Color(0xFF9EAECE)
+        bars.forEachIndexed { index, level ->
+            val amplitude = ((level - 8) / 92f).coerceIn(0f, 1f)
+            val barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)
+            val x = step * (index + 0.5f)
+            val top = (size.height - barHeight) / 2f
+            drawLine(
+                color = if ((index + 0.5f) / bars.size <= safeProgress) playedColor else futureColor,
+                start = Offset(x, top),
+                end = Offset(x, top + barHeight),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+private object DecodedVoiceWaveformCache {
+    private val values = object : LinkedHashMap<String, List<Int>>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Int>>?): Boolean =
+            size > 128
+    }
+
+    @Synchronized
+    fun get(path: String): List<Int>? = values[path]
+
+    @Synchronized
+    fun put(path: String, waveform: List<Int>) {
+        values[path] = waveform.toList()
+    }
+}
+
+private fun shouldRebuildVoiceWaveform(waveform: List<Int>): Boolean {
+    if (waveform.size !in 16..96) return true
+    val peak = waveform.maxOrNull() ?: 0
+    val floor = waveform.minOrNull() ?: 0
+    val range = peak - floor
+    // 0.7.7/0.7.8 waveforms used absolute recorder peaks and usually have no
+    // per-recording 0..100 envelope. Re-decode those once from the AAC source.
+    return waveform.distinct().size < 16 ||
+        range < 40 ||
+        peak < 96 ||
+        floor > 30
+}
+
+@Composable
 private fun ChatVoiceMessagePlayer(
     path: String,
     repository: SupabaseChatRepository,
-    durationMs: Long
+    durationMs: Long,
+    waveform: List<Int>
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val playerState = remember(path) { mutableStateOf<MediaPlayer?>(null) }
     val audioFileState = remember(path) { mutableStateOf<File?>(null) }
+    val cachedWaveform = remember(path) { DecodedVoiceWaveformCache.get(path) }
+    var displayWaveform by remember(path) { mutableStateOf(cachedWaveform ?: waveform) }
     var isLoading by remember(path) { mutableStateOf(false) }
     var isPrepared by remember(path) { mutableStateOf(false) }
     var isPlaying by remember(path) { mutableStateOf(false) }
     var playbackFailed by remember(path) { mutableStateOf(false) }
     var playbackPositionMs by remember(path) { mutableStateOf(0L) }
     val safeDurationMs = durationMs.coerceAtLeast(0L)
+
+    LaunchedEffect(path, waveform) {
+        val memoryCached = DecodedVoiceWaveformCache.get(path)
+        if (memoryCached != null) {
+            displayWaveform = memoryCached
+        } else if (shouldRebuildVoiceWaveform(waveform)) {
+            var temporaryFile: File? = null
+            var keepFileForPlayback = false
+            try {
+                // Older messages carry a coarse legacy waveform. Rebuild it from their actual AAC.
+                val audioBytes = withContext(Dispatchers.IO) {
+                    repository.downloadChatAttachment(path)
+                }
+                temporaryFile = withContext(Dispatchers.IO) {
+                    File.createTempFile("arturchat-waveform-", ".m4a", context.cacheDir)
+                        .apply { writeBytes(audioBytes) }
+                }
+                val decoded = withContext(Dispatchers.IO) {
+                    decodeVoiceWaveformFromFile(temporaryFile!!)
+                }
+                if (decoded != null) {
+                    displayWaveform = decoded
+                    DecodedVoiceWaveformCache.put(path, decoded)
+                    if (audioFileState.value?.isFile != true) {
+                        audioFileState.value = temporaryFile
+                        keepFileForPlayback = true
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.w("ArturChatVoice", "Could not rebuild legacy waveform", error)
+            } finally {
+                if (!keepFileForPlayback) temporaryFile?.delete()
+            }
+        } else {
+            DecodedVoiceWaveformCache.put(path, waveform)
+        }
+    }
 
     fun togglePlayback() {
         val currentPlayer = playerState.value
@@ -2967,23 +3864,20 @@ private fun ChatVoiceMessagePlayer(
             return
         }
         if (isLoading) return
-
         playbackFailed = false
         isLoading = true
         scope.launch {
             var createdPlayer: MediaPlayer? = null
             try {
-                val audioBytes = withContext(Dispatchers.IO) {
-                    repository.downloadChatAttachment(path)
+                val cachedAudioFile = audioFileState.value?.takeIf { it.isFile }
+                val audioFile = cachedAudioFile ?: withContext(Dispatchers.IO) {
+                    val audioBytes = repository.downloadChatAttachment(path)
+                    File.createTempFile("arturchat-voice-", ".m4a", context.cacheDir).apply { writeBytes(audioBytes) }
                 }
-                val audioFile = withContext(Dispatchers.IO) {
-                    File.createTempFile("arturchat-voice-", ".m4a", context.cacheDir).apply {
-                        writeBytes(audioBytes)
-                    }
+                if (audioFileState.value !== audioFile) {
+                    audioFileState.value?.delete()
+                    audioFileState.value = audioFile
                 }
-                audioFileState.value?.delete()
-                audioFileState.value = audioFile
-
                 val mediaPlayer = MediaPlayer()
                 createdPlayer = mediaPlayer
                 playerState.value = mediaPlayer
@@ -2991,10 +3885,7 @@ private fun ChatVoiceMessagePlayer(
                     isPrepared = true
                     isLoading = false
                     playbackPositionMs = 0L
-                    runCatching {
-                        preparedPlayer.start()
-                        isPlaying = true
-                    }.onFailure {
+                    runCatching { preparedPlayer.start(); isPlaying = true }.onFailure {
                         playbackFailed = true
                         isPlaying = false
                     }
@@ -3029,13 +3920,10 @@ private fun ChatVoiceMessagePlayer(
 
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
-            playbackPositionMs = runCatching {
-                playerState.value?.currentPosition?.toLong() ?: 0L
-            }.getOrDefault(0L)
-            delay(200L)
+            playbackPositionMs = runCatching { playerState.value?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L)
+            delay(120L)
         }
     }
-
     DisposableEffect(path) {
         onDispose {
             runCatching { playerState.value?.release() }
@@ -3045,60 +3933,55 @@ private fun ChatVoiceMessagePlayer(
 
     val progress = if (safeDurationMs > 0L) {
         (playbackPositionMs.toFloat() / safeDurationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
+    } else 0f
 
     Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = AccentSlate,
-                shape = CircleShape,
-                modifier = Modifier.size(34.dp).clickable(enabled = !isLoading) { togglePlayback() }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(34.dp).clip(CircleShape)
+                    .background(Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
+                    .border(1.dp, Color.White.copy(alpha = 0.86f), CircleShape)
+                    .clickable(enabled = !isLoading) { togglePlayback() },
+                contentAlignment = Alignment.Center
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        when {
-                            isLoading -> "…"
-                            isPlaying -> "Ⅱ"
-                            else -> "▶"
-                        },
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                if (isLoading) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 1.8.dp
                     )
-                }
+                } else ChatPlaybackGlyph(isPlaying)
             }
-            Spacer(Modifier.width(9.dp))
+            Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Голосовое сообщение", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
-                        .background(Color(0xFFC9D3DF))
-                ) {
-                    Box(
-                        Modifier.fillMaxWidth(progress).height(4.dp).clip(CircleShape)
-                            .background(AccentSlate)
-                    )
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    formatVoiceDuration(playbackPositionMs) + " / " + formatVoiceDuration(safeDurationMs),
-                    color = Muted,
-                    fontSize = 9.sp
+                VoiceWaveformBars(
+                    waveform = displayWaveform,
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth().height(22.dp)
                 )
+                Spacer(Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        formatVoiceDuration(playbackPositionMs),
+                        color = InboxMuted,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        " / " + formatVoiceDuration(safeDurationMs),
+                        color = InboxMuted.copy(alpha = 0.78f),
+                        fontSize = 8.sp
+                    )
+                    if (isLoading) {
+                        Spacer(Modifier.width(6.dp))
+                        Text("Загрузка", color = InboxAccentStrong, fontSize = 8.sp)
+                    }
+                }
             }
         }
         if (playbackFailed) {
-            Text("Не удалось воспроизвести аудио", color = Color(0xFFA85F6E), fontSize = 9.sp)
+            Text("Не удалось воспроизвести аудио", color = Color(0xFFB85E79), fontSize = 8.sp)
         }
     }
 }
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SelectionActionButton(
@@ -3155,6 +4038,7 @@ private fun MessageBubble(
         }
     } else null
     val messageText = message.text
+    val isVoiceAttachment = message.attachmentMimeType?.startsWith("audio/") == true && attachmentPath != null
 
     Row(
         Modifier.fillMaxWidth().padding(
@@ -3171,13 +4055,26 @@ private fun MessageBubble(
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
-                    .widthIn(max = 300.dp)
+                    .then(if (isVoiceAttachment) Modifier.widthIn(min = 205.dp, max = 276.dp) else Modifier.widthIn(max = 310.dp))
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
                         onLongClick = { if (onSelect != null) onSelect() else showActions = true }
                     ),
-                color = if (selected) Color(0xFFD5DDE8) else if (message.isMine) Color(0xFFF5D2D0) else IncomingMessage,
+                color = when {
+                    selected -> Color(0xFF879BCB)
+                    message.isMine -> Color(0xE9E4EBFF)
+                    else -> Color(0xEAFBFCFF)
+                },
+                border = BorderStroke(
+                    if (selected) 1.4.dp else 1.dp,
+                    when {
+                        selected -> Color(0xFF607BB9)
+                        message.isMine -> Color(0xFFBFCBFA).copy(alpha = 0.82f)
+                        else -> Color.White.copy(alpha = 0.92f)
+                    }
+                ),
+                shadowElevation = if (selected) 3.dp else 1.dp,
                 shape = RoundedCornerShape(
                     topStart = 18.dp, topEnd = 18.dp,
                     bottomStart = if (message.isMine) 18.dp else 5.dp,
@@ -3186,10 +4083,12 @@ private fun MessageBubble(
             ) {
                 Column(
                     modifier = Modifier.padding(
-                        start = 14.dp,
-                        end = 14.dp,
-                        top = 7.dp,
-                        bottom = if (showTime) 4.dp else 7.dp
+                        start = if (isVoiceAttachment) 9.dp else 14.dp,
+                        end = if (isVoiceAttachment) 9.dp else 14.dp,
+                        top = if (isVoiceAttachment) 6.dp else 7.dp,
+                        bottom = if (isVoiceAttachment) {
+                            if (showTime) 2.dp else 4.dp
+                        } else if (showTime) 5.dp else 8.dp
                     )
                 ) {
                     if (message.forwardedFromName != null) {
@@ -3200,7 +4099,7 @@ private fun MessageBubble(
                         Row(
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (message.isMine) Color(0xFFEEDBDA) else Color(0xFFD3DCE7))
+                                .background(if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8))
                                 .clickable(enabled = onReplyPreviewClick != null) {
                                     onReplyPreviewClick?.invoke()
                                 }
@@ -3228,7 +4127,8 @@ private fun MessageBubble(
                             ChatVoiceMessagePlayer(
                                 path = attachmentPath,
                                 repository = attachmentRepository,
-                                durationMs = message.attachmentDurationMs ?: 0L
+                                durationMs = message.attachmentDurationMs ?: 0L,
+                                waveform = message.attachmentWaveform.orEmpty()
                             )
                         } else {
                             ChatImagePreview(
@@ -3236,7 +4136,7 @@ private fun MessageBubble(
                                 repository = attachmentRepository
                             )
                         }
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(if (isVoiceMessage) 1.dp else 6.dp))
                     }
                     if (!isVoiceMessage || attachmentPath == null) {
                         Text(
@@ -3247,7 +4147,7 @@ private fun MessageBubble(
                     }
                     if (showTime) {
                         Row(
-                            modifier = Modifier.align(Alignment.End).padding(top = 2.dp),
+                            modifier = Modifier.align(Alignment.End).padding(top = if (isVoiceAttachment) 0.dp else 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
@@ -3318,6 +4218,77 @@ private fun MessageBubble(
     }
 }
 
+private const val MAX_CHAT_VOICE_BYTES = 10 * 1024 * 1024
+private const val MAX_CHAT_VOICE_DURATION_MS = 10 * 60 * 1000L
+
+private class ChatVoiceRecorder(private val cacheDirectory: File) {
+    private var recorder: MediaRecorder? = null
+    private var outputFile: File? = null
+
+    fun start() {
+        check(recorder == null) { "Запись уже запущена." }
+        val file = File(cacheDirectory, "voice-" + UUID.randomUUID().toString() + ".m4a")
+        val activeRecorder = MediaRecorder()
+        try {
+            activeRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            activeRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            activeRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            activeRecorder.setAudioEncodingBitRate(64_000)
+            activeRecorder.setAudioSamplingRate(44_100)
+            activeRecorder.setMaxFileSize(MAX_CHAT_VOICE_BYTES.toLong())
+            activeRecorder.setOutputFile(file.absolutePath)
+            activeRecorder.prepare()
+            activeRecorder.start()
+            recorder = activeRecorder
+            outputFile = file
+        } catch (error: Exception) {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+            file.delete()
+            throw error
+        }
+    }
+
+    fun readAmplitudeLevel(): Int {
+        val activeRecorder = recorder ?: return 0
+        // Keep the raw peak; per-recording normalization happens only when bars are built.
+        return runCatching { activeRecorder.maxAmplitude.coerceIn(0, 32_767) }.getOrDefault(0)
+    }
+
+    fun stop(): File {
+        val activeRecorder = recorder ?: throw IllegalStateException("Запись не запущена.")
+        val completedFile = outputFile ?: throw IllegalStateException("Файл записи не найден.")
+        recorder = null
+        outputFile = null
+        try {
+            activeRecorder.stop()
+            require(completedFile.isFile && completedFile.length() > 0L) {
+                "Запись не содержит аудиоданных."
+            }
+            return completedFile
+        } catch (error: Exception) {
+            completedFile.delete()
+            throw error
+        } finally {
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+    }
+
+    fun cancel() {
+        val activeRecorder = recorder
+        val partialFile = outputFile
+        recorder = null
+        outputFile = null
+        if (activeRecorder != null) {
+            runCatching { activeRecorder.stop() }
+            runCatching { activeRecorder.reset() }
+            activeRecorder.release()
+        }
+        partialFile?.delete()
+    }
+}
+
 @Composable
 private fun ActiveAudioCallScreen(
     peerName: String,
@@ -3328,51 +4299,114 @@ private fun ActiveAudioCallScreen(
     onEnd: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 32.dp),
+        modifier = Modifier.fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFFE5E0FF), Color(0xFFE6F0FF), Color(0xFFF1F4FF))
+                )
+            )
+            .padding(horizontal = 26.dp, vertical = 30.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(34.dp))
-        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text(
+            "ARTURCHAT",
+            color = AccentSlate,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 2.2.sp
+        )
         Spacer(Modifier.weight(1f))
-        Avatar(peerName.take(2).uppercase(), peerName.hashCode().ushr(1) % 4, Modifier.size(116.dp))
-        Spacer(Modifier.height(24.dp))
+        Box(
+            modifier = Modifier.size(164.dp)
+                .background(
+                    Brush.radialGradient(
+                        listOf(Color(0xFF9EBBFF).copy(alpha = 0.58f), Color(0xFFC7BFFF).copy(alpha = 0.18f), Color.Transparent)
+                    ),
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier.size(136.dp)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Avatar(
+                    peerName.take(2).uppercase(),
+                    peerName.hashCode().ushr(1) % 4,
+                    Modifier.size(122.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(23.dp))
         Text(peerName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
-        Text(status, color = AccentSlate, fontSize = 14.sp)
+        Surface(
+            color = Color(0xCFFFFFFF),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, Color.White),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(if (error == null) Color(0xFF39A982) else Color(0xFFD77782)))
+                Spacer(Modifier.width(8.dp))
+                Text(status, color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
         if (error != null) {
             Spacer(Modifier.height(12.dp))
-            Text(error, color = Color(0xFFA85F6E), fontSize = 12.sp)
+            Surface(
+                color = Color(0xFFFFEFF1),
+                shape = RoundedCornerShape(13.dp),
+                border = BorderStroke(1.dp, Color(0xFFF5D5DA))
+            ) {
+                Text(error, color = Color(0xFFA85F6E), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
         }
         Spacer(Modifier.weight(1f))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally),
+            horizontalArrangement = Arrangement.spacedBy(34.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(
-                color = if (muted) Color(0xFFC9D3DF) else PanelLight,
-                shape = CircleShape,
-                modifier = Modifier.size(62.dp).clickable(onClick = onToggleMute)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(if (muted) "Микрофон выкл." else "Микрофон", color = MainText, fontSize = 10.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    color = Color(0xEFFFFFFF),
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, Color.White),
+                    shadowElevation = 3.dp,
+                    modifier = Modifier.size(66.dp).clickable(onClick = onToggleMute)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(if (muted) "×" else "⌁", color = AccentSlate, fontSize = 27.sp, fontWeight = FontWeight.Medium)
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
+                Text(if (muted) "Микрофон выкл." else "Микрофон", color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Medium)
             }
-            Surface(
-                color = Color(0xFFA86F7A),
-                shape = CircleShape,
-                modifier = Modifier.size(72.dp).clickable(onClick = onEnd)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("✕", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(74.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Color(0xFFEF778D), Color(0xFFD94D71))))
+                        .clickable(onClick = onEnd),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("×", color = Color.White, fontSize = 31.sp, fontWeight = FontWeight.Light)
                 }
+                Spacer(Modifier.height(8.dp))
+                Text("Завершить", color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Medium)
             }
         }
-        Spacer(Modifier.height(36.dp))
+        Spacer(Modifier.height(28.dp))
         Text("Звонок один на один · WebRTC", color = Muted, fontSize = 10.sp)
     }
 }
-
 @Composable
 private fun ActiveVideoCallScreen(
     peerName: String,
@@ -3498,26 +4532,303 @@ private fun VideoCallControlButton(
     }
 }
 
+private fun parseCallInstant(value: String?): java.time.Instant? {
+    if (value.isNullOrBlank()) return null
+    return runCatching { java.time.OffsetDateTime.parse(value).toInstant() }.getOrNull()
+        ?: runCatching { java.time.Instant.parse(value) }.getOrNull()
+}
+
+private fun formatCallDateTime(value: String): String {
+    val instant = parseCallInstant(value) ?: return value.substringAfter('T', value).take(5)
+    val zone = java.time.ZoneId.systemDefault()
+    val local = instant.atZone(zone)
+    val today = java.time.LocalDate.now(zone)
+    val dateLabel = when (local.toLocalDate()) {
+        today -> "Сегодня"
+        today.minusDays(1) -> "Вчера"
+        else -> java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale("ru"))
+            .format(local)
+    }
+    return "$dateLabel · " + java.time.format.DateTimeFormatter.ofPattern("HH:mm").format(local)
+}
+
+private fun formatCallDuration(call: FaceVideoCall): String? {
+    val start = parseCallInstant(call.answeredAt) ?: return null
+    val end = parseCallInstant(call.endedAt)
+        ?: if (call.status == "accepted") java.time.Instant.now() else return null
+    val seconds = java.time.Duration.between(start, end).seconds.coerceAtLeast(0)
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val remainder = seconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, remainder)
+    } else {
+        "%02d:%02d".format(minutes, remainder)
+    }
+}
+
+private fun callStatusLabel(call: FaceVideoCall, currentUserId: String): String {
+    return when (call.status) {
+        "ringing" -> {
+            val age = parseCallInstant(call.createdAt)?.let {
+                java.time.Duration.between(it, java.time.Instant.now()).seconds
+            } ?: 0
+            if (call.calleeId == currentUserId && age > 60) "Пропущен" else "Вызов"
+        }
+        "accepted" -> "На связи"
+        "declined" -> "Отклонён"
+        "cancelled" -> if (call.calleeId == currentUserId) "Пропущен" else "Отменён"
+        "ended" -> "Завершён"
+        else -> "Звонок"
+    }
+}
+
 @Composable
-private fun CallsScreen(onCall: () -> Unit) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp)) {
-        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Spacer(Modifier.height(5.dp))
-        Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(22.dp))
-        Surface(color = Panel, shape = RoundedCornerShape(22.dp), border = BorderStroke(1.dp, Color(0xFFC9D3DF))) {
-            Column(Modifier.fillMaxWidth().padding(19.dp)) {
-                Text("Голосовые и видеозвонки", color = MainText, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text("Открой личную переписку и выбери значок трубки или камеры. Входящий вызов появится прямо в приложении.", color = Muted, fontSize = 13.sp)
-                Spacer(Modifier.height(17.dp))
-                Text("Видеосвязь работает напрямую между устройствами через WebRTC, без TURN-реле.", color = AccentSlate, fontSize = 12.sp)
+private fun CallsScreen(
+    repository: SupabaseCallRepository?,
+    userId: String?,
+    onOpenProfile: (String) -> Unit
+) {
+    var calls by remember(userId) { mutableStateOf<List<FaceVideoCall>>(emptyList()) }
+    var profiles by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
+    var isLoading by remember(userId) { mutableStateOf(repository != null && userId != null) }
+    var errorMessage by remember(userId) { mutableStateOf<String?>(null) }
+    var refreshKey by remember(userId) { mutableStateOf(0) }
+
+    LaunchedEffect(repository, userId, refreshKey) {
+        val currentRepository = repository
+        val currentUserId = userId
+        if (currentRepository == null || currentUserId == null) {
+            calls = emptyList()
+            profiles = emptyMap()
+            isLoading = false
+            errorMessage = "История звонков недоступна."
+            return@LaunchedEffect
+        }
+
+        isLoading = calls.isEmpty()
+        errorMessage = null
+        runCatching {
+            val loadedCalls = currentRepository.listMyCalls(currentUserId)
+            val peerIds = loadedCalls.map { call ->
+                if (call.callerId == currentUserId) call.calleeId else call.callerId
+            }.toSet()
+            val loadedProfiles = currentRepository.getProfiles(peerIds)
+            calls = loadedCalls
+            profiles = loadedProfiles
+        }.onFailure {
+            errorMessage = it.message ?: "Не удалось загрузить историю звонков."
+            android.util.Log.w("ArturChatCalls", "Could not load call history", it)
+        }
+        isLoading = false
+    }
+
+    val missedCount = calls.count { callStatusLabel(it, userId.orEmpty()) == "Пропущен" }
+
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                Text("История аудио- и видеовызовов", color = Muted, fontSize = 11.sp)
+            }
+            ChatHeaderIconButton(onClick = { refreshKey++ }) {
+                Text("↻", color = InboxAccentStrong, fontSize = 23.sp, fontWeight = FontWeight.Light)
             }
         }
-        Spacer(Modifier.height(25.dp))
-        Text("ПОДСКАЗКА", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-        Spacer(Modifier.height(10.dp))
-        Text("Для проверки нужны два аккаунта ArturChat на двух устройствах. Оба устройства должны быть подключены к интернету.", color = Muted, fontSize = 12.sp)
+
+        Spacer(Modifier.height(17.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("ВСЕ ЗВОНКИ", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.05.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(calls.size.toString(), color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+            }
+            Box(
+                Modifier.width(1.dp).height(38.dp).background(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.9f), Color.Transparent))
+                )
+            )
+            Column(Modifier.weight(1f).padding(start = 18.dp)) {
+                Text("ПРОПУЩЕНО", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.05.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    missedCount.toString(),
+                    color = if (missedCount > 0) Color(0xFFB65E78) else MainText,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("НЕДАВНИЕ", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+            Spacer(Modifier.weight(1f))
+            Text("${calls.size} записей", color = Muted, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(5.dp))
+        Box(
+            Modifier.fillMaxWidth().height(1.dp).background(
+                Brush.horizontalGradient(
+                    listOf(Color.Transparent, Color.White.copy(alpha = 0.80f), Color(0xFFD6DDF0).copy(alpha = 0.65f), Color.Transparent)
+                )
+            )
+        )
+        Spacer(Modifier.height(5.dp))
+
+        when {
+            isLoading -> {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+                        Spacer(Modifier.height(12.dp))
+                        Text("Загружаем историю…", color = Muted, fontSize = 11.sp)
+                    }
+                }
+            }
+            calls.isEmpty() -> {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 30.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            Modifier.size(76.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ChatCallGlyph(video = false, tint = Color.White)
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Text("Пока нет звонков", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            "Исходящие и входящие аудио- и видеовызовы появятся здесь.",
+                            color = Muted,
+                            fontSize = 11.sp,
+                            lineHeight = 17.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        if (errorMessage != null) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 10.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            TextButton(onClick = { refreshKey++ }) { Text("Повторить", color = AccentSlate) }
+                        }
+                    }
+                }
+            }
+            else -> {
+                LazyColumn(
+                    Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(bottom = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    items(calls, key = { it.id }) { call ->
+                        val currentUserId = userId.orEmpty()
+                        val peerId = if (call.callerId == currentUserId) call.calleeId else call.callerId
+                        val profile = profiles[peerId]
+                        val title = profile?.let { it.displayName.ifBlank { it.username } } ?: "Собеседник"
+                        val callIsVideo = call.mediaType == "video"
+                        val isMissed = callStatusLabel(call, currentUserId) == "Пропущен"
+                        val duration = formatCallDuration(call)
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onOpenProfile(peerId) }
+                                .padding(top = 10.dp, bottom = 9.dp)
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(contentAlignment = Alignment.BottomEnd) {
+                                    Avatar(
+                                        title.trim().take(2).uppercase().ifBlank { "?" },
+                                        peerId.hashCode().ushr(1) % 4,
+                                        Modifier.size(48.dp),
+                                        imageUrl = profile?.avatarUrl,
+                                        imageCacheKey = peerId
+                                    )
+                                    Box(
+                                        modifier = Modifier.size(20.dp).clip(CircleShape)
+                                            .background(
+                                                Brush.linearGradient(
+                                                    listOf(Color(0xFF3CA8F4), Color(0xFF586BE4), Color(0xFF9364E6))
+                                                )
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        ChatCallGlyph(video = callIsVideo, tint = Color.White)
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(title, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        (if (callIsVideo) "Видеозвонок" else "Аудиозвонок") +
+                                            " · " + if (call.callerId == currentUserId) "Исходящий" else "Входящий",
+                                        color = Muted,
+                                        fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                    Spacer(Modifier.height(5.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            Modifier.size(6.dp).clip(CircleShape).background(
+                                                when {
+                                                    isMissed || call.status == "declined" -> Color(0xFFD66C7D)
+                                                    call.status == "accepted" -> Color(0xFF39A982)
+                                                    else -> AccentSlate
+                                                }
+                                            )
+                                        )
+                                        Spacer(Modifier.width(5.dp))
+                                        Text(
+                                            callStatusLabel(call, currentUserId),
+                                            color = if (isMissed || call.status == "declined") Color(0xFFB85C6D) else AccentSlate,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        if (duration != null) {
+                                            Text("  ·  $duration", color = Muted, fontSize = 10.sp)
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(formatCallDateTime(call.createdAt), color = Muted, fontSize = 9.sp)
+                                    Spacer(Modifier.height(5.dp))
+                                    Text(if (call.callerId == currentUserId) "↗" else "↙", color = AccentSlate, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                        Box(
+                            Modifier.fillMaxWidth().height(1.dp).background(
+                                Brush.horizontalGradient(
+                                    listOf(Color.Transparent, Color.White.copy(alpha = 0.68f), Color(0xFFD6DDF0).copy(alpha = 0.52f), Color.Transparent)
+                                )
+                            )
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -3602,63 +4913,99 @@ private fun FriendsScreen(
             Column(Modifier.weight(1f)) {
                 Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("Люди, с которыми вы взаимно подружились", color = Muted, fontSize = 11.sp)
             }
-            TextButton(onClick = { refreshKey++ }) { Text("Обновить", color = AccentSlate, fontSize = 11.sp) }
-        }
-        Spacer(Modifier.height(18.dp))
-        Button(onClick = { showAddFriend = true }, modifier = Modifier.fillMaxWidth()) {
-            Text("＋ Добавить друга")
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
             Surface(
-                color = if (selectedSection == FriendsSection.FRIENDS) AccentSlate else PanelLight,
+                color = Color(0xDFFFFFFF),
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.weight(1f).clickable { selectedSection = FriendsSection.FRIENDS }
+                border = BorderStroke(1.dp, Color.White),
+                modifier = Modifier.clickable(interactionSource = null, indication = null) { refreshKey++ }
             ) {
-                Text(
-                    "Друзья · ${friends.size}",
-                    color = if (selectedSection == FriendsSection.FRIENDS) Color.White else MainText,
-                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                Text("↻", color = AccentSlate, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
-            Surface(
-                color = if (selectedSection == FriendsSection.REQUESTS) AccentSlate else PanelLight,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.weight(1f).clickable { selectedSection = FriendsSection.REQUESTS }
+        }
+        Spacer(Modifier.height(19.dp))
+        Box(
+            Modifier.fillMaxWidth().height(52.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
+                .clickable(onClick = { showAddFriend = true }),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color(0x33FFFFFF),
+                    shape = CircleShape,
+                    modifier = Modifier.size(28.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("+", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Text("Добавить друга", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(15.dp))
+        Surface(
+            color = Color(0xAFFFFFFF),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    "Заявки · ${incoming.size + outgoing.size}",
-                    color = if (selectedSection == FriendsSection.REQUESTS) Color.White else MainText,
-                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                listOf(
+                    FriendsSection.FRIENDS to "Друзья · ${friends.size}",
+                    FriendsSection.REQUESTS to "Заявки · ${incoming.size + outgoing.size}"
+                ).forEach { (section, title) ->
+                    val selected = selectedSection == section
+                    Box(
+                        Modifier.weight(1f).height(42.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .then(
+                                if (selected) Modifier.background(
+                                    Brush.horizontalGradient(listOf(Color(0xFF5B6FE4), Color(0xFF8266E9)))
+                                ) else Modifier
+                            )
+                            .clickable(interactionSource = null, indication = null) { selectedSection = section },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            title,
+                            color = if (selected) Color.White else MainText,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
         Spacer(Modifier.height(14.dp))
 
         if (isLoading) {
-            Box(Modifier.fillMaxWidth().padding(36.dp), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 34.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+                Spacer(Modifier.height(12.dp))
+                Text("Обновляем список друзей…", color = Muted, fontSize = 11.sp)
             }
         } else if (errorMessage != null) {
             Text(errorMessage.orEmpty(), color = Color(0xFFA85F6E), fontSize = 12.sp)
             TextButton(onClick = { refreshKey++ }) { Text("Повторить", color = AccentSlate) }
         } else if (selectedSection == FriendsSection.FRIENDS) {
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Найти среди друзей") }
+                compact = true,
+                placeholder = "Поиск среди друзей"
             )
             Spacer(Modifier.height(12.dp))
             if (friends.isEmpty()) {
@@ -3794,35 +5141,56 @@ private fun FriendDirectoryRow(
     onSecondaryAction: (() -> Unit)? = null
 ) {
     Surface(
-        color = Panel,
-        shape = RoundedCornerShape(17.dp),
-        border = BorderStroke(1.dp, PaletteMist),
+        color = Color(0xDFFFFFFF),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Avatar(
                 profile.displayName.ifBlank { profile.username }.take(1).uppercase(),
                 profile.id.hashCode().ushr(1) % 4,
-                Modifier.size(47.dp).clickable(onClick = onProfile),
+                Modifier.size(49.dp).clickable(onClick = onProfile),
                 imageUrl = profile.avatarUrl,
                 imageCacheKey = profile.id
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(11.dp))
             Column(Modifier.weight(1f).clickable(onClick = onProfile)) {
                 Text(profile.displayName.ifBlank { profile.username }, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text("@${profile.username}", color = Muted, fontSize = 10.sp, maxLines = 1)
                 Text(status, color = AccentSlate, fontSize = 10.sp, maxLines = 1)
             }
-            Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = onAction, enabled = actionEnabled) {
-                    Text(actionLabel, color = AccentSlate, fontSize = 10.sp)
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Surface(
+                    color = Color(0xFFE9EEFF),
+                    shape = RoundedCornerShape(11.dp),
+                    modifier = Modifier.clickable(enabled = actionEnabled, onClick = onAction)
+                ) {
+                    Text(
+                        actionLabel,
+                        color = AccentSlate,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
+                    )
                 }
                 if (secondaryActionLabel != null && onSecondaryAction != null) {
-                    TextButton(onClick = onSecondaryAction, enabled = actionEnabled) {
-                        Text(secondaryActionLabel, color = Color(0xFFA85F6E), fontSize = 9.sp)
+                    Surface(
+                        color = Color(0xFFFFF0F2),
+                        shape = RoundedCornerShape(11.dp),
+                        modifier = Modifier.clickable(enabled = actionEnabled, onClick = onSecondaryAction)
+                    ) {
+                        Text(
+                            secondaryActionLabel,
+                            color = Color(0xFFA85F6E),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                        )
                     }
                 }
             }
@@ -3950,6 +5318,9 @@ private fun ProfileScreen(
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
+    var isEditing by remember(userId) { mutableStateOf(false) }
+    var editSection by remember(userId) { mutableStateOf(0) }
+    var showDiscardChanges by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -3962,10 +5333,12 @@ private fun ProfileScreen(
                 .onSuccess { loaded ->
                     profile = loaded
                     if (loaded != null) cache.saveProfile(currentUserId, loaded)
-                    username = loaded?.username.orEmpty()
-                    displayName = loaded?.displayName.orEmpty()
-                    statusText = loaded?.statusText.orEmpty()
-                    about = loaded?.about.orEmpty()
+                    if (loaded != null) {
+                        username = loaded.username
+                        displayName = loaded.displayName
+                        statusText = loaded.statusText
+                        about = loaded.about
+                    }
                     if (loaded == null && profile == null) errorMessage = "Профиль пока не найден."
                 }
                 .onFailure {
@@ -3976,19 +5349,66 @@ private fun ProfileScreen(
         isLoading = false
     }
 
+    val hasChanges = profile?.let {
+        username != it.username ||
+            displayName != it.displayName ||
+            statusText != it.statusText ||
+            about != it.about
+    } ?: false
+    val validUsername = username.matches(Regex("^[a-z0-9_]{3,24}$"))
+    val canSave = repository != null && userId != null && !isSaving && hasChanges && validUsername && displayName.trim().isNotEmpty()
+
+    fun resetDraft() {
+        username = profile?.username.orEmpty()
+        displayName = profile?.displayName.orEmpty()
+        statusText = profile?.statusText.orEmpty()
+        about = profile?.about.orEmpty()
+        errorMessage = null
+        successMessage = null
+    }
+
+    fun closeEditor() {
+        if (hasChanges) {
+            showDiscardChanges = true
+        } else {
+            isEditing = false
+            errorMessage = null
+            successMessage = null
+        }
+    }
+
+    BackHandler(enabled = isEditing) {
+        closeEditor()
+    }
+
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null && repository != null && userId != null) {
+        val currentRepository = repository
+        val currentUserId = userId
+        val savedProfile = profile
+        if (uri != null && currentRepository != null && currentUserId != null && savedProfile != null) {
             scope.launch {
                 isSaving = true
                 errorMessage = null
                 successMessage = null
                 runCatching {
                     val prepared = withContext(Dispatchers.IO) { prepareChatImage(context, uri) }
-                    val url = repository.uploadProfileAvatar(userId, prepared.bytes)
-                    repository.updateMyProfile(userId, username, displayName, statusText, about, url)
-                }.onSuccess {
-                    profile = it
-                    cache.saveProfile(userId, it)
+                    val url = currentRepository.uploadProfileAvatar(currentUserId, prepared.bytes)
+                    // Avatar changes are independent of the unsaved text draft.
+                    currentRepository.updateMyProfile(
+                        currentUserId,
+                        savedProfile.username,
+                        savedProfile.displayName,
+                        savedProfile.statusText,
+                        savedProfile.about,
+                        url
+                    )
+                }.onSuccess { updated ->
+                    profile = updated
+                    cache.saveProfile(currentUserId, updated)
+                    username = updated.username
+                    displayName = updated.displayName
+                    statusText = updated.statusText
+                    about = updated.about
                     successMessage = "Фотография профиля обновлена."
                 }.onFailure {
                     errorMessage = it.message ?: "Не удалось обновить фотографию."
@@ -3998,402 +5418,714 @@ private fun ProfileScreen(
         }
     }
 
-    val hasChanges = profile?.let {
-        username != it.username ||
-            displayName != it.displayName ||
-            statusText != it.statusText ||
-            about != it.about
-    } ?: false
-    val validUsername = username.matches(Regex("^[a-z0-9_]{3,24}$"))
-    val canSave = !isSaving && hasChanges && validUsername && displayName.trim().isNotEmpty()
-
     Column(
         Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 18.dp),
-        horizontalAlignment = Alignment.Start
+            .padding(horizontal = 18.dp, vertical = 18.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "ПРОФИЛЬ",
-                    color = AccentSlate,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.8.sp
-                )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    "Ваше пространство",
-                    color = MainText,
-                    fontSize = 25.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Настройте, как вас видят друзья",
-                    color = Muted,
-                    fontSize = 12.sp
-                )
-            }
-            Surface(
-                color = Color(0xFFE8EDF3),
-                shape = CircleShape,
-                border = BorderStroke(1.dp, PaletteMist)
+        if (!isEditing) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "AC",
-                    color = AccentSlate,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.6.sp,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "ARTURCHAT",
+                        color = AccentSlate,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    )
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "Мой профиль",
+                        color = MainText,
+                        fontSize = 27.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.6).sp
+                    )
+                    Text(
+                        "Ваше пространство в ArturChat",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                }
+                Surface(
+                    color = Color.White.copy(alpha = 0.64f),
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f))
+                ) {
+                    Text(
+                        "✦",
+                        color = AccentSlate,
+                        fontSize = 17.sp,
+                        modifier = Modifier.padding(11.dp)
+                    )
+                }
             }
-        }
 
-        Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(20.dp))
 
-        // Profile hero: avatar and identity stay visually separate from the editor.
-        Surface(
-            color = Panel,
-            shape = RoundedCornerShape(26.dp),
-            border = BorderStroke(1.dp, PaletteMist),
-            shadowElevation = 2.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .background(Brush.linearGradient(listOf(Color(0xFFE8EEF5), Color(0xFFFFF8F4))))
-                    .padding(18.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(contentAlignment = Alignment.BottomEnd) {
-                        Avatar(
-                            displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
-                                .trim().take(1).uppercase(),
-                            1,
-                            Modifier.size(88.dp),
-                            highlighted = profile != null,
-                            imageUrl = profile?.avatarUrl,
-                            imageCacheKey = userId
-                        )
-                        Surface(
+            if (isLoading && profile == null) {
+                Surface(
+                    color = Color.White.copy(alpha = 0.66f),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(21.dp),
                             color = AccentSlate,
-                            shape = CircleShape,
-                            border = BorderStroke(2.dp, Color(0xFFE8EEF5)),
-                            shadowElevation = 2.dp,
-                            modifier = Modifier.size(31.dp)
-                                .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text("✎", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text("Загружаем профиль…", color = Muted, fontSize = 12.sp)
+                    }
+                }
+            } else if (profile != null) {
+                Surface(
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(28.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.88f)),
+                    shadowElevation = 5.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(
+                                        Color(0xFFE0E6FF),
+                                        Color(0xFFDDEEFF),
+                                        Color(0xFFECE4FF)
+                                    )
+                                )
+                            )
+                            .padding(19.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Avatar(
+                                displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                    .trim().take(1).uppercase(),
+                                1,
+                                Modifier.size(92.dp),
+                                highlighted = true,
+                                imageUrl = profile?.avatarUrl,
+                                imageCacheKey = userId
+                            )
+                            Spacer(Modifier.width(15.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "ВАШ АККАУНТ",
+                                    color = AccentSlate,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.35.sp
+                                )
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    displayName.ifBlank { "Ваше имя" },
+                                    color = MainText,
+                                    fontSize = 21.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    if (username.isNotBlank()) "@$username" else "Добавьте псевдоним",
+                                    color = Muted,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
+                        Spacer(Modifier.height(16.dp))
+                        Surface(
+                            color = Color.White.copy(alpha = 0.48f),
+                            shape = RoundedCornerShape(15.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(8.dp).background(
+                                        Color(0xFF36A77B),
+                                        CircleShape
+                                    )
+                                )
+                                Spacer(Modifier.width(9.dp))
+                                Text(
+                                    statusText.ifBlank { "Добавьте короткий статус о себе" },
+                                    color = if (statusText.isBlank()) Muted else MainText,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (statusText.isBlank()) FontWeight.Normal else FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                    maxLines = 2
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(15.dp))
                         Text(
-                            "ВАШ АККАУНТ",
+                            "О СЕБЕ",
                             color = AccentSlate,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.3.sp
+                            letterSpacing = 1.2.sp
                         )
-                        Spacer(Modifier.height(5.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            displayName.ifBlank { "Ваше имя" },
-                            color = MainText,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 2
+                            about.ifBlank { "Пока ничего не рассказано о себе." },
+                            color = if (about.isBlank()) Muted else MainText,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
                         )
-                        Spacer(Modifier.height(3.dp))
+                        if (!userEmail.isNullOrBlank()) {
+                            Spacer(Modifier.height(14.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(1.dp)
+                                    .background(Color.White.copy(alpha = 0.72f))
+                            )
+                            Spacer(Modifier.height(11.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✉", color = AccentSlate, fontSize = 14.sp)
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Электронная почта", color = Muted, fontSize = 9.sp)
+                                    Text(
+                                        userEmail.orEmpty(),
+                                        color = MainText,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    "ПОДТВЕРЖДЁН",
+                                    color = AccentSlate,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.4.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(15.dp))
+
+                Surface(
+                    shape = RoundedCornerShape(19.dp),
+                    color = Color.Transparent,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                )
+                            )
+                            .clickable {
+                                resetDraft()
+                                isEditing = true
+                                editSection = 0
+                                errorMessage = null
+                                successMessage = null
+                            }
+                            .padding(horizontal = 17.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✎", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Редактировать профиль", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("Имя, псевдоним, статус и фото", color = Color.White.copy(alpha = 0.82f), fontSize = 10.sp)
+                        }
+                        Text("›", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Light)
+                    }
+                }
+
+            } else {
+                Surface(
+                    color = Color.White.copy(alpha = 0.66f),
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(18.dp)) {
                         Text(
-                            if (username.isNotBlank()) "@$username" else "Добавьте псевдоним",
+                            errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.",
                             color = Muted,
                             fontSize = 12.sp
                         )
+                        if (!userEmail.isNullOrBlank()) {
+                            TextButton(onClick = onSignOut) { Text("Выйти из аккаунта") }
+                        }
                     }
                 }
-                Spacer(Modifier.height(15.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Фото профиля",
-                        color = MainText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        if (isSaving) "Обновляем…" else "Изменить фото  ›",
-                        color = AccentSlate,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable(enabled = !isSaving) {
-                            avatarPicker.launch("image/*")
-                        }.padding(vertical = 5.dp)
-                    )
-                }
             }
-        }
 
-        Spacer(Modifier.height(24.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("ЛИЧНЫЕ ДАННЫЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-                Spacer(Modifier.height(4.dp))
-                Text("Основная информация", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+            if (successMessage != null) {
+                Spacer(Modifier.height(11.dp))
+                ProfileFeedbackMessage(successMessage.orEmpty(), isSuccess = true)
             }
-            if (hasChanges) {
-                Text("Не сохранено", color = Color(0xFF9C784F), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            } else if (profile != null) {
-                Text("Актуально", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            if (errorMessage != null && profile != null) {
+                Spacer(Modifier.height(9.dp))
+                ProfileFeedbackMessage(errorMessage.orEmpty(), isSuccess = false)
             }
-        }
-        Spacer(Modifier.height(13.dp))
 
-        if (isLoading && profile == null) {
-            Surface(
-                color = Panel,
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, PaletteMist),
-                modifier = Modifier.fillMaxWidth()
+            Spacer(Modifier.height(21.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(Modifier.weight(1f)) {
+                    Text("ARTURCHAT", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                    Text("Ваше пространство для общения", color = Muted, fontSize = 10.sp)
+                }
+                Text("v${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            if (!userEmail.isNullOrBlank()) {
+                Spacer(Modifier.height(16.dp))
+                Surface(
+                    color = Color(0xFFFFF3F2).copy(alpha = 0.88f),
+                    shape = RoundedCornerShape(17.dp),
+                    border = BorderStroke(1.dp, Color(0xFFF2D8D7)),
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)
                 ) {
-                    androidx.compose.material3.CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = AccentSlate,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text("Загружаем ваш профиль…", color = Muted, fontSize = 12.sp)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("↪", color = Color(0xFFA85F6E), fontSize = 19.sp)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Выйти из аккаунта", color = Color(0xFFA85F6E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
-        } else if (repository != null && userId != null && profile != null) {
-            ProfileInputField(
-                label = "Имя",
-                value = displayName,
-                onValueChange = {
-                    displayName = it.take(48)
-                    successMessage = null
-                },
-                placeholder = "Как к вам обращаться",
-                maxLength = 48
-            )
-            Spacer(Modifier.height(12.dp))
-            ProfileInputField(
-                label = "Уникальный псевдоним",
-                value = username,
-                onValueChange = {
-                    username = it.lowercase().filter { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == '_' }.take(24)
-                    errorMessage = null
-                    successMessage = null
-                },
-                placeholder = "например, artur_01",
-                prefix = "@",
-                maxLength = 24,
-                footnote = "3–24 символа · латинские буквы, цифры и _",
-                isInvalid = username.isNotEmpty() && !validUsername
-            )
-            Spacer(Modifier.height(12.dp))
-            ProfileInputField(
-                label = "Статус",
-                value = statusText,
-                onValueChange = {
-                    statusText = it.take(80)
-                    successMessage = null
-                },
-                placeholder = "Например: На работе · Не беспокоить",
-                maxLength = 80
-            )
-            Spacer(Modifier.height(12.dp))
-            ProfileInputField(
-                label = "О себе",
-                value = about,
-                onValueChange = {
-                    about = it.take(500)
-                    successMessage = null
-                },
-                placeholder = "Расскажите немного о себе…",
-                maxLength = 500,
-                multiline = true
-            )
-
-            Spacer(Modifier.height(18.dp))
-
-            Surface(
-                color = Panel,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, PaletteMist),
-                modifier = Modifier.fillMaxWidth()
+        } else {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(15.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(color = Color(0xFFE8EDF3), shape = CircleShape) {
-                        Text("✉", color = AccentSlate, fontSize = 15.sp, modifier = Modifier.padding(10.dp))
+                Text(
+                    "‹",
+                    color = AccentSlate,
+                    fontSize = 29.sp,
+                    modifier = Modifier.clickable { closeEditor() }.padding(end = 12.dp)
+                )
+                Column(Modifier.weight(1f)) {
+                    Text("РЕДАКТИРОВАНИЕ", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+                    Text("Профиль", color = MainText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+                if (hasChanges) {
+                    Surface(color = Color(0xFFFFF1DA), shape = RoundedCornerShape(20.dp)) {
+                        Text(
+                            "Не сохранено",
+                            color = Color(0xFF9A7137),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                        )
                     }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Электронная почта", color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(3.dp))
-                        Text(userEmail.orEmpty(), color = Muted, fontSize = 11.sp, maxLines = 1)
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Разделите настройки профиля по категориям", color = Muted, fontSize = 11.sp)
+            Spacer(Modifier.height(17.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                ProfileEditorTab("Данные", "01", editSection == 0, Modifier.weight(1f)) { editSection = 0 }
+                ProfileEditorTab("О себе", "02", editSection == 1, Modifier.weight(1f)) { editSection = 1 }
+                ProfileEditorTab("Фото", "03", editSection == 2, Modifier.weight(1f)) { editSection = 2 }
+            }
+
+            Spacer(Modifier.height(19.dp))
+
+            when (editSection) {
+                0 -> {
+                    Text("ОСНОВНАЯ ИНФОРМАЦИЯ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Как вас будут видеть другие пользователи", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(17.dp))
+                    ProfileInputField(
+                        label = "Имя",
+                        value = displayName,
+                        onValueChange = {
+                            displayName = it.take(48)
+                            successMessage = null
+                        },
+                        placeholder = "Как к вам обращаться",
+                        maxLength = 48
+                    )
+                    Spacer(Modifier.height(15.dp))
+                    ProfileInputField(
+                        label = "Уникальный псевдоним",
+                        value = username,
+                        onValueChange = {
+                            username = it.lowercase().filter { ch -> ch in 'a'..'z' || ch in '0'..'9' || ch == '_' }.take(24)
+                            errorMessage = null
+                            successMessage = null
+                        },
+                        placeholder = "например, artur_01",
+                        prefix = "@",
+                        maxLength = 24,
+                        footnote = "3–24 символа · латинские буквы, цифры и _",
+                        isInvalid = username.isNotEmpty() && !validUsername
+                    )
+                    Spacer(Modifier.height(15.dp))
+                    ProfileReadOnlyRow(
+                        title = "Электронная почта",
+                        value = userEmail.orEmpty(),
+                        note = "Используется для входа в ArturChat"
+                    )
+                }
+                1 -> {
+                    Text("ВАШЕ ПРИСУТСТВИЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Коротко расскажите, чем хотите поделиться", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(17.dp))
+                    ProfileInputField(
+                        label = "Статус",
+                        value = statusText,
+                        onValueChange = {
+                            statusText = it.take(80)
+                            successMessage = null
+                        },
+                        placeholder = "Например: На работе · Не беспокоить",
+                        maxLength = 80,
+                        footnote = "Короткая фраза, которую увидят ваши собеседники"
+                    )
+                    Spacer(Modifier.height(17.dp))
+                    ProfileInputField(
+                        label = "О себе",
+                        value = about,
+                        onValueChange = {
+                            about = it.take(500)
+                            successMessage = null
+                        },
+                        placeholder = "Расскажите немного о себе…",
+                        maxLength = 500,
+                        multiline = true,
+                        footnote = "До 500 символов"
+                    )
+                    Spacer(Modifier.height(13.dp))
+                    Surface(
+                        color = Color.White.copy(alpha = 0.58f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "Совет: оставляйте только ту информацию, которой готовы поделиться с друзьями.",
+                            color = Muted,
+                            fontSize = 10.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(13.dp)
+                        )
                     }
-                    Text("АККАУНТ", color = AccentSlate, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                }
+                else -> {
+                    Text("ФОТО ПРОФИЛЯ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Изображение, по которому вас узнают друзья", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(23.dp))
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Avatar(
+                            displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }.take(1).uppercase(),
+                            1,
+                            Modifier.size(136.dp),
+                            highlighted = true,
+                            imageUrl = profile?.avatarUrl,
+                            imageCacheKey = userId
+                        )
+                        Spacer(Modifier.height(17.dp))
+                        Text(
+                            displayName.ifBlank { "Ваш профиль" },
+                            color = MainText,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Псевдоним не указан",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(20.dp))
+                        Surface(
+                            shape = RoundedCornerShape(17.dp),
+                            color = Color.Transparent,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                        )
+                                    )
+                                    .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
+                                    .padding(horizontal = 16.dp, vertical = 15.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("＋", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (isSaving) "Обновляем фото…" else "Выбрать фотографию",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(11.dp))
+                        Text(
+                            "Поддерживаются изображения из галереи. Фото обновится сразу после загрузки.",
+                            color = Muted,
+                            fontSize = 10.sp,
+                            lineHeight = 15.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
 
             if (errorMessage != null) {
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    color = Color(0xFFFFF0F0),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        errorMessage.orEmpty(),
-                        color = Color(0xFFA85F6E),
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(13.dp)
-                    )
-                }
+                Spacer(Modifier.height(14.dp))
+                ProfileFeedbackMessage(errorMessage.orEmpty(), isSuccess = false)
             }
             if (successMessage != null) {
-                Spacer(Modifier.height(12.dp))
-                Surface(
-                    color = Color(0xFFEAF1ED),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        successMessage.orEmpty(),
-                        color = Color(0xFF547565),
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(13.dp)
-                    )
-                }
+                Spacer(Modifier.height(10.dp))
+                ProfileFeedbackMessage(successMessage.orEmpty(), isSuccess = true)
             }
 
-            Spacer(Modifier.height(16.dp))
-
+            Spacer(Modifier.height(20.dp))
             Surface(
-                color = if (canSave) AccentSlate else Color(0xFFD5DCE5),
-                shape = RoundedCornerShape(17.dp),
-                shadowElevation = if (canSave) 3.dp else 0.dp,
+                shape = RoundedCornerShape(18.dp),
+                color = Color.Transparent,
+                shadowElevation = if (canSave) 5.dp else 0.dp,
                 modifier = Modifier.fillMaxWidth()
-                    .height(54.dp)
-                    .clickable(enabled = canSave) {
-                        scope.launch {
-                            isSaving = true
-                            errorMessage = null
-                            successMessage = null
-                            runCatching {
-                                repository.updateMyProfile(
-                                    userId,
-                                    username,
-                                    displayName,
-                                    statusText,
-                                    about
+            ) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(
+                            if (canSave) {
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
                                 )
-                            }.onSuccess {
-                                profile = it
-                                cache.saveProfile(userId, it)
-                                successMessage = "Изменения сохранены и доступны собеседникам."
-                            }.onFailure { failure ->
-                                errorMessage = when {
-                                    failure.message.orEmpty().contains("duplicate", true) ||
-                                        failure.message.orEmpty().contains("unique", true) ->
-                                        "Этот псевдоним уже занят. Выбери другой."
-                                    else -> failure.message ?: "Не удалось сохранить изменения."
+                            } else {
+                                Brush.horizontalGradient(listOf(Color(0xFFD7DEED), Color(0xFFC8D2E7)))
+                            }
+                        )
+                        .clickable(enabled = canSave && repository != null && userId != null) {
+                            val currentRepository = repository
+                            val currentUserId = userId
+                            if (currentRepository != null && currentUserId != null) {
+                                scope.launch {
+                                    isSaving = true
+                                    errorMessage = null
+                                    successMessage = null
+                                    runCatching {
+                                        currentRepository.updateMyProfile(
+                                            currentUserId,
+                                            username,
+                                            displayName,
+                                            statusText,
+                                            about
+                                        )
+                                    }.onSuccess { updated ->
+                                        profile = updated
+                                        cache.saveProfile(currentUserId, updated)
+                                        username = updated.username
+                                        displayName = updated.displayName
+                                        statusText = updated.statusText
+                                        about = updated.about
+                                        successMessage = "Изменения сохранены и доступны собеседникам."
+                                        isEditing = false
+                                    }.onFailure { failure ->
+                                        errorMessage = when {
+                                            failure.message.orEmpty().contains("duplicate", true) ||
+                                                failure.message.orEmpty().contains("unique", true) ->
+                                                "Этот псевдоним уже занят. Выбери другой."
+                                            else -> failure.message ?: "Не удалось сохранить изменения."
+                                        }
+                                    }
+                                    isSaving = false
                                 }
                             }
-                            isSaving = false
                         }
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isSaving) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            Modifier.size(19.dp),
+                            color = if (canSave) Color.White else Muted,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(9.dp))
                     }
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
                         when {
-                            isSaving -> "Сохраняем изменения…"
-                            hasChanges -> "Сохранить изменения"
+                            isSaving -> "Сохраняем…"
+                            canSave -> "Сохранить изменения"
+                            hasChanges && !validUsername -> "Проверьте псевдоним"
+                            hasChanges && displayName.isBlank() -> "Укажите имя"
                             else -> "Все изменения сохранены"
                         },
-                        color = if (canSave) Color.White else Color(0xFF7C8999),
+                        color = if (canSave) Color.White else Color(0xFF73809A),
                         fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
             Text(
-                if (hasChanges) "После сохранения обновлённый профиль увидят ваши собеседники."
-                else "Ваш профиль синхронизирован с ArturChat.",
+                "Изменения профиля синхронизируются с вашим аккаунтом ArturChat.",
                 color = Muted,
                 fontSize = 10.sp,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                lineHeight = 14.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 15.dp)
             )
-        } else {
-            Surface(
-                color = Panel,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, PaletteMist),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.",
-                    color = Muted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(18.dp)
-                )
-            }
         }
+        Spacer(Modifier.height(20.dp))
+    }
 
-        Spacer(Modifier.height(24.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("ПРИЛОЖЕНИЕ", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
-                Text("ArturChat", color = MainText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Text("v${BuildConfig.VERSION_NAME}", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
-
-        Spacer(Modifier.height(16.dp))
-        if (userEmail != null) {
-            Surface(
-                color = Color(0xFFFFF1F0),
-                shape = RoundedCornerShape(17.dp),
-                border = BorderStroke(1.dp, Color(0xFFF2D8D7)),
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onSignOut)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
-                    verticalAlignment = Alignment.CenterVertically
+    if (showDiscardChanges) {
+        AlertDialog(
+            onDismissRequest = { showDiscardChanges = false },
+            title = { Text("Отменить изменения?") },
+            text = { Text("Несохранённые данные будут сброшены.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDiscardChanges = false
+                        resetDraft()
+                        isEditing = false
+                    }
                 ) {
-                    Text("↪", color = Color(0xFFA85F6E), fontSize = 19.sp)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Выйти из аккаунта", color = Color(0xFFA85F6E), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Не сохранять", color = Color(0xFFA85F6E))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardChanges = false }) {
+                    Text("Продолжить")
                 }
             }
+        )
+    }
+}
+
+
+@Composable
+private fun ProfileEditorTab(
+    title: String,
+    number: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(15.dp),
+        color = if (selected) Color.Transparent else Color.White.copy(alpha = 0.55f),
+        border = BorderStroke(
+            1.dp,
+            if (selected) Color.White.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.76f)
+        ),
+        shadowElevation = if (selected) 3.dp else 0.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth()
+                .then(
+                    if (selected) Modifier.background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF28A8F3), Color(0xFF5364E8), Color(0xFF9160EA))
+                        )
+                    ) else Modifier
+                )
+                .padding(horizontal = 6.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                number,
+                color = if (selected) Color.White.copy(alpha = 0.82f) else AccentSlate.copy(alpha = 0.72f),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.8.sp
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                title,
+                color = if (selected) Color.White else MainText,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
-        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun ProfileReadOnlyRow(
+    title: String,
+    value: String,
+    note: String
+) {
+    Surface(
+        color = Color.White.copy(alpha = 0.58f),
+        shape = RoundedCornerShape(17.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.84f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title.uppercase(), color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(Modifier.height(5.dp))
+            Text(value.ifBlank { "Не указана" }, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(3.dp))
+            Text(note, color = Muted, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun ProfileFeedbackMessage(
+    message: String,
+    isSuccess: Boolean
+) {
+    Surface(
+        color = if (isSuccess) Color(0xFFEAF7F1).copy(alpha = 0.94f) else Color(0xFFFFF0F1).copy(alpha = 0.94f),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(
+            1.dp,
+            if (isSuccess) Color(0xFFC9E8D9) else Color(0xFFF0D0D3)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            message,
+            color = if (isSuccess) Color(0xFF39795E) else Color(0xFFA85F6E),
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp)
+        )
     }
 }
 
@@ -4412,44 +6144,60 @@ private fun ProfileInputField(
 ) {
     Column(modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 2.dp).padding(bottom = 7.dp),
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 2.dp)
+                .padding(bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 label.uppercase(),
                 color = if (isInvalid) Color(0xFFA85F6E) else AccentSlate,
-                fontSize = 9.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.1.sp,
+                letterSpacing = 1.15.sp,
                 modifier = Modifier.weight(1f)
             )
             if (maxLength != null) {
                 Text(
                     "${value.length}/$maxLength",
                     color = if (isInvalid) Color(0xFFA85F6E) else Muted,
-                    fontSize = 9.sp
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
         Surface(
-            color = Panel,
-            shape = RoundedCornerShape(17.dp),
+            color = Color.Transparent,
+            shape = RoundedCornerShape(18.dp),
             border = BorderStroke(
-                1.dp,
-                if (isInvalid) Color(0xFFE2BFC1) else PaletteMist
+                1.2.dp,
+                if (isInvalid) Color(0xFFE2BFC1) else Color.White.copy(alpha = 0.96f)
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = if (multiline) 13.dp else 15.dp),
+                Modifier.fillMaxWidth()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.62f),
+                                Color(0xFFE8EDFF).copy(alpha = 0.54f),
+                                Color.White.copy(alpha = 0.70f)
+                            )
+                        )
+                    )
+                    .padding(
+                        horizontal = 15.dp,
+                        vertical = if (multiline) 13.dp else 16.dp
+                    ),
                 verticalAlignment = if (multiline) Alignment.Top else Alignment.CenterVertically
             ) {
                 if (prefix != null) {
                     Text(
                         prefix,
                         color = AccentSlate,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(end = 8.dp, top = if (multiline) 1.dp else 0.dp)
                     )
                 }
@@ -4457,8 +6205,9 @@ private fun ProfileInputField(
                     if (value.isEmpty()) {
                         Text(
                             placeholder,
-                            color = Color(0xFF9AA5B3),
-                            fontSize = 13.sp
+                            color = Color(0xFF7E8BAA).copy(alpha = 0.86f),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
                         )
                     }
                     BasicTextField(
@@ -4470,8 +6219,9 @@ private fun ProfileInputField(
                         maxLines = if (multiline) 5 else 1,
                         textStyle = TextStyle(
                             color = MainText,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.Medium
                         ),
                         keyboardOptions = KeyboardOptions(
                             capitalization = if (multiline) KeyboardCapitalization.Sentences
@@ -4486,13 +6236,13 @@ private fun ProfileInputField(
             Text(
                 footnote,
                 color = if (isInvalid) Color(0xFFA85F6E) else Muted,
-                fontSize = 9.sp,
-                modifier = Modifier.padding(start = 3.dp, top = 5.dp)
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                modifier = Modifier.padding(start = 3.dp, top = 6.dp)
             )
         }
     }
 }
-
 
 @Composable
 private fun UserProfileScreen(
@@ -4698,113 +6448,456 @@ private fun UserProfileScreen(
 }
 
 @Composable
-private fun BottomNavigation(
-    selectedTab: MainTab,
-    unreadChatsCount: Int,
-    onSelect: (MainTab) -> Unit
+private fun ChatChromeActionButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    filled: Boolean = false,
+    size: Dp = 40.dp,
+    content: @Composable () -> Unit
 ) {
-    Surface(color = Color(0xFFFFFCFA), shadowElevation = 12.dp) {
-        Row(
-            Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            MainTab.values().forEach { tab ->
-                val selected = tab == selectedTab
-                Column(
-                    Modifier.weight(1f).clickable { onSelect(tab) }.padding(vertical = 3.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(tab.symbol, color = if (selected) AccentSlate else Muted, fontSize = 20.sp)
-                        if (tab == MainTab.CHATS) {
-                            formatUnreadBadge(unreadChatsCount)?.let { badgeText ->
-                                Spacer(Modifier.width(5.dp))
-                                Surface(color = PaletteBlush, shape = CircleShape) {
-                                    Text(
-                                        badgeText,
-                                        color = MainText,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        tab.title,
-                        color = if (selected) AccentSlate else Muted,
-                        fontSize = 10.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+    val gradient = Brush.linearGradient(
+        listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+    )
+    Box(
+        modifier = modifier.size(size)
+            .clip(RoundedCornerShape(15.dp))
+            .then(
+                if (filled) {
+                    Modifier.background(
+                        if (enabled) gradient else Brush.linearGradient(
+                            listOf(Color(0xFFB7C4DF), Color(0xFF9EACC9))
+                        )
                     )
+                } else {
+                    Modifier.background(Color.White.copy(alpha = 0.30f))
                 }
+            )
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.alpha(if (enabled) 1f else 0.42f)) { content() }
+    }
+}
+
+@Composable
+private fun InboxHeaderActionButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    // A slim gradient rim and a frosted inner disc make each header action
+    // read as a deliberate icon control rather than a plain white circle.
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF9EADFF).copy(alpha = 0.82f),
+                        Color(0xFFB7D9FF).copy(alpha = 0.96f),
+                        Color(0xFFC7B5FF).copy(alpha = 0.88f)
+                    )
+                ),
+                CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier.size(42.dp).clickable(onClick = onClick),
+            color = Color(0xF7FFFFFF),
+            shape = CircleShape,
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.98f)),
+            shadowElevation = 2.dp
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.White, Color(0xFFF0F3FF))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                content()
             }
         }
     }
 }
 
-private const val MAX_CHAT_VOICE_BYTES = 10 * 1024 * 1024
-private const val MAX_CHAT_VOICE_DURATION_MS = 10 * 60 * 1000L
-
-private class ChatVoiceRecorder(private val cacheDirectory: File) {
-    private var recorder: MediaRecorder? = null
-    private var outputFile: File? = null
-
-    fun start() {
-        check(recorder == null) { "Запись уже запущена." }
-        val file = File(cacheDirectory, "voice-" + UUID.randomUUID().toString() + ".m4a")
-        val activeRecorder = MediaRecorder()
-        try {
-            activeRecorder.setAudioSource(MediaRecorder.AudioSource.MIC)
-            activeRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            activeRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            activeRecorder.setAudioEncodingBitRate(64_000)
-            activeRecorder.setAudioSamplingRate(44_100)
-            activeRecorder.setMaxFileSize(MAX_CHAT_VOICE_BYTES.toLong())
-            activeRecorder.setOutputFile(file.absolutePath)
-            activeRecorder.prepare()
-            activeRecorder.start()
-            recorder = activeRecorder
-            outputFile = file
-        } catch (error: Exception) {
-            runCatching { activeRecorder.reset() }
-            activeRecorder.release()
-            file.delete()
-            throw error
-        }
+@Composable
+private fun ChatHeaderIconButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier.size(42.dp).clickable(
+            interactionSource = null,
+            indication = null,
+            onClick = onClick
+        ),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
     }
+}
 
-    fun stop(): File {
-        val activeRecorder = recorder ?: throw IllegalStateException("Запись не запущена.")
-        val completedFile = outputFile ?: throw IllegalStateException("Файл записи не найден.")
-        recorder = null
-        outputFile = null
-        try {
-            activeRecorder.stop()
-            require(completedFile.isFile && completedFile.length() > 0L) {
-                "Запись не содержит аудиоданных."
+@Composable
+private fun InboxBackGlyph() {
+    Canvas(Modifier.size(27.dp)) {
+        val line = Stroke(width = 2.25.dp.toPx(), cap = StrokeCap.Round)
+        val arrow = Path().apply {
+            moveTo(size.width * 0.79f, size.height * 0.50f)
+            lineTo(size.width * 0.23f, size.height * 0.50f)
+            moveTo(size.width * 0.23f, size.height * 0.50f)
+            lineTo(size.width * 0.54f, size.height * 0.20f)
+            moveTo(size.width * 0.23f, size.height * 0.50f)
+            lineTo(size.width * 0.54f, size.height * 0.80f)
+        }
+        drawPath(arrow, InboxAccentStrong, style = line)
+    }
+}
+
+@Composable
+private fun ChatSendGlyph() {
+    Canvas(Modifier.size(22.dp)) {
+        val line = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        val path = Path().apply {
+            moveTo(size.width * 0.12f, size.height * 0.48f)
+            lineTo(size.width * 0.88f, size.height * 0.12f)
+            lineTo(size.width * 0.62f, size.height * 0.89f)
+            lineTo(size.width * 0.46f, size.height * 0.57f)
+            close()
+            moveTo(size.width * 0.46f, size.height * 0.57f)
+            lineTo(size.width * 0.88f, size.height * 0.12f)
+        }
+        drawPath(path, Color.White, style = line)
+    }
+}
+
+@Composable
+private fun ChatMicrophoneGlyph(tint: Color = InboxAccentStrong) {
+    Canvas(Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val line = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
+        val capsule = Path().apply {
+            moveTo(w * 0.50f, h * 0.10f)
+            cubicTo(w * 0.36f, h * 0.10f, w * 0.30f, h * 0.19f, w * 0.30f, h * 0.30f)
+            lineTo(w * 0.30f, h * 0.53f)
+            cubicTo(w * 0.30f, h * 0.66f, w * 0.38f, h * 0.74f, w * 0.50f, h * 0.74f)
+            cubicTo(w * 0.62f, h * 0.74f, w * 0.70f, h * 0.66f, w * 0.70f, h * 0.53f)
+            lineTo(w * 0.70f, h * 0.30f)
+            cubicTo(w * 0.70f, h * 0.19f, w * 0.64f, h * 0.10f, w * 0.50f, h * 0.10f)
+        }
+        val cradle = Path().apply {
+            moveTo(w * 0.17f, h * 0.47f)
+            cubicTo(w * 0.17f, h * 0.72f, w * 0.31f, h * 0.86f, w * 0.50f, h * 0.86f)
+            cubicTo(w * 0.69f, h * 0.86f, w * 0.83f, h * 0.72f, w * 0.83f, h * 0.47f)
+            moveTo(w * 0.50f, h * 0.86f)
+            lineTo(w * 0.50f, h * 0.98f)
+            moveTo(w * 0.36f, h * 0.98f)
+            lineTo(w * 0.64f, h * 0.98f)
+        }
+        drawPath(capsule, tint, style = line)
+        drawPath(cradle, tint, style = line)
+    }
+}
+
+@Composable
+private fun ChatPlaybackGlyph(isPlaying: Boolean) {
+    Canvas(Modifier.size(15.dp)) {
+        if (isPlaying) {
+            val width = 2.4.dp.toPx()
+            drawLine(Color.White, Offset(size.width * 0.34f, size.height * 0.22f), Offset(size.width * 0.34f, size.height * 0.78f), width, cap = StrokeCap.Round)
+            drawLine(Color.White, Offset(size.width * 0.68f, size.height * 0.22f), Offset(size.width * 0.68f, size.height * 0.78f), width, cap = StrokeCap.Round)
+        } else {
+            val play = Path().apply {
+                moveTo(size.width * 0.27f, size.height * 0.14f)
+                lineTo(size.width * 0.80f, size.height * 0.50f)
+                lineTo(size.width * 0.27f, size.height * 0.86f)
+                close()
             }
-            return completedFile
-        } catch (error: Exception) {
-            completedFile.delete()
-            throw error
-        } finally {
-            runCatching { activeRecorder.reset() }
-            activeRecorder.release()
+            drawPath(play, Color.White)
         }
     }
+}
 
-    fun cancel() {
-        val activeRecorder = recorder
-        val partialFile = outputFile
-        recorder = null
-        outputFile = null
-        if (activeRecorder != null) {
-            runCatching { activeRecorder.stop() }
-            runCatching { activeRecorder.reset() }
-            activeRecorder.release()
+@Composable
+private fun ChatCallGlyph(video: Boolean, tint: Color = InboxAccentStrong) {
+    Canvas(Modifier.size(if (video) 21.dp else 22.dp)) {
+        val w = size.width
+        val h = size.height
+        val line = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
+        if (video) {
+            val cameraBody = Path().apply {
+                moveTo(w * 0.13f, h * 0.28f)
+                cubicTo(w * 0.13f, h * 0.20f, w * 0.20f, h * 0.15f, w * 0.29f, h * 0.15f)
+                lineTo(w * 0.56f, h * 0.15f)
+                cubicTo(w * 0.65f, h * 0.15f, w * 0.70f, h * 0.21f, w * 0.70f, h * 0.30f)
+                lineTo(w * 0.70f, h * 0.70f)
+                cubicTo(w * 0.70f, h * 0.79f, w * 0.64f, h * 0.85f, w * 0.55f, h * 0.85f)
+                lineTo(w * 0.29f, h * 0.85f)
+                cubicTo(w * 0.20f, h * 0.85f, w * 0.13f, h * 0.79f, w * 0.13f, h * 0.70f)
+                close()
+            }
+            val lens = Path().apply {
+                moveTo(w * 0.72f, h * 0.39f)
+                lineTo(w * 0.91f, h * 0.27f)
+                lineTo(w * 0.91f, h * 0.73f)
+                lineTo(w * 0.72f, h * 0.61f)
+                close()
+            }
+            drawPath(cameraBody, tint, style = line)
+            drawPath(lens, tint, style = line)
+        } else {
+            val handset = Path().apply {
+                moveTo(w * 0.31f, h * 0.13f)
+                cubicTo(w * 0.23f, h * 0.13f, w * 0.17f, h * 0.22f, w * 0.20f, h * 0.33f)
+                cubicTo(w * 0.25f, h * 0.61f, w * 0.43f, h * 0.77f, w * 0.69f, h * 0.83f)
+                cubicTo(w * 0.79f, h * 0.85f, w * 0.86f, h * 0.78f, w * 0.85f, h * 0.68f)
+                lineTo(w * 0.82f, h * 0.56f)
+                cubicTo(w * 0.81f, h * 0.51f, w * 0.76f, h * 0.49f, w * 0.70f, h * 0.52f)
+                lineTo(w * 0.60f, h * 0.59f)
+                cubicTo(w * 0.49f, h * 0.53f, w * 0.42f, h * 0.46f, w * 0.37f, h * 0.35f)
+                lineTo(w * 0.43f, h * 0.24f)
+                cubicTo(w * 0.46f, h * 0.19f, w * 0.41f, h * 0.14f, w * 0.36f, h * 0.13f)
+                close()
+            }
+            drawPath(handset, tint, style = line)
         }
-        partialFile?.delete()
+    }
+}
+
+@Composable
+private fun InboxSearchGlyph(iconSize: Dp = 21.dp) {
+    Canvas(Modifier.size(iconSize)) {
+        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(
+            color = InboxAccentStrong,
+            radius = size.minDimension * 0.31f,
+            center = Offset(size.width * 0.42f, size.height * 0.42f),
+            style = stroke
+        )
+        drawLine(
+            color = InboxAccentStrong,
+            start = Offset(size.width * 0.64f, size.height * 0.64f),
+            end = Offset(size.width * 0.91f, size.height * 0.91f),
+            strokeWidth = stroke.width,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun InboxCameraGlyph(
+    tint: Color = InboxAccentStrong,
+    iconSize: Dp = 28.dp
+) {
+    Canvas(Modifier.size(iconSize)) {
+        val stroke = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        val body = Path().apply {
+            moveTo(size.width * 0.16f, size.height * 0.34f)
+            cubicTo(size.width * 0.16f, size.height * 0.27f, size.width * 0.22f, size.height * 0.23f, size.width * 0.30f, size.height * 0.23f)
+            lineTo(size.width * 0.41f, size.height * 0.23f)
+            lineTo(size.width * 0.49f, size.height * 0.13f)
+            lineTo(size.width * 0.68f, size.height * 0.13f)
+            lineTo(size.width * 0.76f, size.height * 0.23f)
+            lineTo(size.width * 0.79f, size.height * 0.23f)
+            cubicTo(size.width * 0.87f, size.height * 0.23f, size.width * 0.90f, size.height * 0.29f, size.width * 0.90f, size.height * 0.37f)
+            lineTo(size.width * 0.90f, size.height * 0.72f)
+            cubicTo(size.width * 0.90f, size.height * 0.80f, size.width * 0.84f, size.height * 0.85f, size.width * 0.76f, size.height * 0.85f)
+            lineTo(size.width * 0.27f, size.height * 0.85f)
+            cubicTo(size.width * 0.19f, size.height * 0.85f, size.width * 0.15f, size.height * 0.79f, size.width * 0.15f, size.height * 0.71f)
+            close()
+        }
+        drawPath(body, tint, style = stroke)
+        drawCircle(
+            tint,
+            radius = size.width * 0.15f,
+            center = Offset(size.width * 0.53f, size.height * 0.53f),
+            style = stroke
+        )
+    }
+}
+
+@Composable
+private fun NewChatGlyph() {
+    Canvas(Modifier.size(20.dp)) {
+        val line = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+        val bubble = Path().apply {
+            moveTo(size.width * 0.18f, size.height * 0.18f)
+            cubicTo(size.width * 0.18f, size.height * 0.10f, size.width * 0.27f, size.height * 0.08f, size.width * 0.36f, size.height * 0.08f)
+            lineTo(size.width * 0.72f, size.height * 0.08f)
+            cubicTo(size.width * 0.82f, size.height * 0.08f, size.width * 0.88f, size.height * 0.16f, size.width * 0.88f, size.height * 0.26f)
+            lineTo(size.width * 0.88f, size.height * 0.61f)
+            cubicTo(size.width * 0.88f, size.height * 0.70f, size.width * 0.80f, size.height * 0.77f, size.width * 0.70f, size.height * 0.77f)
+            lineTo(size.width * 0.41f, size.height * 0.77f)
+            lineTo(size.width * 0.20f, size.height * 0.92f)
+            lineTo(size.width * 0.25f, size.height * 0.75f)
+            cubicTo(size.width * 0.20f, size.height * 0.70f, size.width * 0.18f, size.height * 0.65f, size.width * 0.18f, size.height * 0.58f)
+            close()
+        }
+        drawPath(bubble, Color.White, style = line)
+        drawLine(Color.White, Offset(size.width * 0.55f, size.height * 0.30f), Offset(size.width * 0.55f, size.height * 0.57f), strokeWidth = line.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(size.width * 0.42f, size.height * 0.435f), Offset(size.width * 0.68f, size.height * 0.435f), strokeWidth = line.width, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun InboxMoreGlyph() {
+    Canvas(Modifier.size(18.dp)) {
+        val dotRadius = 1.55.dp.toPx()
+        listOf(0.24f, 0.50f, 0.76f).forEach { y ->
+            drawCircle(InboxMuted, radius = dotRadius, center = Offset(size.width * 0.5f, size.height * y))
+        }
+    }
+}
+
+@Composable
+private fun InboxNavigationGlyph(tab: MainTab, selected: Boolean) {
+    val tint = if (selected) InboxAccent else InboxMuted
+    Canvas(Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val line = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+        when (tab) {
+            MainTab.CHATS -> {
+                val bubble = Path().apply {
+                    moveTo(w * 0.18f, h * 0.22f)
+                    cubicTo(w * 0.18f, h * 0.13f, w * 0.26f, h * 0.10f, w * 0.36f, h * 0.10f)
+                    lineTo(w * 0.72f, h * 0.10f)
+                    cubicTo(w * 0.82f, h * 0.10f, w * 0.88f, h * 0.17f, w * 0.88f, h * 0.27f)
+                    lineTo(w * 0.88f, h * 0.62f)
+                    cubicTo(w * 0.88f, h * 0.72f, w * 0.80f, h * 0.78f, w * 0.70f, h * 0.78f)
+                    lineTo(w * 0.42f, h * 0.78f)
+                    lineTo(w * 0.22f, h * 0.92f)
+                    lineTo(w * 0.26f, h * 0.75f)
+                    cubicTo(w * 0.20f, h * 0.70f, w * 0.18f, h * 0.65f, w * 0.18f, h * 0.58f)
+                    close()
+                }
+                drawPath(bubble, tint, style = line)
+                listOf(0.39f, 0.53f, 0.67f).forEach { x -> drawCircle(tint, radius = 1.0.dp.toPx(), center = Offset(w * x, h * 0.45f)) }
+            }
+            MainTab.CALLS -> {
+                val handset = Path().apply {
+                    moveTo(w * 0.31f, h * 0.14f)
+                    cubicTo(w * 0.23f, h * 0.14f, w * 0.18f, h * 0.22f, w * 0.20f, h * 0.32f)
+                    cubicTo(w * 0.25f, h * 0.59f, w * 0.43f, h * 0.76f, w * 0.69f, h * 0.82f)
+                    cubicTo(w * 0.79f, h * 0.84f, w * 0.86f, h * 0.77f, w * 0.85f, h * 0.68f)
+                    lineTo(w * 0.82f, h * 0.56f)
+                    cubicTo(w * 0.81f, h * 0.51f, w * 0.76f, h * 0.49f, w * 0.71f, h * 0.52f)
+                    lineTo(w * 0.60f, h * 0.59f)
+                    cubicTo(w * 0.49f, h * 0.53f, w * 0.42f, h * 0.46f, w * 0.37f, h * 0.35f)
+                    lineTo(w * 0.43f, h * 0.24f)
+                    cubicTo(w * 0.46f, h * 0.19f, w * 0.43f, h * 0.15f, w * 0.38f, h * 0.14f)
+                    close()
+                }
+                drawPath(handset, tint, style = line)
+            }
+            MainTab.CONTACTS -> {
+                drawCircle(tint, radius = w * 0.105f, center = Offset(w * 0.50f, h * 0.28f), style = line)
+                drawCircle(tint, radius = w * 0.085f, center = Offset(w * 0.20f, h * 0.41f), style = line)
+                drawCircle(tint, radius = w * 0.085f, center = Offset(w * 0.80f, h * 0.41f), style = line)
+                val centerShoulders = Path().apply {
+                    moveTo(w * 0.22f, h * 0.88f)
+                    cubicTo(w * 0.24f, h * 0.68f, w * 0.36f, h * 0.58f, w * 0.50f, h * 0.58f)
+                    cubicTo(w * 0.65f, h * 0.58f, w * 0.77f, h * 0.68f, w * 0.79f, h * 0.88f)
+                }
+                drawPath(centerShoulders, tint, style = line)
+                val leftShoulder = Path().apply {
+                    moveTo(w * 0.05f, h * 0.82f)
+                    cubicTo(w * 0.06f, h * 0.66f, w * 0.13f, h * 0.59f, w * 0.25f, h * 0.59f)
+                }
+                drawPath(leftShoulder, tint, style = line)
+                val rightShoulder = Path().apply {
+                    moveTo(w * 0.75f, h * 0.59f)
+                    cubicTo(w * 0.87f, h * 0.59f, w * 0.94f, h * 0.66f, w * 0.95f, h * 0.82f)
+                }
+                drawPath(rightShoulder, tint, style = line)
+            }
+            MainTab.PROFILE -> {
+                drawCircle(tint, radius = w * 0.16f, center = Offset(w * 0.50f, h * 0.29f), style = line)
+                val shoulders = Path().apply {
+                    moveTo(w * 0.15f, h * 0.91f)
+                    cubicTo(w * 0.17f, h * 0.65f, w * 0.32f, h * 0.56f, w * 0.50f, h * 0.56f)
+                    cubicTo(w * 0.68f, h * 0.56f, w * 0.83f, h * 0.65f, w * 0.85f, h * 0.91f)
+                }
+                drawPath(shoulders, tint, style = line)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomNavigation(
+    selectedTab: MainTab,
+    unreadChatsCount: Int,
+    onSelect: (MainTab) -> Unit
+) {
+    Surface(
+        color = Color.Transparent,
+        shape = RoundedCornerShape(28.dp),
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(28.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                    )
+                )
+                .padding(top = 8.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            MainTab.values().forEach { tab ->
+                val selected = tab == selectedTab
+                Column(
+                    Modifier.weight(1f)
+                        .clickable(interactionSource = null, indication = null) { onSelect(tab) }
+                        .padding(vertical = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier.size(width = 42.dp, height = 28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        InboxNavigationGlyph(tab = tab, selected = selected)
+                        if (tab == MainTab.CHATS) {
+                            formatUnreadBadge(unreadChatsCount)?.let { badgeText ->
+                                Surface(
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                        .height(18.dp).widthIn(min = 18.dp),
+                                    color = InboxAccent,
+                                    shape = CircleShape
+                                ) {
+                                    Box(
+                                        modifier = Modifier.height(18.dp).padding(horizontal = 3.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            badgeText,
+                                            color = Color.White,
+                                            fontSize = 8.sp,
+                                            lineHeight = 8.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        tab.title,
+                        color = if (selected) InboxAccentStrong else InboxMuted,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
     }
 }

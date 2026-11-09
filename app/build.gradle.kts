@@ -8,8 +8,8 @@ plugins {
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
 val firebaseConfigExists = file("google-services.json").exists()
-val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.7.1").get()
-val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("7001" ).get().toInt()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.7.13").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("7013" ).get().toInt()
 
 fun String.asBuildConfigString(): String =
     "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -86,6 +86,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material3:material3")
 
     implementation(platform("io.github.jan-tennert.supabase:bom:3.8.0"))
