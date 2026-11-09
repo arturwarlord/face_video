@@ -1975,10 +1975,10 @@ private fun StoryViewerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        modifier = Modifier.size(40.dp).clickable(onClick = onBack),
+                        modifier = Modifier.size(48.dp).clickable(onClick = onBack),
                         shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+                        color = Color.Transparent,
+                        border = null
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
@@ -2031,9 +2031,10 @@ private fun StoryViewerScreen(
                         Surface(
                             onClick = { showDeleteConfirmation = true },
                             enabled = !deleting,
+                            modifier = Modifier.heightIn(min = 48.dp),
                             shape = RoundedCornerShape(16.dp),
-                            color = Color.White.copy(alpha = 0.12f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.20f))
+                            color = Color.Transparent,
+                            border = null
                         ) {
                             Text(
                                 if (deleting) "Удаляем…" else "Удалить",
@@ -2111,8 +2112,10 @@ private fun StoryViewerScreen(
                             Spacer(Modifier.height(16.dp))
                             Surface(
                                 onClick = onBack,
+                                modifier = Modifier.heightIn(min = 48.dp),
                                 shape = RoundedCornerShape(18.dp),
-                                color = Color.White.copy(alpha = 0.14f)
+                                color = Color.Transparent,
+                                border = null
                             ) {
                                 Text("Вернуться", color = Color.White, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
                             }
@@ -2151,9 +2154,9 @@ private fun StoryViewerScreen(
                 if (current != null) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color.White.copy(alpha = 0.10f),
+                        color = Color.Transparent,
                         shape = RoundedCornerShape(20.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                        border = null
                     ) {
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp),
@@ -2167,24 +2170,20 @@ private fun StoryViewerScreen(
                                     onClick = { onStoryReactionTapped(emoji) },
                                     enabled = canReact && !isLoadingReactions && !isSavingReaction,
                                     shape = RoundedCornerShape(15.dp),
-                                    color = if (selected) {
-                                        Color(0xFF6F7BE6).copy(alpha = 0.54f)
-                                    } else {
-                                        Color.White.copy(alpha = 0.08f)
-                                    },
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (selected) Color(0xFFD7E0FF).copy(alpha = 0.90f)
-                                        else Color.White.copy(alpha = 0.10f)
-                                    ),
-                                    modifier = Modifier.weight(1f).padding(horizontal = 1.dp)
+                                    color = Color.Transparent,
+                                    border = null,
+                                    modifier = Modifier.weight(1f).padding(horizontal = 1.dp).heightIn(min = 48.dp)
                                 ) {
                                     Row(
                                         Modifier.padding(horizontal = 3.dp, vertical = 7.dp),
                                         horizontalArrangement = Arrangement.Center,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(emoji, fontSize = 17.sp, lineHeight = 19.sp)
+                                        Text(
+                                            emoji,
+                                            fontSize = if (selected) 19.sp else 17.sp,
+                                            lineHeight = if (selected) 21.sp else 19.sp
+                                        )
                                         if (count > 0) {
                                             Spacer(Modifier.width(2.dp))
                                             Text(
@@ -2225,9 +2224,10 @@ private fun StoryViewerScreen(
                     Surface(
                         onClick = { index = (index - 1).coerceAtLeast(0) },
                         enabled = current != null && index > 0,
+                        modifier = Modifier.heightIn(min = 48.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = if (index > 0) 0.15f else 0.07f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                        color = Color.Transparent,
+                        border = null
                     ) {
                         Text(
                             "Назад",
@@ -2240,8 +2240,8 @@ private fun StoryViewerScreen(
                     Spacer(Modifier.weight(1f))
                     Surface(
                         shape = CircleShape,
-                        color = Color.White.copy(alpha = 0.10f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+                        color = Color.Transparent,
+                        border = null
                     ) {
                         Text(
                             if (stories.isEmpty()) "— / —" else "${index + 1} / ${stories.size}",
@@ -2256,9 +2256,10 @@ private fun StoryViewerScreen(
                             if (index < stories.lastIndex) index++ else onBack()
                         },
                         enabled = current != null,
+                        modifier = Modifier.heightIn(min = 48.dp),
                         shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.16f),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                        color = Color.Transparent,
+                        border = null
                     ) {
                         Row(
                             Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
