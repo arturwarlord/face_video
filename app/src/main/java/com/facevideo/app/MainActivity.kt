@@ -529,6 +529,7 @@ private fun FaceVideoApp(
     var callError by remember { mutableStateOf<String?>(null) }
     var callMuted by remember { mutableStateOf(false) }
     var callCameraEnabled by remember { mutableStateOf(true) }
+    var callSpeakerEnabled by remember { mutableStateOf(true) }
     var callClient by remember { mutableStateOf<WebRtcAudioCallClient?>(null) }
     var pendingCallAction by remember { mutableStateOf<PendingCallAction?>(null) }
 
@@ -649,6 +650,7 @@ private fun FaceVideoApp(
                 activeCallTitle = action.chat.title
                 activeCallIsOutgoing = true
                 callCameraEnabled = true
+                callSpeakerEnabled = true
                 callStatus = if (call.mediaType == "video") "Вызов видеосвязи…" else "Вызов собеседника…"
                 val client = WebRtcAudioCallClient(
                     context = context,
@@ -670,6 +672,7 @@ private fun FaceVideoApp(
                 activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
                 activeCallIsOutgoing = false
                 callCameraEnabled = true
+                callSpeakerEnabled = true
                 callStatus = if (action.call.mediaType == "video") "Подключаем видео…" else "Подключаем аудио…"
                 val client = WebRtcAudioCallClient(
                     context = context,
@@ -784,6 +787,7 @@ private fun FaceVideoApp(
         activeCall = null
         callMuted = false
         callCameraEnabled = true
+        callSpeakerEnabled = true
         runCatching { clientToClose?.end() }
             .onFailure {
                 android.util.Log.w("ArturChatCall", "Could not close local call resources", it)
@@ -944,9 +948,14 @@ private fun FaceVideoApp(
                     status = callStatus,
                     error = callError,
                     muted = callMuted,
+                    speakerEnabled = callSpeakerEnabled,
                     onToggleMute = {
                         callMuted = !callMuted
                         callClient?.setMuted(callMuted)
+                    },
+                    onToggleSpeaker = {
+                        callSpeakerEnabled = !callSpeakerEnabled
+                        callClient?.setSpeakerEnabled(callSpeakerEnabled)
                     },
                     onEnd = { finishCall() }
                 )
@@ -4320,32 +4329,38 @@ private fun ActiveAudioCallScreen(
     status: String,
     error: String?,
     muted: Boolean,
+    speakerEnabled: Boolean,
     onToggleMute: () -> Unit,
+    onToggleSpeaker: () -> Unit,
     onEnd: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFFE5E0FF), Color(0xFFE6F0FF), Color(0xFFF1F4FF))
+                    listOf(Color(0xFFE4DEFF), Color(0xFFE5EDFF), Color(0xFFF4F6FF))
                 )
             )
-            .padding(horizontal = 26.dp, vertical = 30.dp),
+            .padding(horizontal = 22.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             "ARTURCHAT",
             color = AccentSlate,
             fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             letterSpacing = 2.2.sp
         )
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.weight(0.72f))
         Box(
             modifier = Modifier.size(164.dp)
                 .background(
                     Brush.radialGradient(
-                        listOf(Color(0xFF9EBBFF).copy(alpha = 0.58f), Color(0xFFC7BFFF).copy(alpha = 0.18f), Color.Transparent)
+                        listOf(
+                            Color(0xFF9EBBFF).copy(alpha = 0.62f),
+                            Color(0xFFC7BFFF).copy(alpha = 0.20f),
+                            Color.Transparent
+                        )
                     ),
                     CircleShape
                 ),
@@ -4354,7 +4369,9 @@ private fun ActiveAudioCallScreen(
             Box(
                 modifier = Modifier.size(136.dp)
                     .background(
-                        Brush.linearGradient(listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))),
+                        Brush.linearGradient(
+                            listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))
+                        ),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -4366,72 +4383,99 @@ private fun ActiveAudioCallScreen(
                 )
             }
         }
-        Spacer(Modifier.height(23.dp))
-        Text(peerName, color = MainText, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(22.dp))
+        Text(
+            peerName,
+            color = MainText,
+            fontSize = 25.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(12.dp))
         Surface(
-            color = Color(0xCFFFFFFF),
-            shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White),
+            color = Color(0xDFFFFFFF),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f))
         ) {
             Row(
-                Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(if (error == null) Color(0xFF39A982) else Color(0xFFD77782)))
+                Box(
+                    Modifier.size(7.dp).clip(CircleShape)
+                        .background(if (error == null) Color(0xFF39A982) else Color(0xFFD77782))
+                )
                 Spacer(Modifier.width(8.dp))
-                Text(status, color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    status,
+                    color = AccentSlate,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (error != null) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                color = Color(0xFFFFEFF1),
-                shape = RoundedCornerShape(13.dp),
-                border = BorderStroke(1.dp, Color(0xFFF5D5DA))
+                modifier = Modifier.fillMaxWidth().heightIn(max = 116.dp),
+                color = Color(0xBFFFF0F2),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0x44D77782))
             ) {
-                Text(error, color = Color(0xFFA85F6E), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                Text(
+                    error,
+                    color = Color(0xFFA85F6E),
+                    fontSize = 10.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)
+                )
             }
         }
         Spacer(Modifier.weight(1f))
-        Row(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(34.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
+            color = Color(0xCFFFFFFF),
+            shape = RoundedCornerShape(28.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+            shadowElevation = 8.dp
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Surface(
-                    color = Color(0xEFFFFFFF),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, Color.White),
-                    shadowElevation = 3.dp,
-                    modifier = Modifier.size(66.dp).clickable(onClick = onToggleMute)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(if (muted) "×" else "⌁", color = AccentSlate, fontSize = 27.sp, fontWeight = FontWeight.Medium)
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 13.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CallControlButton(
+                    label = if (muted) "Микрофон выкл." else "Микрофон",
+                    active = !muted,
+                    labelColor = MainText,
+                    onClick = onToggleMute
+                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+                CallControlButton(
+                    label = if (speakerEnabled) "Динамик" else "Телефон",
+                    active = speakerEnabled,
+                    labelColor = MainText,
+                    onClick = onToggleSpeaker
+                ) { tint -> CallSpeakerGlyph(tint = tint, enabled = speakerEnabled) }
+                CallControlButton(
+                    label = "Завершить",
+                    destructive = true,
+                    labelColor = MainText,
+                    onClick = onEnd
+                ) { tint ->
+                    Text("×", color = tint, fontSize = 31.sp, fontWeight = FontWeight.Light)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(if (muted) "Микрофон выкл." else "Микрофон", color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier.size(74.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(Color(0xFFEF778D), Color(0xFFD94D71))))
-                        .clickable(onClick = onEnd),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("×", color = Color.White, fontSize = 31.sp, fontWeight = FontWeight.Light)
-                }
-                Spacer(Modifier.height(8.dp))
-                Text("Завершить", color = MainText, fontSize = 10.sp, fontWeight = FontWeight.Medium)
             }
         }
-        Spacer(Modifier.height(28.dp))
-        Text("Звонок один на один · WebRTC", color = Muted, fontSize = 10.sp)
+        Spacer(Modifier.height(5.dp))
+        Text("Звонок один на один · WebRTC", color = Muted, fontSize = 9.sp)
     }
 }
+
 @Composable
 private fun ActiveVideoCallScreen(
     peerName: String,
@@ -4448,14 +4492,9 @@ private fun ActiveVideoCallScreen(
     val remoteRenderer = client.remoteVideoRenderer
     val localRenderer = client.localVideoRenderer
 
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF171B22))
-    ) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF111722))) {
         if (remoteRenderer != null) {
-            AndroidView(
-                factory = { remoteRenderer },
-                modifier = Modifier.fillMaxSize()
-            )
+            AndroidView(factory = { remoteRenderer }, modifier = Modifier.fillMaxSize())
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Подготавливаем видеосвязь…", color = Color.White, fontSize = 14.sp)
@@ -4467,93 +4506,229 @@ private fun ActiveVideoCallScreen(
                 factory = { localRenderer },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 42.dp, end = 16.dp)
-                    .size(width = 112.dp, height = 156.dp)
+                    .padding(top = 12.dp, end = 12.dp)
+                    .size(width = 104.dp, height = 146.dp)
                     .clip(RoundedCornerShape(18.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.52f), RoundedCornerShape(18.dp))
             )
         }
 
-        Column(
-            Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .padding(start = 18.dp, top = 18.dp, end = 142.dp)
+        Surface(
+            modifier = Modifier.align(Alignment.TopStart)
+                .padding(start = 14.dp, top = 12.dp, end = 126.dp)
+                .widthIn(max = 230.dp),
+            color = Color(0xA91A2432),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
         ) {
-            Text(peerName, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-            Text(status, color = Color.White.copy(alpha = 0.78f), fontSize = 12.sp)
-            if (error != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(error, color = Color(0xFFFFB8C1), fontSize = 11.sp)
+            Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
+                Text(
+                    peerName,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    status,
+                    color = Color.White.copy(alpha = 0.76f),
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
 
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 28.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            VideoCallControlButton(
-                label = if (muted) "Микрофон выкл." else "Микрофон",
-                active = !muted,
-                onClick = onToggleMute
-            )
-            VideoCallControlButton(
-                label = if (cameraEnabled) "Камера" else "Камера выкл.",
-                active = cameraEnabled,
-                onClick = onToggleCamera
-            )
-            VideoCallControlButton(
-                label = "Сменить",
-                active = true,
-                onClick = onSwitchCamera
-            )
-            VideoCallControlButton(
-                label = "Завершить",
-                active = false,
-                destructive = true,
-                onClick = onEnd
-            )
+        if (error != null) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopStart)
+                    .padding(start = 14.dp, top = 78.dp, end = 126.dp)
+                    .widthIn(max = 230.dp),
+                color = Color(0xB34A202B),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, Color(0x55FFC3CE))
+            ) {
+                Text(
+                    error,
+                    color = Color(0xFFFFDDE2),
+                    fontSize = 9.sp,
+                    lineHeight = 13.sp,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp)
+                )
+            }
         }
 
+        Surface(
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            color = Color(0xC916202D),
+            shape = RoundedCornerShape(28.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 11.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CallControlButton(
+                    label = if (muted) "Микрофон выкл." else "Микрофон",
+                    active = !muted,
+                    onClick = onToggleMute
+                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+                CallControlButton(
+                    label = if (cameraEnabled) "Камера" else "Камера выкл.",
+                    active = cameraEnabled,
+                    onClick = onToggleCamera
+                ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
+                CallControlButton(
+                    label = "Сменить",
+                    active = false,
+                    onClick = onSwitchCamera
+                ) { tint -> CallSwitchGlyph(tint = tint) }
+                CallControlButton(
+                    label = "Завершить",
+                    destructive = true,
+                    onClick = onEnd
+                ) { tint ->
+                    Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallControlButton(
+    label: String,
+    active: Boolean = false,
+    destructive: Boolean = false,
+    labelColor: Color = Color.White,
+    onClick: () -> Unit,
+    content: @Composable (Color) -> Unit
+) {
+    val background = when {
+        destructive -> Brush.linearGradient(listOf(Color(0xFFFF7B91), Color(0xFFD94770)))
+        active -> Brush.linearGradient(listOf(Color(0xFF35AEFF), Color(0xFF586BEA), Color(0xFF9262E8)))
+        else -> Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC)))
+    }
+    val tint = if (active || destructive) Color.White else AccentSlate
+
+    Column(
+        modifier = Modifier.width(70.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier.size(58.dp)
+                .clip(CircleShape)
+                .background(background)
+                .then(
+                    if (active || destructive) Modifier
+                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.98f), CircleShape)
+                )
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            content(tint)
+        }
+        Spacer(Modifier.height(7.dp))
         Text(
-            "ARTURCHAT · ПРЯМОЕ СОЕДИНЕНИЕ",
-            color = Color.White.copy(alpha = 0.62f),
+            label,
+            color = labelColor.copy(alpha = if (label.contains("выкл") || label == "Телефон") 0.78f else 0.94f),
             fontSize = 9.sp,
-            letterSpacing = 1.2.sp,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
 }
 
 @Composable
-private fun VideoCallControlButton(
-    label: String,
-    active: Boolean,
-    destructive: Boolean = false,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = when {
-            destructive -> Color(0xFFA85F6E)
-            active -> Color(0xFF394451).copy(alpha = 0.94f)
-            else -> Color(0xFF69717C).copy(alpha = 0.94f)
-        },
-        shape = CircleShape,
-        modifier = Modifier.size(72.dp).clickable(onClick = onClick)
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                label,
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 5.dp)
-            )
+private fun CallSpeakerGlyph(tint: Color, enabled: Boolean) {
+    Canvas(Modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
+        val speaker = Path().apply {
+            moveTo(w * 0.14f, h * 0.39f)
+            lineTo(w * 0.34f, h * 0.39f)
+            lineTo(w * 0.62f, h * 0.17f)
+            lineTo(w * 0.62f, h * 0.83f)
+            lineTo(w * 0.34f, h * 0.61f)
+            lineTo(w * 0.14f, h * 0.61f)
+            close()
         }
+        drawPath(speaker, tint, style = stroke)
+        if (enabled) {
+            drawArc(
+                tint,
+                startAngle = -48f,
+                sweepAngle = 96f,
+                useCenter = false,
+                topLeft = Offset(w * 0.42f, h * 0.23f),
+                size = androidx.compose.ui.geometry.Size(w * 0.46f, h * 0.54f),
+                style = stroke
+            )
+            drawArc(
+                tint,
+                startAngle = -48f,
+                sweepAngle = 96f,
+                useCenter = false,
+                topLeft = Offset(w * 0.55f, h * 0.10f),
+                size = androidx.compose.ui.geometry.Size(w * 0.42f, h * 0.80f),
+                style = stroke
+            )
+        } else {
+            drawLine(tint, Offset(w * 0.68f, h * 0.35f), Offset(w * 0.91f, h * 0.65f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.91f, h * 0.35f), Offset(w * 0.68f, h * 0.65f), strokeWidth = stroke.width, cap = StrokeCap.Round)
+        }
+    }
+}
+
+@Composable
+private fun CallSwitchGlyph(tint: Color) {
+    Canvas(Modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
+        drawArc(
+            tint,
+            startAngle = 205f,
+            sweepAngle = 135f,
+            useCenter = false,
+            topLeft = Offset(w * 0.17f, h * 0.17f),
+            size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.66f),
+            style = stroke
+        )
+        drawArc(
+            tint,
+            startAngle = 25f,
+            sweepAngle = 135f,
+            useCenter = false,
+            topLeft = Offset(w * 0.17f, h * 0.17f),
+            size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.66f),
+            style = stroke
+        )
+        val firstArrow = Path().apply {
+            moveTo(w * 0.20f, h * 0.22f)
+            lineTo(w * 0.39f, h * 0.22f)
+            lineTo(w * 0.29f, h * 0.39f)
+            close()
+        }
+        val secondArrow = Path().apply {
+            moveTo(w * 0.80f, h * 0.78f)
+            lineTo(w * 0.61f, h * 0.78f)
+            lineTo(w * 0.71f, h * 0.61f)
+            close()
+        }
+        drawPath(firstArrow, tint)
+        drawPath(secondArrow, tint)
     }
 }
 

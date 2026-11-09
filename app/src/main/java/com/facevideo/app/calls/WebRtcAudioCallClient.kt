@@ -80,11 +80,16 @@ class WebRtcAudioCallClient(
     private val remoteDescriptionSet = AtomicBoolean(false)
     private val candidateLock = Any()
     private val remoteSdpCandidateKeys = mutableSetOf<String>()
+    @Volatile private var remoteIceUfrag: String? = null
+    private val remoteRestartDescriptionObserved = AtomicBoolean(false)
+    private val restartNegotiationInProgress = AtomicBoolean(false)
     private var connectionTimeoutJob: Job? = null
     private var recoveryJob: Job? = null
     private val restartAttempted = AtomicBoolean(false)
     private val restartRequestSent = AtomicBoolean(false)
     @Volatile private var lastIceConnectionState = PeerConnection.IceConnectionState.NEW
+    @Volatile private var lastIceGatheringState = PeerConnection.IceGatheringState.NEW.name
+    @Volatile private var lastRemoteDescriptionType = "none"
     @Volatile private var lastHandledSignal = "none"
     @Volatile private var lastReceiving = false
     @Volatile private var selectedPairSummary = "ещё не выбрана"
@@ -230,6 +235,8 @@ class WebRtcAudioCallClient(
      */
     private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
     )
 
@@ -269,6 +276,7 @@ class WebRtcAudioCallClient(
                         PeerConnection.IceConnectionState.COMPLETED -> {
                             connectionTimeoutJob?.cancel()
                             recoveryJob?.cancel()
+                            restartNegotiationInProgress.set(false)
                             setStatus(
                                 if (restartAttempted.get()) {
                                     "Соединение восстановлено"
@@ -289,7 +297,11 @@ class WebRtcAudioCallClient(
                         PeerConnection.IceConnectionState.FAILED -> {
                             connectionTimeoutJob?.cancel()
                             if (restartAttempted.get()) {
-                                reportDirectConnectionFailure("ICE перешёл в FAILED после попытки восстановления")
+                                // ICE can re-emit FAILED while the restarted offer/answer
+                                // is still being applied. Keep the one recovery attempt
+                                // alive until its full connectivity-check timeout.
+                                setStatus("Проверяем новый прямой маршрут…")
+                                scheduleDirectConnectionTimeout()
                             } else {
                                 setStatus("Связь потеряна. Перезапускаем сетевое согласование…")
                                 scheduleIceRecovery("ICE FAILED", 1_000L)
@@ -315,6 +327,7 @@ class WebRtcAudioCallClient(
                     Log.i(TAG, "Selected ICE candidate pair: $selectedPairSummary")
                 }
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
+                    lastIceGatheringState = state.name
                     Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
                     if (state == PeerConnection.IceGatheringState.COMPLETE) {
                         iceGatheringCompleted.complete(Unit)
@@ -704,6 +717,9 @@ class WebRtcAudioCallClient(
                 )
             }.onSuccess {
                 Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
+                if (signalType == "answer" && restartAttempted.get()) {
+                    restartNegotiationInProgress.set(false)
+                }
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
             }
@@ -716,8 +732,17 @@ class WebRtcAudioCallClient(
         onSuccess: () -> Unit
     ) {
         val connection = peerConnection ?: return
+        val nextRemoteUfrag = extractIceUfrag(sdp)
         val embeddedCandidateCount = synchronized(candidateLock) {
             remoteDescriptionSet.set(false)
+            if (nextRemoteUfrag != null) {
+                val previousUfrag = remoteIceUfrag
+                if (previousUfrag != null && previousUfrag != nextRemoteUfrag) {
+                    remoteRestartDescriptionObserved.set(true)
+                    restartAttempted.set(true)
+                    restartNegotiationInProgress.set(true)
+                }
+            }
             remoteSdpCandidateKeys.clear()
             sdp.lineSequence()
                 .filter { it.startsWith("a=candidate:") }
@@ -725,12 +750,18 @@ class WebRtcAudioCallClient(
                 .forEach { remoteSdpCandidateKeys.add(it) }
             remoteSdpCandidateKeys.size
         }
+        lastRemoteDescriptionType = type.canonicalForm()
         Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
-                remoteDescriptionSet.set(true)
+                synchronized(candidateLock) {
+                    if (nextRemoteUfrag != null) remoteIceUfrag = nextRemoteUfrag
+                }
                 Log.i(TAG, "Remote SDP ${type.canonicalForm()} applied successfully")
                 flushRemoteCandidates()
+                if (type == SessionDescription.Type.ANSWER && restartAttempted.get()) {
+                    restartNegotiationInProgress.set(false)
+                }
                 onSuccess()
             }
 
@@ -796,14 +827,17 @@ class WebRtcAudioCallClient(
 
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
+        val signalingState = peerConnection?.signalingState?.name ?: "none"
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
-            "remote SDP=${remoteDescriptionSet.get()}; signal=$lastHandledSignal; " +
-            "restartAttempted=${restartAttempted.get()}; selectedPair=$selectedPairSummary; " +
-            "локальные host/srflx/other=" +
+            "remote SDP=${remoteDescriptionSet.get()}($lastRemoteDescriptionType); " +
+            "signaling=$signalingState; gathering=$lastIceGatheringState; signal=$lastHandledSignal; " +
+            "restartAttempted=${restartAttempted.get()}; restartNegotiation=${restartNegotiationInProgress.get()}; " +
+            "selectedPair=$selectedPairSummary; локальные host/srflx/other=" +
             "${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
-            "удалённые получено/в очереди/принято/отклонено/уже в SDP=" +
-            "${remoteCandidatesReceived.get()}/${pending}/${remoteCandidatesApplied.get()}/" +
-            "${remoteCandidatesRejected.get()}/${remoteCandidatesAlreadyInSdp.get()}"
+            "удалённые received/queuedTotal/pendingNow/accepted/rejected/alreadyInSdp=" +
+            "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
+            "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
+            "${remoteCandidatesAlreadyInSdp.get()}"
     }
 
     private fun reportDirectConnectionFailure(reason: String) {
@@ -826,6 +860,10 @@ class WebRtcAudioCallClient(
             ) {
                 return@launch
             }
+            if (restartAttempted.get()) {
+                scheduleDirectConnectionTimeout()
+                return@launch
+            }
             if (isCaller) {
                 initiateIceRestart(reason)
             } else {
@@ -837,11 +875,20 @@ class WebRtcAudioCallClient(
     private fun sendIceRestartRequest(reason: String) {
         if (!restartRequestSent.compareAndSet(false, true)) return
         restartAttempted.set(true)
-        // The peer is about to generate a fresh ICE generation. Stop applying
-        // trickled candidates to the previous remote SDP while the restart
-        // offer is in transit; receiveRemoteCandidate will queue them until
-        // setRemoteDescription() installs the new offer.
-        remoteDescriptionSet.set(false)
+        restartNegotiationInProgress.set(true)
+        // If the caller's restart offer is already being applied, a late
+        // request must not reset the remote-description gate after that offer.
+        val remoteRestartAlreadyObserved = synchronized(candidateLock) {
+            val observed = remoteRestartDescriptionObserved.get()
+            if (!observed) remoteDescriptionSet.set(false)
+            observed
+        }
+        if (remoteRestartAlreadyObserved) {
+            Log.i(TAG, "Skipping duplicate ICE restart request; fresh remote SDP already observed")
+            setStatus("Согласуем новый сетевой маршрут…")
+            scheduleDirectConnectionTimeout()
+            return
+        }
         callScope.launch {
             runCatching {
                 repository.sendSignal(
@@ -856,6 +903,7 @@ class WebRtcAudioCallClient(
             }.onSuccess {
                 Log.i(TAG, "ICE restart requested from caller: $reason")
                 setStatus("Запросили у собеседника восстановление соединения…")
+                scheduleDirectConnectionTimeout()
             }.onFailure {
                 reportError("Не удалось запросить восстановление звонка: ${it.message}")
             }
@@ -865,12 +913,13 @@ class WebRtcAudioCallClient(
     private fun initiateIceRestart(reason: String) {
         if (!isCaller) return
         if (!restartAttempted.compareAndSet(false, true)) {
-            if (lastIceConnectionState == PeerConnection.IceConnectionState.FAILED) {
-                reportDirectConnectionFailure("Повторная попытка ICE restart недоступна")
-            }
+            // Simultaneous recovery requests are expected when both phones
+            // observe the same failure. Keep the existing single restart alive.
+            scheduleDirectConnectionTimeout()
             return
         }
 
+        restartNegotiationInProgress.set(true)
         recoveryJob?.cancel()
         connectionTimeoutJob?.cancel()
         callScope.launch {
@@ -887,7 +936,9 @@ class WebRtcAudioCallClient(
                 // Do not add candidates from the remote restart generation to
                 // the old answer. They must remain queued until the new answer
                 // is installed below via setRemoteDescription().
-                remoteDescriptionSet.set(false)
+                synchronized(candidateLock) {
+                    remoteDescriptionSet.set(false)
+                }
                 Log.w(TAG, "Starting one ICE restart: $reason")
                 setStatus("Пробуем восстановить прямое соединение…")
                 connection.restartIce()
@@ -898,6 +949,13 @@ class WebRtcAudioCallClient(
             }
         }
     }
+
+    private fun extractIceUfrag(sdp: String): String? =
+        sdp.lineSequence()
+            .firstOrNull { it.startsWith("a=ice-ufrag:") }
+            ?.substringAfter("a=ice-ufrag:")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
 
     private fun describeCandidate(candidateSdp: String): String {
         val parts = candidateSdp.trim().split(Regex("\\s+"))
@@ -921,9 +979,15 @@ class WebRtcAudioCallClient(
             val state = lastIceConnectionState
             if (state == PeerConnection.IceConnectionState.NEW ||
                 state == PeerConnection.IceConnectionState.CHECKING ||
-                state == PeerConnection.IceConnectionState.DISCONNECTED
+                state == PeerConnection.IceConnectionState.DISCONNECTED ||
+                state == PeerConnection.IceConnectionState.FAILED
             ) {
-                reportDirectConnectionFailure("Не удалось выбрать прямую пару ICE-кандидатов за 30 секунд")
+                val reason = if (restartAttempted.get()) {
+                    "Не удалось выбрать прямую пару ICE-кандидатов после повторного согласования"
+                } else {
+                    "Не удалось выбрать прямую пару ICE-кандидатов за 30 секунд"
+                }
+                reportDirectConnectionFailure(reason)
             }
         }
     }
