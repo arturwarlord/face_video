@@ -7,6 +7,7 @@ import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -65,6 +67,7 @@ class WebRtcAudioCallClient(
     // Video is strictly opt-in per call row. Audio calls retain the old media path.
     private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
+    private val iceGatheringCompleted = CompletableDeferred<Unit>()
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
@@ -74,6 +77,12 @@ class WebRtcAudioCallClient(
     private val remoteCandidatesApplied = AtomicInteger(0)
     private val remoteCandidatesRejected = AtomicInteger(0)
     private val remoteCandidatesAlreadyInSdp = AtomicInteger(0)
+    private val remoteHostCandidates = AtomicInteger(0)
+    private val remoteSrflxCandidates = AtomicInteger(0)
+    private val remotePrflxCandidates = AtomicInteger(0)
+    private val remoteRelayCandidates = AtomicInteger(0)
+    @Volatile private var lastLocalSdpCandidateCount = 0
+    @Volatile private var lastRemoteSdpCandidateCount = 0
     private val remoteDescriptionSet = AtomicBoolean(false)
     private val candidateLock = Any()
     private val remoteSdpCandidateKeys = mutableSetOf<String>()
@@ -299,7 +308,9 @@ class WebRtcAudioCallClient(
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                     lastIceGatheringState = state.name
                     Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
-
+                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                        iceGatheringCompleted.complete(Unit)
+                    }
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
@@ -620,20 +631,32 @@ class WebRtcAudioCallClient(
         fallbackDescription: SessionDescription
     ) {
         callScope.launch {
-            setStatus("Отправляем параметры прямого соединения…")
-            // Restore the proven P2P order: send SDP as soon as local
-            // description is set; ICE candidates are trickled independently.
+            setStatus("Собираем сетевые маршруты…")
+            // Match the previously working direct-P2P flow: allow the ICE agent
+            // a short bounded window to embed host/srflx candidates into SDP.
+            // Trickle ICE remains enabled and carries later candidates.
+            val gatheringFinished = withTimeoutOrNull(LOCAL_ICE_GATHER_WAIT_MS) {
+                iceGatheringCompleted.await()
+                true
+            } ?: false
+            if (closed.get()) return@launch
+
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
+            lastLocalSdpCandidateCount = candidatesInSdp
             Log.i(
                 TAG,
-                "Sending P2P $signalType SDP immediately: candidatesInSdp=$candidatesInSdp; " +
+                "Sending P2P $signalType SDP: gatheringFinished=$gatheringFinished, " +
+                    "candidatesInSdp=$candidatesInSdp, candidateCallbacks=\${gatheredCandidateCount.get()}; " +
                     "remaining candidates use trickle ICE"
             )
             if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
-                Log.i(TAG, "No ICE candidates embedded yet; waiting for trickle ICE callbacks.")
+                Log.w(TAG, "No ICE candidates found in SDP or callbacks yet.")
+            }
+            if (!gatheringFinished) {
+                Log.w(TAG, "ICE gathering wait reached \${LOCAL_ICE_GATHER_WAIT_MS}ms; continue with trickle ICE.")
             }
 
             runCatching {
@@ -646,6 +669,7 @@ class WebRtcAudioCallClient(
                 )
             }.onSuccess {
                 Log.i(TAG, "$signalType SDP sent with $candidatesInSdp embedded ICE candidates")
+                setStatus("Отправляем параметры прямого соединения…")
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
             }
@@ -668,6 +692,7 @@ class WebRtcAudioCallClient(
             remoteSdpCandidateKeys.size
         }
         lastRemoteDescriptionType = type.canonicalForm()
+        lastRemoteSdpCandidateCount = embeddedCandidateCount
         Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
@@ -687,6 +712,14 @@ class WebRtcAudioCallClient(
 
     private fun receiveRemoteCandidate(candidate: IceCandidate) {
         remoteCandidatesReceived.incrementAndGet()
+        val candidateType = Regex("""\styp\s+(host|srflx|prflx|relay)""")
+            .find(candidate.sdp)?.groupValues?.getOrNull(1)
+        when (candidateType) {
+            "host" -> remoteHostCandidates.incrementAndGet()
+            "srflx" -> remoteSrflxCandidates.incrementAndGet()
+            "prflx" -> remotePrflxCandidates.incrementAndGet()
+            "relay" -> remoteRelayCandidates.incrementAndGet()
+        }
         val queued = synchronized(candidateLock) {
             if (!remoteDescriptionSet.get()) {
                 if (pendingRemoteCandidates.none { it.sdp == candidate.sdp }) {
@@ -742,9 +775,13 @@ class WebRtcAudioCallClient(
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}($lastRemoteDescriptionType); " +
             "signaling=$signalingState; gathering=$lastIceGatheringState; signal=$lastHandledSignal; " +
-            "selectedPair=$selectedPairSummary; локальные host/srflx/other=" +
+            "selectedPair=$selectedPairSummary; localSDP=$lastLocalSdpCandidateCount; " +
+            "remoteSDP=$lastRemoteSdpCandidateCount; local host/srflx/other=" +
             "${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
-            "удалённые received/queuedTotal/pendingNow/accepted/rejected/alreadyInSdp=" +
+            "remote types host/srflx/prflx/relay=" +
+            "${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
+            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; " +
+            "remote received/queuedTotal/pendingNow/accepted/rejected/alreadyInSdp=" +
             "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
             "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
             "${remoteCandidatesAlreadyInSdp.get()}"
@@ -752,6 +789,7 @@ class WebRtcAudioCallClient(
 
     private fun reportDirectConnectionFailure(reason: String) {
         Log.w(TAG, "$reason. ${diagnosticSummary()}")
+        setStatus("Прямое соединение не установлено")
         reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}")
     }
 
@@ -810,6 +848,7 @@ class WebRtcAudioCallClient(
     companion object {
         private const val TAG = "ArturChatWebRTC"
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
+        private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val DIRECT_P2P_FAILED_MESSAGE =
             "Не удалось установить прямое соединение между телефонами. " +

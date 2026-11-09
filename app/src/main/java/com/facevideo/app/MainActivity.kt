@@ -4420,7 +4420,7 @@ private fun ActiveAudioCallScreen(
         if (error != null) {
             Spacer(Modifier.height(12.dp))
             Surface(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 116.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 190.dp),
                 color = Color(0xBFFFF0F2),
                 shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, Color(0x44D77782))
@@ -4430,7 +4430,7 @@ private fun ActiveAudioCallScreen(
                     color = Color(0xFFA85F6E),
                     fontSize = 10.sp,
                     lineHeight = 15.sp,
-                    maxLines = 5,
+                    maxLines = 12,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)
                 )
