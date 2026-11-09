@@ -2407,8 +2407,20 @@ private fun LiveChatRow(
             }
         }
     }
-    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-        DropdownMenuItem(text = { Text("Удалить чат") }, onClick = { showMenu = false; confirmDelete = true })
+    DropdownMenu(
+        expanded = showMenu,
+        onDismissRequest = { showMenu = false },
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        DropdownMenuItem(
+            text = { Text("Удалить чат", color = InboxPrimary) },
+            onClick = { showMenu = false; confirmDelete = true },
+            colors = androidx.compose.material3.MenuDefaults.itemColors(
+                textColor = InboxPrimary
+            )
+        )
     }
     if (confirmDelete) {
         AlertDialog(
