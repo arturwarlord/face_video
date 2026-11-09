@@ -4463,7 +4463,7 @@ private fun ActiveAudioCallScreen(
                 Text("×", color = tint, fontSize = 31.sp, fontWeight = FontWeight.Light)
             }
         }
-        Spacer(Modifier.height(5.dp))        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(5.dp))
         Text("Звонок один на один · WebRTC", color = Muted, fontSize = 9.sp)
     }
 }
@@ -4584,11 +4584,6 @@ private fun ActiveVideoCallScreen(
                 Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
             }
         }
-    }
-}
-
-@Composable
-private fun CallControlButton(        }
     }
 }
 
