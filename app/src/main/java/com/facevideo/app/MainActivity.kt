@@ -2821,18 +2821,12 @@ private fun LiveChatScreen(
     ) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-            color = Color.White.copy(alpha = 0.48f),
+            color = Color.Transparent,
             shape = RoundedCornerShape(28.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
-            shadowElevation = 3.dp
+            shadowElevation = 0.dp
         ) {
             Row(
                 Modifier.fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
-                        )
-                    )
                     .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -2895,35 +2889,28 @@ private fun LiveChatScreen(
                         )
                         Spacer(Modifier.height(3.dp))
                         val peerIsOnline = peerUserId != null && peerUserId in onlineUserIds
-                        Surface(
-                            color = Color.White.copy(alpha = 0.62f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.78f))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    Modifier.size(6.dp).background(
-                                        if (peerIsOnline) InboxOnline else InboxMuted.copy(alpha = 0.68f),
-                                        CircleShape
-                                    )
+                            Box(
+                                Modifier.size(6.dp).background(
+                                    if (peerIsOnline) InboxOnline else InboxMuted.copy(alpha = 0.68f),
+                                    CircleShape
                                 )
-                                Spacer(Modifier.width(5.dp))
-                                Text(
-                                    when {
-                                        chat.isGroup -> "Групповой чат"
-                                        peerUserId == null -> "Проверяем статус…"
-                                        peerIsOnline -> "В сети"
-                                        !presenceAvailable -> "Статус обновляется…"
-                                        else -> "Не в сети"
-                                    },
-                                    color = if (peerIsOnline) InboxOnline else InboxMuted,
-                                    fontSize = 9.sp,
-                                    maxLines = 1
-                                )
-                            }
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                when {
+                                    chat.isGroup -> "Групповой чат"
+                                    peerUserId == null -> "Проверяем статус…"
+                                    peerIsOnline -> "В сети"
+                                    !presenceAvailable -> "Статус обновляется…"
+                                    else -> "Не в сети"
+                                },
+                                color = if (peerIsOnline) InboxOnline else InboxMuted,
+                                fontSize = 9.sp,
+                                maxLines = 1
+                            )
                         }
                     }
                     Spacer(Modifier.width(7.dp))
