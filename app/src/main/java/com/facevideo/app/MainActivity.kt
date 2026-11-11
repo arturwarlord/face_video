@@ -4207,6 +4207,172 @@ private fun shouldRebuildVoiceWaveform(waveform: List<Int>): Boolean {
 }
 
 @Composable
+private fun ChatVideoNotePlayer(
+    path: String,
+    repository: SupabaseChatRepository,
+    durationMs: Long,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var videoFile by remember(path) { mutableStateOf<File?>(null) }
+    var failed by remember(path) { mutableStateOf(false) }
+    var isLoading by remember(path) { mutableStateOf(true) }
+    var isPlaying by remember(path) { mutableStateOf(false) }
+    var soundEnabled by remember(path) { mutableStateOf(false) }
+    val latestFile = rememberUpdatedState(videoFile)
+    val player = remember(path, context) { ExoPlayer.Builder(context).build() }
+
+    LaunchedEffect(path, repository) {
+        isLoading = true
+        failed = false
+        try {
+            val bytes = withContext(Dispatchers.IO) {
+                repository.downloadChatAttachment(path)
+            }
+            require(bytes.isNotEmpty() && bytes.size <= MAX_CHAT_VIDEO_NOTE_BYTES) {
+                "Видеосообщение повреждено или превышает допустимый размер."
+            }
+            val localFile = withContext(Dispatchers.IO) {
+                File.createTempFile("arturchat-video-note-", ".mp4", context.cacheDir)
+                    .apply { writeBytes(bytes) }
+            }
+            videoFile = localFile
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("ArturChatVideoNote", "Could not load video note", error)
+            failed = true
+        } finally {
+            isLoading = false
+        }
+    }
+
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                failed = true
+                isPlaying = false
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            runCatching { player.release() }
+            latestFile.value?.delete()
+        }
+    }
+
+    LaunchedEffect(player, videoFile) {
+        val file = videoFile ?: return@LaunchedEffect
+        runCatching {
+            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            player.repeatMode = Player.REPEAT_MODE_ONE
+            player.volume = if (soundEnabled) 1f else 0f
+            player.prepare()
+        }.onFailure {
+            android.util.Log.w("ArturChatVideoNote", "Could not prepare video note player", it)
+            failed = true
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color(0xFF11131A))
+    ) {
+        val file = videoFile
+        if (file != null && !failed) {
+            AndroidView(
+                factory = { viewContext ->
+                    PlayerView(viewContext).apply {
+                        useController = false
+                        setUseTextureView(true)
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                        player = this@ChatVideoNotePlayer.run { this@run.player }
+                    }
+                },
+                update = { playerView ->
+                    if (playerView.player !== player) playerView.player = player
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        if (isLoading || failed || !isPlaying) {
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.48f)),
+                contentAlignment = Alignment.Center
+            ) {
+                when {
+                    isLoading -> androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                    failed -> Text("!", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    else -> Text("▶", color = Color.White, fontSize = 19.sp)
+                }
+            }
+        }
+
+        if (file != null && !failed && !isLoading) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 13.dp)
+                    .clip(CircleShape)
+                    .clickable {
+                        if (player.isPlaying) {
+                            soundEnabled = !soundEnabled
+                            player.volume = if (soundEnabled) 1f else 0f
+                        } else {
+                            soundEnabled = true
+                            player.volume = 1f
+                            player.play()
+                        }
+                    },
+                color = Color.Black.copy(alpha = 0.42f),
+                shape = CircleShape,
+                shadowElevation = 0.dp
+            ) {
+                Text(
+                    if (isPlaying && soundEnabled) "♫" else if (isPlaying) "◖" else formatVoiceDuration(durationMs),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .clickable(enabled = file != null && !failed && !isLoading) {
+                    if (player.isPlaying) {
+                        soundEnabled = !soundEnabled
+                        player.volume = if (soundEnabled) 1f else 0f
+                    } else {
+                        soundEnabled = true
+                        player.volume = 1f
+                        player.play()
+                    }
+                }
+        )
+    }
+}
+
+@Composable
 private fun ChatVoiceMessagePlayer(
     path: String,
     repository: SupabaseChatRepository,
