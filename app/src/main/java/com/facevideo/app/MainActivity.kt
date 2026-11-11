@@ -238,6 +238,7 @@ private val InboxDanger = Color(0xFFBE5E67)
 
 private enum class MainTab(val title: String) {
     CHATS("Чаты"),
+    GROUPS("Группы"),
     CALLS("Звонки"),
     CONTACTS("Друзья"),
     PROFILE("Профиль")
@@ -1158,6 +1159,23 @@ private fun FaceVideoApp(
                                 )
                             } else {
                                 ChatListScreen(onOpenChat = { openedChat = it })
+                            }
+                        }
+                        MainTab.GROUPS -> {
+                            if (liveRepository != null && userId != null) {
+                                GroupsScreen(
+                                    repository = liveRepository,
+                                    userId = userId,
+                                    onOpenGroup = { openedLiveChat = it }
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "Для работы раздела «Группы» необходимо подключение к аккаунту.",
+                                        color = Muted,
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
                         MainTab.CALLS -> {
@@ -8114,6 +8132,37 @@ private fun InboxNavigationGlyph(tab: MainTab, selected: Boolean) {
                 }
                 drawPath(bubble, tint, style = line)
                 listOf(0.39f, 0.53f, 0.67f).forEach { x -> drawCircle(tint, radius = 1.0.dp.toPx(), center = Offset(w * x, h * 0.45f)) }
+            }
+            MainTab.GROUPS -> {
+                val rearBubble = Path().apply {
+                    moveTo(w * 0.22f, h * 0.13f)
+                    lineTo(w * 0.72f, h * 0.13f)
+                    cubicTo(w * 0.82f, h * 0.13f, w * 0.88f, h * 0.20f, w * 0.88f, h * 0.30f)
+                    lineTo(w * 0.88f, h * 0.56f)
+                    cubicTo(w * 0.88f, h * 0.66f, w * 0.80f, h * 0.72f, w * 0.70f, h * 0.72f)
+                    lineTo(w * 0.60f, h * 0.72f)
+                    lineTo(w * 0.50f, h * 0.86f)
+                    lineTo(w * 0.47f, h * 0.72f)
+                    lineTo(w * 0.31f, h * 0.72f)
+                    cubicTo(w * 0.21f, h * 0.72f, w * 0.14f, h * 0.65f, w * 0.14f, h * 0.55f)
+                    lineTo(w * 0.14f, h * 0.31f)
+                    cubicTo(w * 0.14f, h * 0.20f, w * 0.14f, h * 0.13f, w * 0.22f, h * 0.13f)
+                    close()
+                }
+                drawPath(rearBubble, tint, style = line)
+                val frontBubble = Path().apply {
+                    moveTo(w * 0.34f, h * 0.34f)
+                    lineTo(w * 0.79f, h * 0.34f)
+                    cubicTo(w * 0.87f, h * 0.34f, w * 0.93f, h * 0.41f, w * 0.93f, h * 0.49f)
+                    lineTo(w * 0.93f, h * 0.70f)
+                    cubicTo(w * 0.93f, h * 0.79f, w * 0.87f, h * 0.85f, w * 0.78f, h * 0.85f)
+                    lineTo(w * 0.64f, h * 0.85f)
+                    lineTo(w * 0.55f, h * 0.96f)
+                    lineTo(w * 0.53f, h * 0.85f)
+                    lineTo(w * 0.38f, h * 0.85f)
+                    cubicTo(w * 0.29f, h * 0.85f, w * 0.23f, h * 0.78f, w * 0.23f, h * 0.70f)
+                }
+                drawPath(frontBubble, tint, style = line)
             }
             MainTab.CALLS -> {
                 val handset = Path().apply {
