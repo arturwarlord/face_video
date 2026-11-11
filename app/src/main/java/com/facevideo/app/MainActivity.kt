@@ -122,6 +122,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.facevideo.app.calls.WebRtcAudioCallClient
+import com.facevideo.app.calls.OutgoingCallRingbackTone
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.SupabaseCallRepository
 import com.facevideo.app.data.DemoData
@@ -513,6 +514,7 @@ private fun FaceVideoApp(
     }
 
     val appNotifications = remember(context) { AppNotificationManager(context) }
+    val outgoingCallRingback = remember { OutgoingCallRingbackTone() }
     val incomingCallsFlow = remember(callRepository, userId) {
         if (callRepository != null && userId != null) {
             callRepository.observeIncomingCalls(userId)
@@ -657,11 +659,27 @@ private fun FaceVideoApp(
                     repository = repository,
                     call = call,
                     currentUserId = currentUser,
-                                        onStatus = { callStatus = it },
-                    onError = { callError = it }
+                                        onStatus = { status ->
+                        callStatus = status
+                        if (status == "Звонок активен" || status.startsWith("Собеседник ответил")) {
+                            outgoingCallRingback.stop()
+                        }
+                    },
+                    onError = {
+                        callError = it
+                        outgoingCallRingback.stop()
+                    }
                 )
                 callClient = client
                 client.startOutgoing()
+                if (
+                    activeCall?.id == call.id &&
+                    activeCallIsOutgoing &&
+                    activeCall?.status == "ringing" &&
+                    callError == null
+                ) {
+                    outgoingCallRingback.start()
+                }
             }
             is PendingCallAction.Incoming -> {
                 callError = null
@@ -776,6 +794,7 @@ private fun FaceVideoApp(
     }
 
     fun finishCall() {
+        outgoingCallRingback.stop()
         val call = activeCall ?: return
         val shouldCancel = activeCallIsOutgoing && call.status == "ringing"
         val clientToClose = callClient
@@ -834,8 +853,11 @@ private fun FaceVideoApp(
             appNotifications.stopIncomingCallAlert()
         }
     }
-    DisposableEffect(appNotifications) {
-        onDispose { appNotifications.stopIncomingCallAlert() }
+    DisposableEffect(appNotifications, outgoingCallRingback) {
+        onDispose {
+            appNotifications.stopIncomingCallAlert()
+            outgoingCallRingback.stop()
+        }
     }
     LaunchedEffect(incomingCall?.id) {
         incomingCallerProfile = if (incomingCall != null) {
@@ -852,14 +874,18 @@ private fun FaceVideoApp(
                 activeCall = activeCall?.copy(status = latest.status)
             }
             when (latest.status) {
-                "accepted" -> if (activeCallIsOutgoing && callStatus.startsWith("Вызов")) {
-                    callStatus = if (call.mediaType == "video") {
-                        "Собеседник ответил. Подключаем видео…"
-                    } else {
-                        "Собеседник ответил. Подключаем аудио…"
+                "accepted" -> {
+                    outgoingCallRingback.stop()
+                    if (activeCallIsOutgoing && callStatus.startsWith("Вызов")) {
+                        callStatus = if (call.mediaType == "video") {
+                            "Собеседник ответил. Подключаем видео…"
+                        } else {
+                            "Собеседник ответил. Подключаем аудио…"
+                        }
                     }
                 }
                 "declined" -> {
+                    outgoingCallRingback.stop()
                     callStatus = "Собеседник отклонил вызов."
                     delay(1800)
                     if (activeCall?.id == call.id) {
@@ -869,6 +895,7 @@ private fun FaceVideoApp(
                     }
                 }
                 "cancelled" -> {
+                    outgoingCallRingback.stop()
                     callStatus = "Вызов отменён."
                     delay(1500)
                     if (activeCall?.id == call.id) {
@@ -878,6 +905,7 @@ private fun FaceVideoApp(
                     }
                 }
                 "ended" -> {
+                    outgoingCallRingback.stop()
                     callStatus = "Звонок завершён."
                     delay(1200)
                     if (activeCall?.id == call.id) {
@@ -895,6 +923,7 @@ private fun FaceVideoApp(
         if (activeCallIsOutgoing && call.status == "ringing") {
             delay(45_000)
             if (activeCall?.id == call.id && callStatus.startsWith("Вызов")) {
+                outgoingCallRingback.stop()
                 runCatching { callRepository?.cancelCall(call.id) }
                 callStatus = "Нет ответа."
                 delay(1500)
