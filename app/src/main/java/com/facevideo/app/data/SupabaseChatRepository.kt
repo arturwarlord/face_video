@@ -49,6 +49,32 @@ data class FaceVideoProfile(
 )
 
 @Serializable
+data class FaceVideoChannel(
+    val id: String,
+    val title: String,
+    val description: String = "",
+    @SerialName("created_by") val createdBy: String,
+    @SerialName("is_public") val isPublic: Boolean = true,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+data class FaceVideoChannelEntry(
+    val channel: FaceVideoChannel,
+    val isSubscribed: Boolean
+)
+
+@Serializable
+data class FaceVideoChannelPost(
+    val id: String,
+    @SerialName("channel_id") val channelId: String,
+    @SerialName("author_id") val authorId: String,
+    val body: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("edited_at") val editedAt: String? = null
+)
+
+@Serializable
 data class FaceVideoFriendship(
     val id: String,
     @SerialName("user_low") val userLow: String,
@@ -178,6 +204,34 @@ private data class CreateChatArguments(
     @SerialName("p_member_ids") val memberIds: List<String>,
     @SerialName("p_title") val title: String? = null,
     @SerialName("p_is_group") val isGroup: Boolean = false
+)
+
+@Serializable
+private data class CreateChannelArguments(
+    @SerialName("p_title") val title: String,
+    @SerialName("p_description") val description: String,
+    @SerialName("p_is_public") val isPublic: Boolean = true
+)
+
+@Serializable
+private data class FaceVideoChannelMembership(
+    @SerialName("channel_id") val channelId: String,
+    @SerialName("user_id") val userId: String,
+    val role: String
+)
+
+@Serializable
+private data class NewFaceVideoChannelMembership(
+    @SerialName("channel_id") val channelId: String,
+    @SerialName("user_id") val userId: String,
+    val role: String = "subscriber"
+)
+
+@Serializable
+private data class NewFaceVideoChannelPost(
+    @SerialName("channel_id") val channelId: String,
+    @SerialName("author_id") val authorId: String,
+    val body: String
 )
 
 @Serializable
@@ -614,6 +668,117 @@ class SupabaseChatRepository(
             CreateChatArguments(memberIds = listOf(otherUserId))
         )
         return result.decodeAs<String>()
+    }
+
+    suspend fun createGroupChat(memberIds: List<String>, title: String): String {
+        val cleanTitle = title.trim()
+        val cleanMemberIds = memberIds.distinct()
+        require(cleanTitle.length in 2..80) {
+            "Название группы должно содержать от 2 до 80 символов."
+        }
+        require(cleanMemberIds.isNotEmpty() && cleanMemberIds.size <= 49) {
+            "Добавь от 1 до 49 друзей в группу."
+        }
+        return client.postgrest.rpc(
+            "face_video_create_chat",
+            CreateChatArguments(
+                memberIds = cleanMemberIds,
+                title = cleanTitle,
+                isGroup = true
+            )
+        ).decodeAs<String>()
+    }
+
+    suspend fun createChannel(
+        title: String,
+        description: String = "",
+        isPublic: Boolean = true
+    ): FaceVideoChannel {
+        val cleanTitle = title.trim()
+        val cleanDescription = description.trim()
+        require(cleanTitle.length in 2..80) {
+            "Название канала должно содержать от 2 до 80 символов."
+        }
+        require(cleanDescription.length <= 500) {
+            "Описание канала должно содержать не более 500 символов."
+        }
+        val channelId = client.postgrest.rpc(
+            "face_video_create_channel",
+            CreateChannelArguments(
+                title = cleanTitle,
+                description = cleanDescription,
+                isPublic = isPublic
+            )
+        ).decodeAs<String>()
+        return getChannel(channelId)
+            ?: throw IllegalStateException("Канал создан, но не удалось загрузить его данные.")
+    }
+
+    suspend fun getChannel(channelId: String): FaceVideoChannel? =
+        client.from("face_video_channels").select {
+            filter { eq("id", channelId) }
+        }.decodeList<FaceVideoChannel>().firstOrNull()
+
+    suspend fun listChannels(currentUserId: String): List<FaceVideoChannelEntry> {
+        val channels = client.from("face_video_channels").select {
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoChannel>()
+        if (channels.isEmpty()) return emptyList()
+
+        val memberships = client.from("face_video_channel_members").select {
+            filter { eq("user_id", currentUserId) }
+        }.decodeList<FaceVideoChannelMembership>()
+        val subscribedIds = memberships.mapTo(mutableSetOf()) { it.channelId }
+
+        return channels.map { channel ->
+            FaceVideoChannelEntry(
+                channel = channel,
+                isSubscribed = channel.createdBy == currentUserId || channel.id in subscribedIds
+            )
+        }
+    }
+
+    suspend fun joinChannel(channelId: String, userId: String) {
+        client.from("face_video_channel_members").insert(
+            NewFaceVideoChannelMembership(
+                channelId = channelId,
+                userId = userId
+            )
+        )
+    }
+
+    suspend fun leaveChannel(channelId: String, userId: String) {
+        client.from("face_video_channel_members").delete {
+            filter {
+                eq("channel_id", channelId)
+                eq("user_id", userId)
+                eq("role", "subscriber")
+            }
+        }
+    }
+
+    suspend fun listChannelPosts(channelId: String): List<FaceVideoChannelPost> =
+        client.from("face_video_channel_posts").select {
+            filter { eq("channel_id", channelId) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<FaceVideoChannelPost>()
+
+    suspend fun createChannelPost(
+        channelId: String,
+        authorId: String,
+        body: String
+    ): FaceVideoChannelPost {
+        val cleanBody = body.trim()
+        require(cleanBody.isNotEmpty() && cleanBody.length <= 4000) {
+            "Публикация должна содержать от 1 до 4000 символов."
+        }
+        return client.from("face_video_channel_posts").insert(
+            NewFaceVideoChannelPost(
+                channelId = channelId,
+                authorId = authorId,
+                body = cleanBody
+            )
+        ) { select() }.decodeSingle<FaceVideoChannelPost>()
     }
 
     suspend fun listMessages(chatId: String): List<FaceVideoMessage> =
