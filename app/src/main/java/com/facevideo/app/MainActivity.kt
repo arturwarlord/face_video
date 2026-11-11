@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -21,6 +22,23 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
@@ -2680,6 +2698,7 @@ private fun LiveChatScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
+    var showVideoNoteRecorder by remember(chat.id) { mutableStateOf(false) }
     var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
     var voiceRecordingStartedAt by remember(chat.id) { mutableStateOf(0L) }
     var voiceRecordingDurationMs by remember(chat.id) { mutableStateOf(0L) }
@@ -2796,6 +2815,38 @@ private fun LiveChatScreen(
         else errorMessage = "Для записи голосовых сообщений нужен доступ к микрофону."
     }
 
+    val videoNotePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[Manifest.permission.CAMERA] == true ||
+            context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val microphoneGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (cameraGranted && microphoneGranted) {
+            showVideoNoteRecorder = true
+            errorMessage = null
+        } else {
+            errorMessage = "Для круглых видеосообщений нужны доступы к камере и микрофону."
+        }
+    }
+
+    fun openVideoNoteRecorder() {
+        if (isSending || isVoiceRecording) return
+        val missingPermissions = buildList {
+            if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                add(Manifest.permission.CAMERA)
+            }
+            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                add(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+        if (missingPermissions.isEmpty()) {
+            showVideoNoteRecorder = true
+        } else {
+            videoNotePermissionLauncher.launch(missingPermissions.toTypedArray())
+        }
+    }
+
     fun cancelVoiceRecording() {
         if (!isVoiceRecording) return
         isVoiceRecording = false
@@ -2843,6 +2894,48 @@ private fun LiveChatScreen(
                 isSending = false
                 voiceRecordingDurationMs = 0L
                 voiceAmplitudeSamples.clear()
+            }
+        }
+    }
+
+    fun sendVideoNote(file: File, durationMs: Long) {
+        if (isSending) return
+        isSending = true
+        errorMessage = null
+        scope.launch {
+            var stage = "Подготовка видеосообщения"
+            try {
+                require(durationMs in 1_000L..MAX_CHAT_VIDEO_NOTE_DURATION_MS) {
+                    "Запишите кружочек длительностью от 1 до 60 секунд."
+                }
+                val videoBytes = withContext(Dispatchers.IO) { file.readBytes() }
+                require(videoBytes.isNotEmpty() && videoBytes.size <= MAX_CHAT_VIDEO_NOTE_BYTES) {
+                    "Видеосообщение должно быть не больше 10 МБ."
+                }
+                stage = "Загрузка видеосообщения в защищённое хранилище"
+                val path = repository.uploadChatVideoNote(
+                    chatId = chat.id,
+                    senderId = userId,
+                    bytes = videoBytes
+                )
+                stage = "Сохранение видеосообщения в переписке"
+                val persistedMessage = repository.sendVideoNote(
+                    chatId = chat.id,
+                    videoPath = path,
+                    fileSize = videoBytes.size.toLong(),
+                    durationMs = durationMs,
+                    replyToMessageId = replyingTo?.id
+                )
+                locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
+                replyingTo = null
+                showVideoNoteRecorder = false
+                Toast.makeText(context, "Видеосообщение отправлено", Toast.LENGTH_SHORT).show()
+            } catch (error: Exception) {
+                android.util.Log.e("ArturChatVideoNote", "Video note send failed at stage: $stage", error)
+                errorMessage = "$stage: ${error.message ?: error.javaClass.simpleName}"
+            } finally {
+                withContext(Dispatchers.IO) { file.delete() }
+                isSending = false
             }
         }
     }
@@ -3234,6 +3327,13 @@ private fun LiveChatScreen(
                     }
                 }
             }
+        }
+
+        if (showVideoNoteRecorder) {
+            ChatVideoNoteRecorderDialog(
+                onDismiss = { showVideoNoteRecorder = false },
+                onSend = { file, durationMs -> sendVideoNote(file, durationMs) }
+            )
         }
 
         if (replyingTo != null) {
