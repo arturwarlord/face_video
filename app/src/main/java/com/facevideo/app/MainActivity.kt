@@ -3726,9 +3726,67 @@ private fun ChatScreen(
 }
 
 @Composable
+private fun ImageMessageMetadata(
+    time: String,
+    deliveryTicks: Pair<Int, Color>?,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        color = Color.Black.copy(alpha = 0.48f),
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                time,
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+            deliveryTicks?.let { (count, _) ->
+                Canvas(
+                    modifier = Modifier
+                        .padding(start = 1.dp)
+                        .size(width = if (count == 1) 8.dp else 13.dp, height = 9.dp)
+                ) {
+                    val unit = 4.dp.toPx()
+                    val arm = 2.2.dp.toPx()
+                    val rise = 6.2.dp.toPx()
+                    val stroke = 1.25.dp.toPx()
+                    repeat(count) { index ->
+                        val x = index * unit
+                        val joint = Offset(x + arm, size.height * 0.72f)
+                        drawLine(
+                            color = Color.White,
+                            start = Offset(x, size.height * 0.48f),
+                            end = joint,
+                            strokeWidth = stroke,
+                            cap = StrokeCap.Round
+                        )
+                        drawLine(
+                            color = Color.White,
+                            start = joint,
+                            end = Offset(x + rise, size.height * 0.2f),
+                            strokeWidth = stroke,
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatImagePreview(
     path: String,
-    repository: SupabaseChatRepository
+    repository: SupabaseChatRepository,
+    modifier: Modifier = Modifier
 ) {
     var bitmap by remember(path) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     var failed by remember(path) { mutableStateOf(false) }
@@ -3760,16 +3818,15 @@ private fun ChatImagePreview(
 
     val loaded = bitmap
     if (loaded != null) {
-        val aspectRatio = (loaded.width.toFloat() / loaded.height.toFloat()).coerceIn(0.6f, 1.8f)
+        val aspectRatio = (loaded.width.toFloat() / loaded.height.toFloat()).coerceIn(0.62f, 1.55f)
         Image(
             bitmap = loaded,
             contentDescription = "Фотография",
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 230.dp)
-                .aspectRatio(aspectRatio)
-                .clip(RoundedCornerShape(11.dp))
+            modifier = modifier
+                .heightIn(max = 360.dp)
+                .aspectRatio(aspectRatio, matchHeightConstraintsFirst = aspectRatio < 1f)
+                .clip(RoundedCornerShape(15.dp))
                 .clickable { showFullImage = true }
         )
         if (showFullImage) {
@@ -3793,10 +3850,11 @@ private fun ChatImagePreview(
         }
     } else {
         Box(
-            Modifier
+            modifier
                 .fillMaxWidth()
-                .height(120.dp)
-                .clip(RoundedCornerShape(11.dp))
+                .heightIn(min = 150.dp, max = 220.dp)
+                .aspectRatio(1.15f)
+                .clip(RoundedCornerShape(15.dp))
                 .background(if (failed) Color(0xFFF5D2D0) else Color(0xFFE5EAF0)),
             contentAlignment = Alignment.Center
         ) {
@@ -4128,6 +4186,14 @@ private fun MessageBubble(
     } else null
     val messageText = message.text
     val isVoiceAttachment = message.attachmentMimeType?.startsWith("audio/") == true && attachmentPath != null
+    val isImageAttachment = attachmentPath != null && !isVoiceAttachment
+    val hasImageCaption = isImageAttachment &&
+        messageText.isNotBlank() && !messageText.equals("[Фото]", ignoreCase = true)
+    val bubbleShape = RoundedCornerShape(
+        topStart = 18.dp, topEnd = 18.dp,
+        bottomStart = if (message.isMine) 18.dp else 5.dp,
+        bottomEnd = if (message.isMine) 5.dp else 18.dp
+    )
 
     Row(
         Modifier.fillMaxWidth().padding(
@@ -4144,7 +4210,13 @@ private fun MessageBubble(
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
-                    .then(if (isVoiceAttachment) Modifier.widthIn(min = 205.dp, max = 276.dp) else Modifier.widthIn(max = 310.dp))
+                    .then(
+                        when {
+                            isVoiceAttachment -> Modifier.widthIn(min = 205.dp, max = 276.dp)
+                            isImageAttachment -> Modifier.widthIn(max = 300.dp)
+                            else -> Modifier.widthIn(max = 310.dp)
+                        }
+                    )
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
@@ -4152,10 +4224,11 @@ private fun MessageBubble(
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
+                    isImageAttachment -> Color.Transparent
                     message.isMine -> Color(0xE9E4EBFF)
                     else -> Color(0xEAFBFCFF)
                 },
-                border = BorderStroke(
+                border = if (isImageAttachment && !selected) null else BorderStroke(
                     if (selected) 1.4.dp else 1.dp,
                     when {
                         selected -> Color(0xFF607BB9)
@@ -4163,15 +4236,15 @@ private fun MessageBubble(
                         else -> Color.White.copy(alpha = 0.92f)
                     }
                 ),
-                shadowElevation = if (selected) 3.dp else 1.dp,
-                shape = RoundedCornerShape(
-                    topStart = 18.dp, topEnd = 18.dp,
-                    bottomStart = if (message.isMine) 18.dp else 5.dp,
-                    bottomEnd = if (message.isMine) 5.dp else 18.dp
-                )
+                shadowElevation = when {
+                    selected -> 3.dp
+                    isImageAttachment -> 0.dp
+                    else -> 1.dp
+                },
+                shape = bubbleShape
             ) {
                 Column(
-                    modifier = Modifier.padding(
+                    modifier = if (isImageAttachment) Modifier else Modifier.padding(
                         start = if (isVoiceAttachment) 9.dp else 14.dp,
                         end = if (isVoiceAttachment) 9.dp else 14.dp,
                         top = if (isVoiceAttachment) 6.dp else 7.dp,
@@ -4181,12 +4254,19 @@ private fun MessageBubble(
                     )
                 ) {
                     if (message.forwardedFromName != null) {
-                        Text("Переслано от: ${message.forwardedFromName}", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Переслано от: ${message.forwardedFromName}",
+                            color = AccentSlate,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = if (isImageAttachment) Modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp) else Modifier
+                        )
+                        if (!isImageAttachment) Spacer(Modifier.height(3.dp))
                     }
                     if (replyPreview != null && !message.isDeleted) {
                         Row(
                             Modifier.fillMaxWidth()
+                                .then(if (isImageAttachment) Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp) else Modifier)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8))
                                 .clickable(enabled = onReplyPreviewClick != null) {
@@ -4219,22 +4299,39 @@ private fun MessageBubble(
                                 durationMs = message.attachmentDurationMs ?: 0L,
                                 waveform = message.attachmentWaveform.orEmpty()
                             )
+                            Spacer(Modifier.height(1.dp))
                         } else {
-                            ChatImagePreview(
-                                path = attachmentPath,
-                                repository = attachmentRepository
-                            )
+                            Box(Modifier.fillMaxWidth()) {
+                                ChatImagePreview(
+                                    path = attachmentPath,
+                                    repository = attachmentRepository,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (showTime) {
+                                    ImageMessageMetadata(
+                                        time = message.time,
+                                        deliveryTicks = deliveryTicks,
+                                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                                    )
+                                }
+                            }
+                            if (hasImageCaption) {
+                                Text(
+                                    text = messageText,
+                                    color = MainText,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 9.dp)
+                                )
+                            }
                         }
-                        Spacer(Modifier.height(if (isVoiceMessage) 1.dp else 6.dp))
-                    }
-                    if (!isVoiceMessage || attachmentPath == null) {
+                    } else if (!isVoiceMessage || attachmentPath == null) {
                         Text(
                             text = messageText,
                             color = MainText,
                             fontSize = 14.sp
                         )
                     }
-                    if (showTime) {
+                    if (showTime && !isImageAttachment) {
                         Row(
                             modifier = Modifier.align(Alignment.End).padding(top = if (isVoiceAttachment) 0.dp else 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
