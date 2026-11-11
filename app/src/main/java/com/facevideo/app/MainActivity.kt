@@ -2855,25 +2855,6 @@ private fun LiveChatScreen(
 
     Column(
         Modifier.fillMaxSize()
-            .pointerInput(selectedMessageIds.isNotEmpty()) {
-                if (selectedMessageIds.isNotEmpty()) {
-                    var horizontalDragDistance = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { horizontalDragDistance = 0f },
-                        onHorizontalDrag = { change, dragAmount ->
-                            horizontalDragDistance += dragAmount
-                            change.consume()
-                        },
-                        onDragEnd = {
-                            if (horizontalDragDistance <= -64.dp.toPx()) {
-                                selectedMessageIds = emptySet()
-                            }
-                            horizontalDragDistance = 0f
-                        },
-                        onDragCancel = { horizontalDragDistance = 0f }
-                    )
-                }
-            }
             .background(
                 Brush.verticalGradient(
                     listOf(
@@ -3035,7 +3016,26 @@ private fun LiveChatScreen(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.weight(1f).fillMaxWidth()
+                    .pointerInput(selectedMessageIds.isNotEmpty()) {
+                        if (selectedMessageIds.isNotEmpty()) {
+                            var horizontalDragDistance = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { horizontalDragDistance = 0f },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    horizontalDragDistance += dragAmount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    if (horizontalDragDistance <= -64.dp.toPx()) {
+                                        selectedMessageIds = emptySet()
+                                    }
+                                    horizontalDragDistance = 0f
+                                },
+                                onDragCancel = { horizontalDragDistance = 0f }
+                            )
+                        }
+                    },
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
