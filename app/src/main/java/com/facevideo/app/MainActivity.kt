@@ -4598,7 +4598,6 @@ private fun VideoNoteLocalPreview(
         factory = { viewContext ->
             (LayoutInflater.from(viewContext).inflate(R.layout.view_video_note_player, null) as PlayerView).apply {
                 useController = false
-                setUseTextureView(true)
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
                 this.player = player
