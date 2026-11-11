@@ -39,6 +39,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
@@ -2656,6 +2657,12 @@ private fun LiveChatScreen(
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showForwardPicker by remember { mutableStateOf(false) }
+    // Exit message-selection mode before the parent screen handles system Back.
+    BackHandler(
+        enabled = selectedMessageIds.isNotEmpty() && !showDeleteSelection && !showForwardPicker
+    ) {
+        selectedMessageIds = emptySet()
+    }
     var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
     var actionBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -2848,6 +2855,25 @@ private fun LiveChatScreen(
 
     Column(
         Modifier.fillMaxSize()
+            .pointerInput(selectedMessageIds.isNotEmpty()) {
+                if (selectedMessageIds.isNotEmpty()) {
+                    var horizontalDragDistance = 0f
+                    detectHorizontalDragGestures(
+                        onDragStart = { horizontalDragDistance = 0f },
+                        onHorizontalDrag = { change, dragAmount ->
+                            horizontalDragDistance += dragAmount
+                            change.consume()
+                        },
+                        onDragEnd = {
+                            if (horizontalDragDistance <= -64.dp.toPx()) {
+                                selectedMessageIds = emptySet()
+                            }
+                            horizontalDragDistance = 0f
+                        },
+                        onDragCancel = { horizontalDragDistance = 0f }
+                    )
+                }
+            }
             .background(
                 Brush.verticalGradient(
                     listOf(
