@@ -7296,6 +7296,29 @@ private fun ChatSendGlyph() {
 }
 
 @Composable
+private fun ChatVideoNoteGlyph(tint: Color = InboxAccentStrong) {
+    Canvas(Modifier.size(23.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        drawCircle(
+            color = tint.copy(alpha = 0.16f),
+            radius = size.minDimension * 0.46f,
+            center = center
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.32f,
+            center = center,
+            style = Stroke(width = 1.8.dp.toPx())
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.105f,
+            center = center
+        )
+    }
+}
+
+@Composable
 private fun ChatMicrophoneGlyph(tint: Color = InboxAccentStrong) {
     Canvas(Modifier.size(22.dp)) {
         val w = size.width
