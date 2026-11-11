@@ -3498,11 +3498,21 @@ private fun LiveChatScreen(
                             }
                         },
                         enabled = !isSending,
-                        filled = false
+                        filled = false,
+                        size = 38.dp
                     ) {
                         ChatMicrophoneGlyph(tint = InboxAccentStrong)
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(4.dp))
+                    ChatChromeActionButton(
+                        onClick = { openVideoNoteRecorder() },
+                        enabled = !isSending && !isVoiceRecording,
+                        filled = false,
+                        size = 38.dp
+                    ) {
+                        ChatVideoNoteGlyph(tint = InboxAccentStrong)
+                    }
+                    Spacer(Modifier.width(4.dp))
                     ChatChromeActionButton(
                         onClick = { sendMessage() },
                         enabled = !isSending && draft.isNotBlank(),
@@ -4452,7 +4462,8 @@ private fun MessageBubble(
     } else null
     val messageText = message.text
     val isVoiceAttachment = message.attachmentMimeType?.startsWith("audio/") == true && attachmentPath != null
-    val isImageAttachment = attachmentPath != null && !isVoiceAttachment
+    val isVideoNoteAttachment = message.attachmentMimeType == "video/mp4" && attachmentPath != null
+    val isImageAttachment = message.attachmentMimeType?.startsWith("image/") == true && attachmentPath != null
     val hasImageCaption = isImageAttachment &&
         messageText.isNotBlank() && !messageText.equals("[Фото]", ignoreCase = true)
     val bubbleShape = RoundedCornerShape(
@@ -4478,6 +4489,7 @@ private fun MessageBubble(
                 modifier = Modifier
                     .then(
                         when {
+                            isVideoNoteAttachment -> Modifier.size(190.dp)
                             isVoiceAttachment -> Modifier.widthIn(min = 205.dp, max = 276.dp)
                             isImageAttachment -> Modifier.widthIn(max = 300.dp)
                             else -> Modifier.widthIn(max = 310.dp)
@@ -4490,11 +4502,11 @@ private fun MessageBubble(
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
-                    isImageAttachment -> Color.Transparent
+                    isImageAttachment || isVideoNoteAttachment -> Color.Transparent
                     message.isMine -> Color(0xE9E4EBFF)
                     else -> Color(0xEAFBFCFF)
                 },
-                border = if (isImageAttachment && !selected) null else BorderStroke(
+                border = if ((isImageAttachment || isVideoNoteAttachment) && !selected) null else BorderStroke(
                     if (selected) 1.4.dp else 1.dp,
                     when {
                         selected -> Color(0xFF607BB9)
@@ -4504,13 +4516,13 @@ private fun MessageBubble(
                 ),
                 shadowElevation = when {
                     selected -> 3.dp
-                    isImageAttachment -> 0.dp
+                    isImageAttachment || isVideoNoteAttachment -> 0.dp
                     else -> 1.dp
                 },
                 shape = bubbleShape
             ) {
                 Column(
-                    modifier = if (isImageAttachment) Modifier else Modifier.padding(
+                    modifier = if (isImageAttachment || isVideoNoteAttachment) Modifier else Modifier.padding(
                         start = if (isVoiceAttachment) 9.dp else 14.dp,
                         end = if (isVoiceAttachment) 9.dp else 14.dp,
                         top = if (isVoiceAttachment) 6.dp else 7.dp,
@@ -4532,7 +4544,7 @@ private fun MessageBubble(
                     if (replyPreview != null && !message.isDeleted) {
                         Row(
                             Modifier.fillMaxWidth()
-                                .then(if (isImageAttachment) Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp) else Modifier)
+                                .then(if (isImageAttachment || isVideoNoteAttachment) Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp) else Modifier)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8))
                                 .clickable(enabled = onReplyPreviewClick != null) {
@@ -4558,30 +4570,51 @@ private fun MessageBubble(
                     }
                     val isVoiceMessage = message.attachmentMimeType?.startsWith("audio/") == true
                     if (attachmentPath != null && attachmentRepository != null) {
-                        if (isVoiceMessage) {
-                            ChatVoiceMessagePlayer(
-                                path = attachmentPath,
-                                repository = attachmentRepository,
-                                durationMs = message.attachmentDurationMs ?: 0L,
-                                waveform = message.attachmentWaveform.orEmpty()
-                            )
-                            Spacer(Modifier.height(1.dp))
-                        } else {
-                            Box {
-                                ChatImagePreview(
+                        when {
+                            isVoiceMessage -> {
+                                ChatVoiceMessagePlayer(
                                     path = attachmentPath,
                                     repository = attachmentRepository,
-                                    modifier = Modifier.widthIn(max = 300.dp)
+                                    durationMs = message.attachmentDurationMs ?: 0L,
+                                    waveform = message.attachmentWaveform.orEmpty()
                                 )
-                                if (showTime) {
-                                    ImageMessageMetadata(
-                                        time = message.time,
-                                        deliveryTicks = deliveryTicks,
-                                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                                Spacer(Modifier.height(1.dp))
+                            }
+                            isVideoNoteAttachment -> {
+                                Box(Modifier.size(190.dp)) {
+                                    ChatVideoNotePlayer(
+                                        path = attachmentPath,
+                                        repository = attachmentRepository,
+                                        durationMs = message.attachmentDurationMs ?: 0L,
+                                        modifier = Modifier.fillMaxSize()
                                     )
+                                    if (showTime) {
+                                        ImageMessageMetadata(
+                                            time = message.time,
+                                            deliveryTicks = deliveryTicks,
+                                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                                        )
+                                    }
                                 }
                             }
-                            if (hasImageCaption) {
+                            else -> {
+                                Box {
+                                    ChatImagePreview(
+                                        path = attachmentPath,
+                                        repository = attachmentRepository,
+                                        modifier = Modifier.widthIn(max = 300.dp)
+                                    )
+                                    if (showTime) {
+                                        ImageMessageMetadata(
+                                            time = message.time,
+                                            deliveryTicks = deliveryTicks,
+                                            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (hasImageCaption) {
                                 Text(
                                     text = messageText,
                                     color = MainText,
@@ -4590,14 +4623,14 @@ private fun MessageBubble(
                                 )
                             }
                         }
-                    } else if (!isVoiceMessage || attachmentPath == null) {
+                    } else if ((!isVoiceMessage && !isVideoNoteAttachment) || attachmentPath == null) {
                         Text(
                             text = messageText,
                             color = MainText,
                             fontSize = 14.sp
                         )
                     }
-                    if (showTime && !isImageAttachment) {
+                    if (showTime && !isImageAttachment && !isVideoNoteAttachment) {
                         Row(
                             modifier = Modifier.align(Alignment.End).padding(top = if (isVoiceAttachment) 0.dp else 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
