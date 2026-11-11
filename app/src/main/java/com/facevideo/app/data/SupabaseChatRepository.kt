@@ -758,6 +758,13 @@ class SupabaseChatRepository(
         bytes: ByteArray
     ): String = uploadChatAttachment(chatId, senderId, bytes, "audio/mp4")
 
+    /** Uploads a short circular video note to the same private chat bucket. */
+    suspend fun uploadChatVideoNote(
+        chatId: String,
+        senderId: String,
+        bytes: ByteArray
+    ): String = uploadChatAttachment(chatId, senderId, bytes, "video/mp4")
+
     private suspend fun uploadChatAttachment(
         chatId: String,
         senderId: String,
@@ -770,6 +777,7 @@ class SupabaseChatRepository(
         val extension = when (mimeType) {
             "image/jpeg" -> "jpg"
             "audio/mp4" -> "m4a"
+            "video/mp4" -> "mp4"
             else -> throw IllegalArgumentException("Этот тип вложения не поддерживается.")
         }
         val path = chatId + "/" + senderId + "/" + UUID.randomUUID().toString() + "." + extension
@@ -849,6 +857,41 @@ class SupabaseChatRepository(
                     attachmentSize = fileSize,
                     attachmentDurationMs = durationMs,
                     attachmentWaveform = waveform
+                )
+            ) {
+                select()
+            }
+            .decodeSingle<FaceVideoMessage>()
+    }
+
+    /** Inserts one circular video-note attachment after the upload has completed. */
+    suspend fun sendVideoNote(
+        chatId: String,
+        videoPath: String,
+        fileSize: Long,
+        durationMs: Long,
+        replyToMessageId: String? = null
+    ): FaceVideoMessage {
+        require(videoPath.startsWith(chatId + "/")) {
+            "Видеосообщение не относится к этой переписке."
+        }
+        require(fileSize in 1..MAX_CHAT_ATTACHMENT_BYTES.toLong()) {
+            "Видеосообщение должно быть не больше 10 МБ."
+        }
+        require(durationMs in 1_000L..60_000L) {
+            "Длительность видеосообщения должна быть от 1 до 60 секунд."
+        }
+        return client.from("face_video_messages")
+            .insert(
+                NewMessage(
+                    chatId = chatId,
+                    body = "Видеосообщение",
+                    replyToMessageId = replyToMessageId,
+                    attachmentPath = videoPath,
+                    attachmentMimeType = "video/mp4",
+                    attachmentFileName = "video-note.mp4",
+                    attachmentSize = fileSize,
+                    attachmentDurationMs = durationMs
                 )
             ) {
                 select()
