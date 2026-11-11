@@ -5094,6 +5094,7 @@ private fun CallsScreen(
     var calls by remember(userId) { mutableStateOf<List<FaceVideoCall>>(emptyList()) }
     var profiles by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
     var isLoading by remember(userId) { mutableStateOf(repository != null && userId != null) }
+    var showMissedOnly by remember(userId) { mutableStateOf(false) }
     var errorMessage by remember(userId) { mutableStateOf<String?>(null) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
 
@@ -5126,6 +5127,13 @@ private fun CallsScreen(
     }
 
     val missedCount = calls.count { callStatusLabel(it, userId.orEmpty()) == "Пропущен" }
+    val visibleCalls = remember(calls, userId, showMissedOnly) {
+        if (showMissedOnly) {
+            calls.filter { callStatusLabel(it, userId.orEmpty()) == "Пропущен" }
+        } else {
+            calls
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 18.dp)
@@ -5177,9 +5185,55 @@ private fun CallsScreen(
             Modifier.fillMaxWidth().padding(horizontal = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("НЕДАВНИЕ", color = AccentSlate, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
+            Text(
+                if (showMissedOnly) "ПРОПУЩЕННЫЕ" else "НЕДАВНИЕ",
+                color = AccentSlate,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp
+            )
             Spacer(Modifier.weight(1f))
-            Text("${calls.size} записей", color = Muted, fontSize = 10.sp)
+            Surface(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { showMissedOnly = !showMissedOnly },
+                color = if (showMissedOnly) Color(0xFFFFE9EE) else Color.White.copy(alpha = 0.72f),
+                shape = CircleShape,
+                border = BorderStroke(
+                    1.dp,
+                    if (showMissedOnly) Color(0xFFE8A8B7) else Color.White.copy(alpha = 0.92f)
+                ),
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        if (showMissedOnly) "Все звонки" else "Пропущенные",
+                        color = if (showMissedOnly) Color(0xFF9C4F67) else AccentSlate,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (!showMissedOnly) {
+                        Box(
+                            Modifier
+                                .clip(CircleShape)
+                                .background(if (missedCount > 0) Color(0xFFB85C6D) else Color(0xFFE6EAF3))
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                missedCount.toString(),
+                                color = if (missedCount > 0) Color.White else Muted,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
         Spacer(Modifier.height(5.dp))
         Box(
@@ -5198,6 +5252,36 @@ private fun CallsScreen(
                         androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
                         Spacer(Modifier.height(12.dp))
                         Text("Загружаем историю…", color = Muted, fontSize = 11.sp)
+                    }
+                }
+            }
+            showMissedOnly && visibleCalls.isEmpty() -> {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            Modifier.size(68.dp)
+                                .background(Color(0xFFFFE9EE), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("↙", color = Color(0xFFB85C6D), fontSize = 30.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text("Пропущенных вызовов нет", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(7.dp))
+                        Text(
+                            "Здесь будут отображаться входящие звонки, на которые вы не ответили.",
+                            color = Muted,
+                            fontSize = 11.sp,
+                            lineHeight = 17.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(onClick = { showMissedOnly = false }) {
+                            Text("Показать все звонки", color = AccentSlate, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -5241,7 +5325,7 @@ private fun CallsScreen(
                     contentPadding = PaddingValues(bottom = 18.dp),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    items(calls, key = { it.id }) { call ->
+                    items(visibleCalls, key = { it.id }) { call ->
                         val currentUserId = userId.orEmpty()
                         val peerId = if (call.callerId == currentUserId) call.calleeId else call.callerId
                         val profile = profiles[peerId]
