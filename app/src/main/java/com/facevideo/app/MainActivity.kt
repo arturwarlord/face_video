@@ -5770,6 +5770,13 @@ private fun formatCallDuration(call: FaceVideoCall): String? {
     }
 }
 
+private enum class CallHistoryFilter {
+    ALL,
+    MISSED,
+    INCOMING,
+    OUTGOING
+}
+
 private fun callStatusLabel(call: FaceVideoCall, currentUserId: String): String {
     return when (call.status) {
         "ringing" -> {
@@ -5787,6 +5794,48 @@ private fun callStatusLabel(call: FaceVideoCall, currentUserId: String): String 
 }
 
 @Composable
+private fun CallHistoryFilterTab(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    countColor: Color = Muted,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            label,
+            color = if (selected) AccentSlate else Muted,
+            fontSize = 9.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            count.toString(),
+            color = if (selected) countColor else Muted.copy(alpha = 0.76f),
+            fontSize = 9.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
+        Spacer(Modifier.height(5.dp))
+        Box(
+            Modifier
+                .width(22.dp)
+                .height(2.dp)
+                .clip(CircleShape)
+                .background(if (selected) AccentSlate else Color.Transparent)
+        )
+    }
+}
+
+@Composable
 private fun CallsScreen(
     repository: SupabaseCallRepository?,
     userId: String?,
@@ -5795,7 +5844,7 @@ private fun CallsScreen(
     var calls by remember(userId) { mutableStateOf<List<FaceVideoCall>>(emptyList()) }
     var profiles by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
     var isLoading by remember(userId) { mutableStateOf(repository != null && userId != null) }
-    var showMissedOnly by remember(userId) { mutableStateOf(false) }
+    var selectedFilter by remember(userId) { mutableStateOf(CallHistoryFilter.ALL) }
     var errorMessage by remember(userId) { mutableStateOf<String?>(null) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
 
@@ -5827,13 +5876,31 @@ private fun CallsScreen(
         isLoading = false
     }
 
-    val missedCount = calls.count { callStatusLabel(it, userId.orEmpty()) == "Пропущен" }
-    val visibleCalls = remember(calls, userId, showMissedOnly) {
-        if (showMissedOnly) {
-            calls.filter { callStatusLabel(it, userId.orEmpty()) == "Пропущен" }
-        } else {
-            calls
+    val currentUserId = userId.orEmpty()
+    val missedCount = calls.count { callStatusLabel(it, currentUserId) == "Пропущен" }
+    val incomingCount = calls.count { it.calleeId == currentUserId }
+    val outgoingCount = calls.count { it.callerId == currentUserId }
+    val visibleCalls = remember(calls, userId, selectedFilter) {
+        calls.filter { call ->
+            when (selectedFilter) {
+                CallHistoryFilter.ALL -> true
+                CallHistoryFilter.MISSED -> callStatusLabel(call, currentUserId) == "Пропущен"
+                CallHistoryFilter.INCOMING -> call.calleeId == currentUserId
+                CallHistoryFilter.OUTGOING -> call.callerId == currentUserId
+            }
         }
+    }
+    val filteredEmptyTitle = when (selectedFilter) {
+        CallHistoryFilter.ALL -> "Пока нет звонков"
+        CallHistoryFilter.MISSED -> "Пропущенных вызовов нет"
+        CallHistoryFilter.INCOMING -> "Входящих звонков пока нет"
+        CallHistoryFilter.OUTGOING -> "Исходящих звонков пока нет"
+    }
+    val filteredEmptyDescription = when (selectedFilter) {
+        CallHistoryFilter.ALL -> "Исходящие и входящие аудио- и видеовызовы появятся здесь."
+        CallHistoryFilter.MISSED -> "Здесь будут отображаться входящие звонки, на которые вы не ответили."
+        CallHistoryFilter.INCOMING -> "Все принятые и пропущенные входящие звонки будут отображаться здесь."
+        CallHistoryFilter.OUTGOING -> "Здесь отображаются звонки, которые вы совершали другим пользователям."
     }
 
     Column(
@@ -5854,87 +5921,36 @@ private fun CallsScreen(
             }
         }
 
-        Spacer(Modifier.height(17.dp))
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("ВСЕ ЗВОНКИ", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.05.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(calls.size.toString(), color = MainText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-            }
-            Box(
-                Modifier.width(1.dp).height(38.dp).background(
-                    Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.9f), Color.Transparent))
-                )
-            )
-            Column(Modifier.weight(1f).padding(start = 18.dp)) {
-                Text("ПРОПУЩЕНО", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.05.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    missedCount.toString(),
-                    color = if (missedCount > 0) Color(0xFFB65E78) else MainText,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
         Spacer(Modifier.height(16.dp))
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 1.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                if (showMissedOnly) "ПРОПУЩЕННЫЕ" else "НЕДАВНИЕ",
-                color = AccentSlate,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.4.sp
-            )
-            Spacer(Modifier.weight(1f))
-            Surface(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .clickable { showMissedOnly = !showMissedOnly },
-                color = if (showMissedOnly) Color(0xFFFFE9EE) else Color.White.copy(alpha = 0.72f),
-                shape = CircleShape,
-                border = BorderStroke(
-                    1.dp,
-                    if (showMissedOnly) Color(0xFFE8A8B7) else Color.White.copy(alpha = 0.92f)
-                ),
-                shadowElevation = 0.dp
-            ) {
-                Row(
-                    Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        if (showMissedOnly) "Все звонки" else "Пропущенные",
-                        color = if (showMissedOnly) Color(0xFF9C4F67) else AccentSlate,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (!showMissedOnly) {
-                        Box(
-                            Modifier
-                                .clip(CircleShape)
-                                .background(if (missedCount > 0) Color(0xFFB85C6D) else Color(0xFFE6EAF3))
-                                .padding(horizontal = 6.dp, vertical = 2.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                missedCount.toString(),
-                                color = if (missedCount > 0) Color.White else Muted,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
+            CallHistoryFilterTab(
+                label = "Все",
+                count = calls.size,
+                selected = selectedFilter == CallHistoryFilter.ALL,
+                modifier = Modifier.weight(1f)
+            ) { selectedFilter = CallHistoryFilter.ALL }
+            CallHistoryFilterTab(
+                label = "Пропущенные",
+                count = missedCount,
+                selected = selectedFilter == CallHistoryFilter.MISSED,
+                countColor = if (missedCount > 0) Color(0xFFB85C6D) else Muted,
+                modifier = Modifier.weight(1.35f)
+            ) { selectedFilter = CallHistoryFilter.MISSED }
+            CallHistoryFilterTab(
+                label = "Входящие",
+                count = incomingCount,
+                selected = selectedFilter == CallHistoryFilter.INCOMING,
+                modifier = Modifier.weight(1.1f)
+            ) { selectedFilter = CallHistoryFilter.INCOMING }
+            CallHistoryFilterTab(
+                label = "Исходящие",
+                count = outgoingCount,
+                selected = selectedFilter == CallHistoryFilter.OUTGOING,
+                modifier = Modifier.weight(1.15f)
+            ) { selectedFilter = CallHistoryFilter.OUTGOING }
         }
         Spacer(Modifier.height(5.dp))
         Box(
@@ -5956,7 +5972,7 @@ private fun CallsScreen(
                     }
                 }
             }
-            showMissedOnly && visibleCalls.isEmpty() -> {
+            selectedFilter != CallHistoryFilter.ALL && visibleCalls.isEmpty() -> {
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp),
@@ -5964,25 +5980,34 @@ private fun CallsScreen(
                     ) {
                         Box(
                             Modifier.size(68.dp)
-                                .background(Color(0xFFFFE9EE), CircleShape),
+                                .background(
+                                    if (selectedFilter == CallHistoryFilter.MISSED) Color(0xFFFFE9EE) else Color(0xFFE8EDFA),
+                                    CircleShape
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("↙", color = Color(0xFFB85C6D), fontSize = 30.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                when (selectedFilter) {
+                                    CallHistoryFilter.MISSED -> "↙"
+                                    CallHistoryFilter.INCOMING -> "↙"
+                                    CallHistoryFilter.OUTGOING -> "↗"
+                                    CallHistoryFilter.ALL -> "☎"
+                                },
+                                color = if (selectedFilter == CallHistoryFilter.MISSED) Color(0xFFB85C6D) else AccentSlate,
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                         Spacer(Modifier.height(16.dp))
-                        Text("Пропущенных вызовов нет", color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(filteredEmptyTitle, color = MainText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(7.dp))
                         Text(
-                            "Здесь будут отображаться входящие звонки, на которые вы не ответили.",
+                            filteredEmptyDescription,
                             color = Muted,
                             fontSize = 11.sp,
                             lineHeight = 17.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
-                        Spacer(Modifier.height(12.dp))
-                        TextButton(onClick = { showMissedOnly = false }) {
-                            Text("Показать все звонки", color = AccentSlate, fontWeight = FontWeight.SemiBold)
-                        }
                     }
                 }
             }
