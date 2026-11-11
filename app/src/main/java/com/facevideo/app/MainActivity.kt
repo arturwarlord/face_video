@@ -4247,6 +4247,7 @@ private fun ChatVideoNoteRecorderDialog(
     var cameraReady by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var keepRecordedFile by remember { mutableStateOf(false) }
+    val recorderDisposed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
 
     val latestProvider = rememberUpdatedState(cameraProvider)
     val latestRecording = rememberUpdatedState(activeRecording)
@@ -4254,7 +4255,9 @@ private fun ChatVideoNoteRecorderDialog(
     val latestKeepFile = rememberUpdatedState(keepRecordedFile)
 
     DisposableEffect(Unit) {
+        recorderDisposed.set(false)
         onDispose {
+            recorderDisposed.set(true)
             runCatching { latestRecording.value?.stop() }
             runCatching { latestProvider.value?.unbindAll() }
             if (!latestKeepFile.value) latestRecordedFile.value?.delete()
@@ -4350,25 +4353,29 @@ private fun ChatVideoNoteRecorderDialog(
                         }
                         is VideoRecordEvent.Finalize -> {
                             activeRecording = null
-                            isRecording = false
-                            isFinalizing = false
-                            durationMs = (event.recordingStats.recordedDurationNanos / 1_000_000L)
-                                .coerceAtMost(MAX_CHAT_VIDEO_NOTE_DURATION_MS)
-                            val validFile = file.isFile &&
-                                file.length() in 1..MAX_CHAT_VIDEO_NOTE_BYTES.toLong() &&
-                                durationMs >= 1_000L
-                            if (event.hasError() || !validFile) {
+                            if (recorderDisposed.get()) {
                                 file.delete()
-                                errorMessage = when {
-                                    event.hasError() -> "Не удалось сохранить видеосообщение. Попробуйте ещё раз."
-                                    durationMs < 1_000L -> "Запишите кружочек хотя бы одну секунду."
-                                    else -> "Видео получилось слишком большим. Запишите его короче."
-                                }
                             } else {
-                                recordedFile = file
-                                cameraReady = false
-                                cameraProvider?.unbindAll()
-                                videoCapture = null
+                                isRecording = false
+                                isFinalizing = false
+                                durationMs = (event.recordingStats.recordedDurationNanos / 1_000_000L)
+                                    .coerceAtMost(MAX_CHAT_VIDEO_NOTE_DURATION_MS)
+                                val validFile = file.isFile &&
+                                    file.length() in 1..MAX_CHAT_VIDEO_NOTE_BYTES.toLong() &&
+                                    durationMs >= 1_000L
+                                if (event.hasError() || !validFile) {
+                                    file.delete()
+                                    errorMessage = when {
+                                        event.hasError() -> "Не удалось сохранить видеосообщение. Попробуйте ещё раз."
+                                        durationMs < 1_000L -> "Запишите кружочек хотя бы одну секунду."
+                                        else -> "Видео получилось слишком большим. Запишите его короче."
+                                    }
+                                } else {
+                                    recordedFile = file
+                                    cameraReady = false
+                                    cameraProvider?.unbindAll()
+                                    videoCapture = null
+                                }
                             }
                         }
                     }
