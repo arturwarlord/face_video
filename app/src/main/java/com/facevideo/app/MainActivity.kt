@@ -4693,7 +4693,7 @@ private fun ChatVideoNotePlayer(
                     }
                 },
                 update = { playerView ->
-                    if (playerView.player !== player) playerView.player = exoPlayer
+                    if (playerView.player !== exoPlayer) playerView.player = exoPlayer
                 },
                 modifier = Modifier.fillMaxSize()
             )
