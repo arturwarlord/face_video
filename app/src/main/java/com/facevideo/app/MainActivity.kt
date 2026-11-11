@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.view.LayoutInflater
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -4595,7 +4596,7 @@ private fun VideoNoteLocalPreview(
     }
     AndroidView(
         factory = { viewContext ->
-            PlayerView(viewContext).apply {
+            (LayoutInflater.from(viewContext).inflate(R.layout.view_video_note_player, null) as PlayerView).apply {
                 useController = false
                 setUseTextureView(true)
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -4692,10 +4693,9 @@ private fun ChatVideoNotePlayer(
         if (file != null && !failed) {
             AndroidView(
                 factory = { viewContext ->
-                    PlayerView(viewContext).apply {
+                    (LayoutInflater.from(viewContext).inflate(R.layout.view_video_note_player, null) as PlayerView).apply {
                         useController = false
-                        setUseTextureView(true)
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
                         player = exoPlayer
                     }
