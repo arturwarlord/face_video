@@ -21,6 +21,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -31,6 +32,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -39,6 +41,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.Image
@@ -90,6 +93,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
@@ -101,6 +105,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
@@ -109,6 +114,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -119,9 +125,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import com.facevideo.app.calls.WebRtcAudioCallClient
 import com.facevideo.app.calls.OutgoingCallRingbackTone
 import com.facevideo.app.data.FaceVideoCall
@@ -3783,6 +3792,166 @@ private fun ImageMessageMetadata(
 }
 
 @Composable
+private fun FullscreenChatImageViewer(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap,
+    onDismiss: () -> Unit
+) {
+    var scale by remember(bitmap) { mutableFloatStateOf(1f) }
+    var offsetX by remember(bitmap) { mutableFloatStateOf(0f) }
+    var offsetY by remember(bitmap) { mutableFloatStateOf(0f) }
+    var dismissDrag by remember(bitmap) { mutableFloatStateOf(0f) }
+    var controlsVisible by remember(bitmap) { mutableStateOf(true) }
+    var viewportSize by remember(bitmap) { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val animatedDismissDrag by animateFloatAsState(
+        targetValue = dismissDrag,
+        animationSpec = tween(durationMillis = 180),
+        label = "photoDismissDrag"
+    )
+
+    // Hide Android's status/navigation bars while this dedicated photo viewer is open.
+    val dialogView = LocalView.current
+    val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+    DisposableEffect(dialogWindow) {
+        if (dialogWindow == null) {
+            onDispose { }
+        } else {
+            val controller = WindowInsetsControllerCompat(dialogWindow, dialogWindow.decorView)
+            val previousBehavior = controller.systemBarsBehavior
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = previousBehavior
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { viewportSize = it }
+            .background(
+                Color.Black.copy(
+                    alpha = 1f - (animatedDismissDrag / 520f).coerceIn(0f, 0.58f)
+                )
+            )
+    ) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = "Фотография на весь экран",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
+                    translationY = offsetY + animatedDismissDrag
+                }
+                .pointerInput(bitmap, scale, viewportSize) {
+                    detectTransformGestures { _, pan, zoom, _ ->
+                        val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                        scale = nextScale
+                        if (nextScale > 1.001f) {
+                            val maxX = (viewportSize.width * (nextScale - 1f) / 2f).coerceAtLeast(0f)
+                            val maxY = (viewportSize.height * (nextScale - 1f) / 2f).coerceAtLeast(0f)
+                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
+                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
+                        } else {
+                            offsetX = 0f
+                            offsetY = 0f
+                        }
+                    }
+                }
+                .pointerInput(bitmap, scale) {
+                    detectVerticalDragGestures(
+                        onVerticalDrag = { change, dragAmount ->
+                            if (scale <= 1.001f && dragAmount > 0f) {
+                                dismissDrag = (dismissDrag + dragAmount).coerceAtMost(size.height * 0.72f)
+                                change.consume()
+                            }
+                        },
+                        onDragEnd = {
+                            if (dismissDrag >= 120.dp.toPx()) {
+                                onDismiss()
+                            } else {
+                                dismissDrag = 0f
+                            }
+                        },
+                        onDragCancel = { dismissDrag = 0f }
+                    )
+                }
+                .pointerInput(bitmap, scale) {
+                    detectTapGestures(
+                        onTap = { controlsVisible = !controlsVisible },
+                        onDoubleTap = {
+                            if (scale > 1.001f) {
+                                scale = 1f
+                                offsetX = 0f
+                                offsetY = 0f
+                            } else {
+                                scale = 2.5f
+                                offsetX = 0f
+                                offsetY = 0f
+                            }
+                        }
+                    )
+                }
+        )
+
+        if (controlsVisible) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.54f), Color.Transparent)
+                        )
+                    )
+                    .padding(start = 14.dp, end = 18.dp, top = 16.dp, bottom = 30.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.14f))
+                        .clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("‹", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Light)
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(
+                        "Фото",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        if (scale > 1.001f) "Масштаб ${(scale * 100).toInt()}%" else "Просмотр изображения",
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
+            Text(
+                if (scale > 1.001f) "Дважды нажмите, чтобы вернуть исходный размер" else "Сведите или разведите пальцы для изменения масштаба",
+                color = Color.White.copy(alpha = 0.82f),
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 24.dp, vertical = 28.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun ChatImagePreview(
     path: String,
     repository: SupabaseChatRepository,
@@ -3830,22 +3999,17 @@ private fun ChatImagePreview(
                 .clickable { showFullImage = true }
         )
         if (showFullImage) {
-            Dialog(onDismissRequest = { showFullImage = false }) {
-                Surface(
-                    color = Color.Black,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Image(
-                        bitmap = loaded,
-                        contentDescription = "Фотография",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 680.dp)
-                            .clickable { showFullImage = false }
-                    )
-                }
+            Dialog(
+                onDismissRequest = { showFullImage = false },
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
+            ) {
+                FullscreenChatImageViewer(
+                    bitmap = loaded,
+                    onDismiss = { showFullImage = false }
+                )
             }
         }
     } else {
