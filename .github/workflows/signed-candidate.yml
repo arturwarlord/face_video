@@ -1,4 +1,4 @@
-name: ArturChat 0.7.25 signed installable APK
+name: ArturChat 0.7.26 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
@@ -97,16 +97,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.7.25"
-          -PAPP_VERSION_CODE="7025"
+          -PAPP_VERSION_NAME="0.7.26"
+          -PAPP_VERSION_CODE="7026"
 
       - name: Build signed installable APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.7.25"
-          -PAPP_VERSION_CODE="7025"
+          -PAPP_VERSION_NAME="0.7.26"
+          -PAPP_VERSION_CODE="7026"
 
       - name: Verify package, version and APK signature
         shell: bash
@@ -116,23 +116,23 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='7025' versionName='0.7.25'"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='7026' versionName='0.7.26'"
 
       - name: Prepare APK and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p installable
-          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.7.25.apk
+          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.7.26.apk
           cd installable
-          sha256sum ArturChat-0.7.25.apk > ArturChat-0.7.25.apk.sha256
+          sha256sum ArturChat-0.7.26.apk > ArturChat-0.7.26.apk.sha256
 
       - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: arturchat-0.7.25-installable
+          name: arturchat-0.7.26-installable
           path: |
-            installable/ArturChat-0.7.25.apk
-            installable/ArturChat-0.7.25.apk.sha256
+            installable/ArturChat-0.7.26.apk
+            installable/ArturChat-0.7.26.apk.sha256
           if-no-files-found: error
           retention-days: 14
