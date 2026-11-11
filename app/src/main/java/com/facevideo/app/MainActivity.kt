@@ -3851,9 +3851,8 @@ private fun ChatImagePreview(
     } else {
         Box(
             modifier
-                .fillMaxWidth()
                 .heightIn(min = 150.dp, max = 220.dp)
-                .aspectRatio(1.15f)
+                .aspectRatio(1.15f, matchHeightConstraintsFirst = true)
                 .clip(RoundedCornerShape(15.dp))
                 .background(if (failed) Color(0xFFF5D2D0) else Color(0xFFE5EAF0)),
             contentAlignment = Alignment.Center
@@ -4301,11 +4300,11 @@ private fun MessageBubble(
                             )
                             Spacer(Modifier.height(1.dp))
                         } else {
-                            Box(Modifier.fillMaxWidth()) {
+                            Box {
                                 ChatImagePreview(
                                     path = attachmentPath,
                                     repository = attachmentRepository,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.widthIn(max = 300.dp)
                                 )
                                 if (showTime) {
                                     ImageMessageMetadata(
