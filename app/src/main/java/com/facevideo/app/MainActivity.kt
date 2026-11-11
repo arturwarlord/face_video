@@ -26,6 +26,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FileOutputOptions
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -4206,6 +4207,401 @@ private fun shouldRebuildVoiceWaveform(waveform: List<Int>): Boolean {
         floor > 30
 }
 
+private const val MAX_CHAT_VIDEO_NOTE_BYTES = 10 * 1024 * 1024
+private const val MAX_CHAT_VIDEO_NOTE_DURATION_MS = 60_000L
+private const val CHAT_VIDEO_NOTE_TARGET_BYTES = 9_500_000L
+
+private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.findComponentActivity()
+    else -> null
+}
+
+@Composable
+private fun ChatVideoNoteRecorderDialog(
+    onDismiss: () -> Unit,
+    onSend: (File, Long) -> Unit
+) {
+    val context = LocalContext.current
+    val activity = remember(context) { context.findComponentActivity() }
+    val previewView = remember(context) {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+    val cameraProviderFuture = remember(context) {
+        ProcessCameraProvider.getInstance(context)
+    }
+
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var videoCapture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+    var activeRecording by remember { mutableStateOf<Recording?>(null) }
+    var recordedFile by remember { mutableStateOf<File?>(null) }
+    var isRecording by remember { mutableStateOf(false) }
+    var isFinalizing by remember { mutableStateOf(false) }
+    var isFrontCamera by remember { mutableStateOf(true) }
+    var startedAt by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf(0L) }
+    var cameraReady by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var keepRecordedFile by remember { mutableStateOf(false) }
+
+    val latestProvider = rememberUpdatedState(cameraProvider)
+    val latestRecording = rememberUpdatedState(activeRecording)
+    val latestRecordedFile = rememberUpdatedState(recordedFile)
+    val latestKeepFile = rememberUpdatedState(keepRecordedFile)
+
+    DisposableEffect(Unit) {
+        onDispose {
+            runCatching { latestRecording.value?.stop() }
+            runCatching { latestProvider.value?.unbindAll() }
+            if (!latestKeepFile.value) latestRecordedFile.value?.delete()
+        }
+    }
+
+    LaunchedEffect(activity, isFrontCamera, recordedFile == null) {
+        if (recordedFile != null) {
+            cameraProvider?.unbindAll()
+            videoCapture = null
+            cameraReady = false
+            return@LaunchedEffect
+        }
+        if (activity == null) {
+            errorMessage = "Не удалось открыть камеру в этом окне."
+            return@LaunchedEffect
+        }
+        cameraReady = false
+        errorMessage = null
+        try {
+            val provider = withContext(Dispatchers.IO) { cameraProviderFuture.get() }
+            cameraProvider = provider
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(previewView.surfaceProvider)
+            }
+            val recorder = Recorder.Builder()
+                .setQualitySelector(
+                    QualitySelector.from(
+                        Quality.SD,
+                        FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                    )
+                )
+                .setTargetVideoEncodingBitRate(850_000)
+                .build()
+            val capture = VideoCapture.withOutput(recorder)
+            val selector = if (isFrontCamera) {
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            } else {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            provider.unbindAll()
+            provider.bindToLifecycle(activity, selector, preview, capture)
+            videoCapture = capture
+            cameraReady = true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.e("ArturChatVideoNote", "Could not bind CameraX preview", error)
+            errorMessage = error.message ?: "Не удалось запустить камеру."
+        }
+    }
+
+    fun stopRecording() {
+        if (!isRecording || isFinalizing) return
+        isFinalizing = true
+        runCatching { activeRecording?.stop() }
+            .onFailure {
+                isFinalizing = false
+                errorMessage = it.message ?: "Не удалось завершить запись."
+            }
+    }
+
+    fun startRecording() {
+        if (isRecording || isFinalizing) return
+        val capture = videoCapture
+        if (capture == null || !cameraReady) {
+            errorMessage = "Камера ещё не готова. Попробуйте ещё раз."
+            return
+        }
+        recordedFile?.delete()
+        recordedFile = null
+        durationMs = 0L
+        errorMessage = null
+        val file = File(context.cacheDir, "video-note-${UUID.randomUUID()}.mp4")
+        val outputOptions = FileOutputOptions.Builder(file)
+            .setFileSizeLimit(CHAT_VIDEO_NOTE_TARGET_BYTES)
+            .build()
+        try {
+            val recording = capture.output
+                .prepareRecording(context, outputOptions)
+                .withAudioEnabled()
+                .start(ContextCompat.getMainExecutor(context)) { event ->
+                    when (event) {
+                        is VideoRecordEvent.Start -> {
+                            startedAt = SystemClock.elapsedRealtime()
+                            durationMs = 0L
+                            isRecording = true
+                            isFinalizing = false
+                        }
+                        is VideoRecordEvent.Status -> {
+                            durationMs = (event.recordingStats.recordedDurationNanos / 1_000_000L)
+                                .coerceAtMost(MAX_CHAT_VIDEO_NOTE_DURATION_MS)
+                        }
+                        is VideoRecordEvent.Finalize -> {
+                            activeRecording = null
+                            isRecording = false
+                            isFinalizing = false
+                            durationMs = (event.recordingStats.recordedDurationNanos / 1_000_000L)
+                                .coerceAtMost(MAX_CHAT_VIDEO_NOTE_DURATION_MS)
+                            val validFile = file.isFile &&
+                                file.length() in 1..MAX_CHAT_VIDEO_NOTE_BYTES.toLong() &&
+                                durationMs >= 1_000L
+                            if (event.hasError() || !validFile) {
+                                file.delete()
+                                errorMessage = when {
+                                    event.hasError() -> "Не удалось сохранить видеосообщение. Попробуйте ещё раз."
+                                    durationMs < 1_000L -> "Запишите кружочек хотя бы одну секунду."
+                                    else -> "Видео получилось слишком большим. Запишите его короче."
+                                }
+                            } else {
+                                recordedFile = file
+                                cameraReady = false
+                                cameraProvider?.unbindAll()
+                                videoCapture = null
+                            }
+                        }
+                    }
+                }
+            activeRecording = recording
+            isRecording = true
+            startedAt = SystemClock.elapsedRealtime()
+        } catch (error: Exception) {
+            file.delete()
+            isRecording = false
+            isFinalizing = false
+            errorMessage = error.message ?: "Не удалось начать запись. Проверьте доступ к камере и микрофону."
+        }
+    }
+
+    LaunchedEffect(isRecording, startedAt) {
+        while (isRecording) {
+            durationMs = (SystemClock.elapsedRealtime() - startedAt)
+                .coerceAtLeast(0L)
+                .coerceAtMost(MAX_CHAT_VIDEO_NOTE_DURATION_MS)
+            if (durationMs >= MAX_CHAT_VIDEO_NOTE_DURATION_MS) {
+                stopRecording()
+                break
+            }
+            delay(100L)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            if (isRecording) activeRecording?.stop()
+            onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF080A10))
+                .padding(horizontal = 24.dp, vertical = 22.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    "Видеосообщение",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    when {
+                        recordedFile != null -> "Кружочек готов к отправке"
+                        isFinalizing -> "Сохраняем видео…"
+                        isRecording -> "Идёт запись · ${formatVoiceDuration(durationMs)}"
+                        else -> "Запишите короткое видео для чата"
+                    },
+                    color = Color.White.copy(alpha = 0.72f),
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(28.dp))
+
+                Box(
+                    Modifier
+                        .size(286.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF171B25)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val finished = recordedFile
+                    if (finished != null) {
+                        VideoNoteLocalPreview(
+                            file = finished,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AndroidView(
+                            factory = { previewView },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        if (!cameraReady && errorMessage == null) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                    if (isRecording) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 17.dp),
+                            color = Color.Black.copy(alpha = 0.54f),
+                            shape = CircleShape
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier.size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFF5875))
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    formatVoiceDuration(durationMs),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        errorMessage.orEmpty(),
+                        color = Color(0xFFFFA7B5),
+                        fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (recordedFile == null) {
+                        TextButton(
+                            onClick = { isFrontCamera = !isFrontCamera },
+                            enabled = !isRecording && !isFinalizing && cameraReady
+                        ) {
+                            Text("↻ Камера", color = Color.White)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (isRecording) stopRecording() else startRecording()
+                            },
+                            enabled = cameraReady && !isFinalizing,
+                            shape = CircleShape,
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = if (isRecording) Color(0xFFDF5875) else Color(0xFF596BE8)
+                            )
+                        ) {
+                            Text(
+                                if (isRecording) "Остановить" else "● Записать",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else {
+                        TextButton(
+                            onClick = {
+                                recordedFile?.delete()
+                                recordedFile = null
+                                durationMs = 0L
+                                errorMessage = null
+                            }
+                        ) {
+                            Text("Перезаписать", color = Color.White)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                val file = recordedFile ?: return@Button
+                                keepRecordedFile = true
+                                onSend(file, durationMs)
+                            },
+                            shape = CircleShape,
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF596BE8)
+                            )
+                        ) {
+                            Text("Отправить", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    onClick = {
+                        if (isRecording) activeRecording?.stop()
+                        onDismiss()
+                    },
+                    enabled = !isFinalizing
+                ) {
+                    Text("Отмена", color = Color.White.copy(alpha = 0.68f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VideoNoteLocalPreview(
+    file: File,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val player = remember(file, context) { ExoPlayer.Builder(context).build() }
+    DisposableEffect(player, file) {
+        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+        player.repeatMode = Player.REPEAT_MODE_ONE
+        player.volume = 0f
+        player.prepare()
+        player.playWhenReady = true
+        onDispose { runCatching { player.release() } }
+    }
+    AndroidView(
+        factory = { viewContext ->
+            PlayerView(viewContext).apply {
+                useController = false
+                setUseTextureView(true)
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                setShutterBackgroundColor(android.graphics.Color.BLACK)
+                this.player = player
+            }
+        },
+        update = { playerView ->
+            if (playerView.player !== player) playerView.player = player
+        },
+        modifier = modifier.clip(CircleShape)
+    )
+}
+
 @Composable
 private fun ChatVideoNotePlayer(
     path: String,
@@ -4220,7 +4616,7 @@ private fun ChatVideoNotePlayer(
     var isPlaying by remember(path) { mutableStateOf(false) }
     var soundEnabled by remember(path) { mutableStateOf(false) }
     val latestFile = rememberUpdatedState(videoFile)
-    val player = remember(path, context) { ExoPlayer.Builder(context).build() }
+    val exoPlayer = remember(path, context) { ExoPlayer.Builder(context).build() }
 
     LaunchedEffect(path, repository) {
         isLoading = true
@@ -4258,21 +4654,21 @@ private fun ChatVideoNotePlayer(
                 isPlaying = false
             }
         }
-        player.addListener(listener)
+        exoPlayer.addListener(listener)
         onDispose {
-            player.removeListener(listener)
-            runCatching { player.release() }
+            exoPlayer.removeListener(listener)
+            runCatching { exoPlayer.release() }
             latestFile.value?.delete()
         }
     }
 
-    LaunchedEffect(player, videoFile) {
+    LaunchedEffect(exoPlayer, videoFile) {
         val file = videoFile ?: return@LaunchedEffect
         runCatching {
-            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-            player.repeatMode = Player.REPEAT_MODE_ONE
-            player.volume = if (soundEnabled) 1f else 0f
-            player.prepare()
+            exoPlayer.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            exoPlayer.repeatMode = Player.REPEAT_MODE_ONE
+            exoPlayer.volume = if (soundEnabled) 1f else 0f
+            exoPlayer.prepare()
         }.onFailure {
             android.util.Log.w("ArturChatVideoNote", "Could not prepare video note player", it)
             failed = true
@@ -4293,11 +4689,11 @@ private fun ChatVideoNotePlayer(
                         setUseTextureView(true)
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setShutterBackgroundColor(android.graphics.Color.BLACK)
-                        player = this@ChatVideoNotePlayer.run { this@run.player }
+                        player = exoPlayer
                     }
                 },
                 update = { playerView ->
-                    if (playerView.player !== player) playerView.player = player
+                    if (playerView.player !== player) playerView.player = exoPlayer
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -4331,13 +4727,13 @@ private fun ChatVideoNotePlayer(
                     .padding(bottom = 13.dp)
                     .clip(CircleShape)
                     .clickable {
-                        if (player.isPlaying) {
+                        if (exoPlayer.isPlaying) {
                             soundEnabled = !soundEnabled
-                            player.volume = if (soundEnabled) 1f else 0f
+                            exoPlayer.volume = if (soundEnabled) 1f else 0f
                         } else {
                             soundEnabled = true
                             player.volume = 1f
-                            player.play()
+                            exoPlayer.play()
                         }
                     },
                 color = Color.Black.copy(alpha = 0.42f),
@@ -4359,13 +4755,13 @@ private fun ChatVideoNotePlayer(
                 .fillMaxSize()
                 .clip(CircleShape)
                 .clickable(enabled = file != null && !failed && !isLoading) {
-                    if (player.isPlaying) {
+                    if (exoPlayer.isPlaying) {
                         soundEnabled = !soundEnabled
-                        player.volume = if (soundEnabled) 1f else 0f
+                        exoPlayer.volume = if (soundEnabled) 1f else 0f
                     } else {
                         soundEnabled = true
                         player.volume = 1f
-                        player.play()
+                        exoPlayer.play()
                     }
                 }
         )
