@@ -5972,7 +5972,7 @@ private fun CallsScreen(
                     }
                 }
             }
-            selectedFilter != CallHistoryFilter.ALL && visibleCalls.isEmpty() -> {
+            selectedFilter != CallHistoryFilter.ALL && visibleCalls.isEmpty() && calls.isNotEmpty() -> {
                 Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 30.dp),
@@ -6028,10 +6028,10 @@ private fun CallsScreen(
                             ChatCallGlyph(video = false, tint = Color.White)
                         }
                         Spacer(Modifier.height(18.dp))
-                        Text("Пока нет звонков", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(filteredEmptyTitle, color = MainText, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(7.dp))
                         Text(
-                            "Исходящие и входящие аудио- и видеовызовы появятся здесь.",
+                            filteredEmptyDescription,
                             color = Muted,
                             fontSize = 11.sp,
                             lineHeight = 17.sp,
