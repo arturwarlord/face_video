@@ -2902,6 +2902,7 @@ private fun LiveChatScreen(
     fun sendVideoNote(file: File, durationMs: Long) {
         if (isSending) return
         isSending = true
+        showVideoNoteRecorder = false
         errorMessage = null
         scope.launch {
             var stage = "Подготовка видеосообщения"
@@ -4643,7 +4644,7 @@ private fun ChatVideoNotePlayer(
         }
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -4732,7 +4733,7 @@ private fun ChatVideoNotePlayer(
                             exoPlayer.volume = if (soundEnabled) 1f else 0f
                         } else {
                             soundEnabled = true
-                            player.volume = 1f
+                            exoPlayer.volume = 1f
                             exoPlayer.play()
                         }
                     },
@@ -4760,7 +4761,7 @@ private fun ChatVideoNotePlayer(
                         exoPlayer.volume = if (soundEnabled) 1f else 0f
                     } else {
                         soundEnabled = true
-                        player.volume = 1f
+                        exoPlayer.volume = 1f
                         exoPlayer.play()
                     }
                 }
@@ -5177,13 +5178,12 @@ private fun MessageBubble(
                             }
                         }
                         if (hasImageCaption) {
-                                Text(
-                                    text = messageText,
-                                    color = MainText,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 9.dp)
-                                )
-                            }
+                            Text(
+                                text = messageText,
+                                color = MainText,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 9.dp)
+                            )
                         }
                     } else if ((!isVoiceMessage && !isVideoNoteAttachment) || attachmentPath == null) {
                         Text(
