@@ -41,7 +41,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.Image
@@ -3807,6 +3808,19 @@ private fun FullscreenChatImageViewer(
         animationSpec = tween(durationMillis = 180),
         label = "photoDismissDrag"
     )
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        val nextScale = (scale * zoomChange).coerceIn(1f, 5f)
+        scale = nextScale
+        if (nextScale > 1.001f) {
+            val maxX = (viewportSize.width * (nextScale - 1f) / 2f).coerceAtLeast(0f)
+            val maxY = (viewportSize.height * (nextScale - 1f) / 2f).coerceAtLeast(0f)
+            offsetX = (offsetX + panChange.x).coerceIn(-maxX, maxX)
+            offsetY = (offsetY + panChange.y).coerceIn(-maxY, maxY)
+        } else {
+            offsetX = 0f
+            offsetY = 0f
+        }
+    }
 
     // Hide Android's status/navigation bars while this dedicated photo viewer is open.
     val dialogView = LocalView.current
@@ -3849,21 +3863,10 @@ private fun FullscreenChatImageViewer(
                     translationX = offsetX
                     translationY = offsetY + animatedDismissDrag
                 }
-                .pointerInput(bitmap, scale, viewportSize) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                        scale = nextScale
-                        if (nextScale > 1.001f) {
-                            val maxX = (viewportSize.width * (nextScale - 1f) / 2f).coerceAtLeast(0f)
-                            val maxY = (viewportSize.height * (nextScale - 1f) / 2f).coerceAtLeast(0f)
-                            offsetX = (offsetX + pan.x).coerceIn(-maxX, maxX)
-                            offsetY = (offsetY + pan.y).coerceIn(-maxY, maxY)
-                        } else {
-                            offsetX = 0f
-                            offsetY = 0f
-                        }
-                    }
-                }
+                .transformable(
+                    state = transformState,
+                    canPan = { scale > 1.001f }
+                )
                 .pointerInput(bitmap, scale) {
                     detectVerticalDragGestures(
                         onVerticalDrag = { change, dragAmount ->
