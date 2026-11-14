@@ -181,7 +181,10 @@ data class FaceVideoGroupMember(
     @SerialName("chat_id") val chatId: String,
     @SerialName("user_id") val userId: String,
     val role: String,
-    @SerialName("joined_at") val joinedAt: String
+    @SerialName("joined_at") val joinedAt: String,
+    @SerialName("can_change_info") val canChangeInfo: Boolean = false,
+    @SerialName("can_invite_users") val canInviteUsers: Boolean = false,
+    @SerialName("can_remove_users") val canRemoveUsers: Boolean = false
 )
 
 data class FaceVideoGroupMemberProfile(
@@ -260,6 +263,15 @@ private data class GroupMemberRoleArguments(
     @SerialName("p_chat_id") val chatId: String,
     @SerialName("p_target_user_id") val targetUserId: String,
     @SerialName("p_role") val role: String
+)
+
+@Serializable
+private data class GroupMemberPermissionsArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_target_user_id") val targetUserId: String,
+    @SerialName("p_can_change_info") val canChangeInfo: Boolean,
+    @SerialName("p_can_invite_users") val canInviteUsers: Boolean,
+    @SerialName("p_can_remove_users") val canRemoveUsers: Boolean
 )
 
 @Serializable
@@ -1017,6 +1029,25 @@ class SupabaseChatRepository(
                 chatId = chatId,
                 targetUserId = targetUserId,
                 role = role
+            )
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun setGroupAdminPermissions(
+        chatId: String,
+        targetUserId: String,
+        canChangeInfo: Boolean,
+        canInviteUsers: Boolean,
+        canRemoveUsers: Boolean
+    ) {
+        client.postgrest.rpc(
+            "face_video_set_group_admin_permissions",
+            GroupMemberPermissionsArguments(
+                chatId = chatId,
+                targetUserId = targetUserId,
+                canChangeInfo = canChangeInfo,
+                canInviteUsers = canInviteUsers,
+                canRemoveUsers = canRemoveUsers
             )
         ).decodeAs<Boolean>()
     }
