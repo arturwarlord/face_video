@@ -159,7 +159,7 @@ internal fun GroupManagementDialog(
                                 .padding(18.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            GroupPanelAvatar(groupTitle, Modifier.size(78.dp))
+                            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(78.dp))
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 groupTitle,
