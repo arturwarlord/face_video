@@ -2436,6 +2436,7 @@ private fun LiveChatRow(
 ) {
     var showMenu by remember(chat.id) { mutableStateOf(false) }
     var confirmDelete by remember(chat.id) { mutableStateOf(false) }
+    var showGroupAvatarPreview by remember(chat.id) { mutableStateOf(false) }
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
@@ -2452,7 +2453,18 @@ private fun LiveChatRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
         if (chat.isGroup) {
-            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(52.dp))
+            if (!chat.avatarUrl.isNullOrBlank()) {
+                Avatar(
+                    initials = chat.title.take(1).uppercase().ifBlank { "G" },
+                    style = 1,
+                    modifier = Modifier.size(52.dp),
+                    imageUrl = chat.avatarUrl,
+                    imageCacheKey = "group:${chat.id}",
+                    onClick = { showGroupAvatarPreview = true }
+                )
+            } else {
+                ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(52.dp))
+            }
         } else {
             Avatar(
                 initials,
@@ -2526,6 +2538,14 @@ private fun LiveChatRow(
             colors = androidx.compose.material3.MenuDefaults.itemColors(
                 textColor = InboxPrimary
             )
+        )
+    }
+    if (showGroupAvatarPreview && !chat.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = chat.avatarUrl!!,
+            imageCacheKey = "group:${chat.id}",
+            title = chat.title,
+            onDismiss = { showGroupAvatarPreview = false }
         )
     }
     if (confirmDelete) {
