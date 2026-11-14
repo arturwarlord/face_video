@@ -1644,125 +1644,78 @@ private fun StoriesStrip(
         .map { group -> group.sortedByDescending { it.createdAt }.first() }
         .sortedByDescending { it.createdAt }
 
-    Column(Modifier.fillMaxWidth().padding(top = 9.dp, bottom = 10.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 13.dp, bottom = 12.dp)) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 19.dp, end = 18.dp, bottom = 8.dp),
+            Modifier.fillMaxWidth().padding(start = 19.dp, end = 18.dp, bottom = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Истории", color = InboxPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Обновить ↻",
-                color = InboxMuted,
-                fontSize = 10.sp,
-                modifier = Modifier.clickable { refreshKey++ }.padding(4.dp)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Истории",
+                    color = InboxPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Моменты твоих друзей",
+                    color = InboxMuted,
+                    fontSize = 10.sp
+                )
+            }
+            Surface(
+                onClick = { refreshKey++ },
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.72f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
+                modifier = Modifier.size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text("↻", color = InboxAccentStrong, fontSize = 19.sp, fontWeight = FontWeight.Medium)
+                }
+            }
         }
+
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
             verticalAlignment = Alignment.Top
         ) {
             val latestOwnStory = ownStories.maxByOrNull { it.createdAt }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.width(70.dp).clickable {
-                    if (latestOwnStory != null) onOpenStories(userId) else imagePicker.launch("image/*")
-                }
-            ) {
-                Box(contentAlignment = Alignment.BottomEnd) {
-                    if (latestOwnStory != null) {
-                        Box(
-                            Modifier.size(66.dp)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF28A9FF), Color(0xFF5D68EC), Color(0xFFB06BEF))
-                                    ),
-                                    CircleShape
-                                )
-                                .padding(3.dp)
-                                .clip(CircleShape)
-                        ) {
-                            Avatar(
-                                initials = (myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }
-                                    ?: myProfile?.username.orEmpty()).take(1).uppercase().ifBlank { "Я" },
-                                style = userId.hashCode().ushr(1) % 4,
-                                modifier = Modifier.fillMaxSize(),
-                                imageUrl = myProfile?.avatarUrl,
-                                imageCacheKey = userId
-                            )
-                        }
-                    } else {
-                        Surface(
-                            color = Color.White.copy(alpha = 0.82f),
-                            shape = RoundedCornerShape(20.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
-                            modifier = Modifier.size(62.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                InboxCameraGlyph()
-                            }
-                        }
-                    }
-                    Surface(
-                        color = InboxAccent,
-                        shape = CircleShape,
-                        border = BorderStroke(2.dp, Color(0xFFF2F3FF)),
-                        modifier = Modifier.size(22.dp).clickable {
-                            imagePicker.launch("image/*")
-                        }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("+", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    if (latestOwnStory != null) "Добавить ещё" else "Моя история",
-                    color = InboxPrimary,
-                    fontSize = 9.sp,
-                    maxLines = 1
-                )
-            }
+            StoryAvatarItem(
+                label = "Ваша история",
+                initials = (myProfile?.displayName?.ifBlank { myProfile?.username.orEmpty() }
+                    ?: myProfile?.username.orEmpty()).take(1).uppercase().ifBlank { "Я" },
+                userId = userId,
+                avatarUrl = myProfile?.avatarUrl,
+                hasStory = latestOwnStory != null,
+                isOwn = true,
+                onOpen = {
+                    if (latestOwnStory != null) onOpenStories(userId)
+                    else imagePicker.launch("image/*")
+                },
+                onAddStory = { imagePicker.launch("image/*") }
+            )
 
             friendGroups.forEach { story ->
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(68.dp).clickable { onOpenStories(story.userId) }
-                ) {
-                    Box(
-                        Modifier.size(62.dp).background(
-                            Brush.linearGradient(listOf(Color(0xFF38A8FF), Color(0xFF766AF0), Color(0xFFB47BEF))),
-                            CircleShape
-                        ).padding(3.dp)
-                    ) {
-                        Avatar(
-                            story.displayName.ifBlank { story.username }.take(1).uppercase(),
-                            story.userId.hashCode().ushr(1) % 4,
-                            Modifier.fillMaxSize(),
-                            highlighted = true,
-                            imageUrl = story.avatarUrl,
-                            imageCacheKey = story.userId
-                        )
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        story.displayName.ifBlank { story.username },
-                        color = InboxPrimary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                StoryAvatarItem(
+                    label = story.displayName.ifBlank { story.username },
+                    initials = story.displayName.ifBlank { story.username }.take(1).uppercase().ifBlank { "?" },
+                    userId = story.userId,
+                    avatarUrl = story.avatarUrl,
+                    hasStory = true,
+                    onOpen = { onOpenStories(story.userId) }
+                )
             }
         }
+
         if (loadError != null) {
             Text(
                 loadError.orEmpty(),
                 color = InboxMuted,
                 fontSize = 9.sp,
-                modifier = Modifier.padding(start = 18.dp, top = 4.dp)
+                modifier = Modifier.padding(start = 19.dp, top = 5.dp)
             )
         }
     }
@@ -1838,6 +1791,87 @@ private fun StoriesStrip(
                     Text("Отмена", color = Muted)
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun StoryAvatarItem(
+    label: String,
+    initials: String,
+    userId: String,
+    avatarUrl: String?,
+    hasStory: Boolean,
+    isOwn: Boolean = false,
+    onOpen: () -> Unit,
+    onAddStory: (() -> Unit)? = null
+) {
+    Column(
+        modifier = Modifier.width(74.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier.size(68.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier.size(66.dp)
+                    .background(
+                        brush = if (hasStory) {
+                            Brush.sweepGradient(
+                                listOf(
+                                    Color(0xFFFEDA75),
+                                    Color(0xFFFA7E1E),
+                                    Color(0xFFD62976),
+                                    Color(0xFF962FBF),
+                                    Color(0xFF4F5BD5),
+                                    Color(0xFFFEDA75)
+                                )
+                            )
+                        } else {
+                            Brush.linearGradient(listOf(Color(0xFFD4DCE8), Color(0xFFE7EBF4)))
+                        },
+                        shape = CircleShape
+                    )
+                    .clickable(onClick = onOpen)
+                    .padding(3.dp)
+                    .background(Color.White, CircleShape)
+                    .padding(2.dp)
+            ) {
+                Avatar(
+                    initials = initials,
+                    style = userId.hashCode().ushr(1) % 4,
+                    modifier = Modifier.fillMaxSize(),
+                    imageUrl = avatarUrl,
+                    imageCacheKey = userId
+                )
+            }
+
+            if (isOwn && onAddStory != null) {
+                Surface(
+                    onClick = onAddStory,
+                    shape = CircleShape,
+                    color = InboxAccentStrong,
+                    border = BorderStroke(2.dp, Color.White),
+                    modifier = Modifier.align(Alignment.BottomEnd).size(23.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("+", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            color = InboxPrimary,
+            fontSize = 10.sp,
+            fontWeight = if (isOwn) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
         )
     }
 }
@@ -1936,6 +1970,7 @@ private fun StoryViewerScreen(
     var errorMessage by remember(storyOwnerId) { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var showStoryMoreMenu by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val mediaCache = remember(context) { ArturChatImageCache(context) }
@@ -2108,11 +2143,11 @@ private fun StoryViewerScreen(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                "‹",
+                                "×",
                                 color = Color.White,
-                                fontSize = 29.sp,
+                                fontSize = 28.sp,
                                 fontWeight = FontWeight.Light,
-                                modifier = Modifier.padding(bottom = 3.dp)
+                                modifier = Modifier.padding(bottom = 2.dp)
                             )
                         }
                     }
@@ -2154,21 +2189,31 @@ private fun StoryViewerScreen(
                         )
                     }
                     if (canDelete) {
-                        Surface(
-                            onClick = { showDeleteConfirmation = true },
-                            enabled = !deleting,
-                            modifier = Modifier.heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.Transparent,
-                            border = null
-                        ) {
-                            Text(
-                                if (deleting) "Удаляем…" else "Удалить",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                            )
+                        Box {
+                            Surface(
+                                onClick = { showStoryMoreMenu = true },
+                                enabled = !deleting,
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("⋯", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            DropdownMenu(
+                                expanded = showStoryMoreMenu,
+                                onDismissRequest = { showStoryMoreMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Удалить историю", color = Color(0xFFB45F6D)) },
+                                    onClick = {
+                                        showStoryMoreMenu = false
+                                        showDeleteConfirmation = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -2278,46 +2323,42 @@ private fun StoryViewerScreen(
                 }
 
                 if (current != null) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(20.dp),
-                        border = null
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    if (canReact) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color.White.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(26.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
                         ) {
-                            STORY_REACTION_OPTIONS.forEach { emoji ->
-                                val count = reactionSummary.counts[emoji] ?: 0
-                                val selected = reactionSummary.currentUserReaction == emoji
-                                Surface(
-                                    onClick = { onStoryReactionTapped(emoji) },
-                                    enabled = canReact && !isLoadingReactions && !isSavingReaction,
-                                    shape = RoundedCornerShape(15.dp),
-                                    color = Color.Transparent,
-                                    border = null,
-                                    modifier = Modifier.weight(1f).padding(horizontal = 1.dp).heightIn(min = 48.dp)
-                                ) {
-                                    Row(
-                                        Modifier.padding(horizontal = 3.dp, vertical = 7.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                STORY_REACTION_OPTIONS.forEach { emoji ->
+                                    val count = reactionSummary.counts[emoji] ?: 0
+                                    val selected = reactionSummary.currentUserReaction == emoji
+                                    Surface(
+                                        onClick = { onStoryReactionTapped(emoji) },
+                                        enabled = !isLoadingReactions && !isSavingReaction,
+                                        shape = CircleShape,
+                                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.Transparent,
+                                        border = if (selected) BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null,
+                                        modifier = Modifier.weight(1f).height(42.dp)
                                     ) {
-                                        Text(
-                                            emoji,
-                                            fontSize = if (selected) 19.sp else 17.sp,
-                                            lineHeight = if (selected) 21.sp else 19.sp
-                                        )
-                                        if (count > 0) {
-                                            Spacer(Modifier.width(2.dp))
-                                            Text(
-                                                count.toString(),
-                                                color = Color.White.copy(alpha = 0.94f),
-                                                fontSize = 8.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text(emoji, fontSize = if (selected) 21.sp else 19.sp, lineHeight = 22.sp)
+                                            if (count > 0) {
+                                                Text(
+                                                    count.toString(),
+                                                    color = Color.White.copy(alpha = 0.92f),
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2343,65 +2384,6 @@ private fun StoryViewerScreen(
                     Spacer(Modifier.height(10.dp))
                 }
 
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        onClick = { index = (index - 1).coerceAtLeast(0) },
-                        enabled = current != null && index > 0,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.Transparent,
-                        border = null
-                    ) {
-                        Text(
-                            "Назад",
-                            color = Color.White.copy(alpha = if (index > 0) 1f else 0.38f),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 10.dp)
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.Transparent,
-                        border = null
-                    ) {
-                        Text(
-                            if (stories.isEmpty()) "— / —" else "${index + 1} / ${stories.size}",
-                            color = Color.White.copy(alpha = 0.78f),
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Surface(
-                        onClick = {
-                            if (index < stories.lastIndex) index++ else onBack()
-                        },
-                        enabled = current != null,
-                        modifier = Modifier.heightIn(min = 48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.Transparent,
-                        border = null
-                    ) {
-                        Row(
-                            Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (index < stories.lastIndex) "Следующая" else "Готово",
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("›", color = Color.White, fontSize = 17.sp)
-                        }
-                    }
-                }
             }
         }
     }
