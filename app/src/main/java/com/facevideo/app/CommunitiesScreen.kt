@@ -426,9 +426,11 @@ private fun CommunityGroupRow(
 @Composable
 private fun CommunityChannelRow(
     entry: FaceVideoChannelEntry,
+    userId: String,
     onOpen: () -> Unit,
     onJoin: () -> Unit
 ) {
+    val isOwner = entry.channel.createdBy == userId
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(19.dp))
@@ -457,7 +459,9 @@ private fun CommunityChannelRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        if (entry.isSubscribed) {
+        if (isOwner) {
+            Text("Мой канал", color = CommunityAccentDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        } else if (entry.isSubscribed) {
             Text("Открыть", color = CommunityAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         } else {
             Box(
