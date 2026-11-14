@@ -65,6 +65,19 @@ data class FaceVideoChannelEntry(
 )
 
 @Serializable
+data class FaceVideoChannelMember(
+    @SerialName("channel_id") val channelId: String,
+    @SerialName("user_id") val userId: String,
+    val role: String,
+    @SerialName("joined_at") val joinedAt: String
+)
+
+data class FaceVideoChannelMemberProfile(
+    val member: FaceVideoChannelMember,
+    val profile: FaceVideoProfile?
+)
+
+@Serializable
 data class FaceVideoChannelPost(
     val id: String,
     @SerialName("channel_id") val channelId: String,
@@ -285,6 +298,18 @@ private data class NewFaceVideoChannelMembership(
 private data class NewFaceVideoChannelPost(
     @SerialName("channel_id") val channelId: String,
     @SerialName("author_id") val authorId: String,
+    val body: String
+)
+
+@Serializable
+private data class UpdateFaceVideoChannel(
+    val title: String,
+    val description: String,
+    @SerialName("updated_at") val updatedAt: String
+)
+
+@Serializable
+private data class UpdateFaceVideoChannelPost(
     val body: String
 )
 
@@ -833,6 +858,89 @@ class SupabaseChatRepository(
                 body = cleanBody
             )
         ) { select() }.decodeSingle<FaceVideoChannelPost>()
+    }
+
+    suspend fun updateChannel(
+        channelId: String,
+        userId: String,
+        title: String,
+        description: String
+    ): FaceVideoChannel {
+        val cleanTitle = title.trim()
+        val cleanDescription = description.trim()
+        require(cleanTitle.length in 2..80) {
+            "Название канала должно содержать от 2 до 80 символов."
+        }
+        require(cleanDescription.length <= 500) {
+            "Описание канала должно содержать не более 500 символов."
+        }
+        return client.from("face_video_channels").update(
+            UpdateFaceVideoChannel(
+                title = cleanTitle,
+                description = cleanDescription,
+                updatedAt = java.time.Instant.now().toString()
+            )
+        ) {
+            filter {
+                eq("id", channelId)
+                eq("created_by", userId)
+            }
+            select()
+        }.decodeSingle<FaceVideoChannel>()
+    }
+
+    suspend fun deleteChannel(channelId: String, userId: String) {
+        client.from("face_video_channels").delete {
+            filter {
+                eq("id", channelId)
+                eq("created_by", userId)
+            }
+        }
+    }
+
+    suspend fun listChannelMembers(channelId: String): List<FaceVideoChannelMemberProfile> {
+        val members = client.from("face_video_channel_members").select {
+            filter { eq("channel_id", channelId) }
+            order("joined_at", Order.ASCENDING)
+        }.decodeList<FaceVideoChannelMember>()
+        if (members.isEmpty()) return emptyList()
+
+        val profiles = listProfiles(members.map { it.userId }).associateBy { it.id }
+        return members.map { member ->
+            FaceVideoChannelMemberProfile(
+                member = member,
+                profile = profiles[member.userId]
+            )
+        }
+    }
+
+    suspend fun updateChannelPost(
+        channelId: String,
+        postId: String,
+        body: String
+    ): FaceVideoChannelPost {
+        val cleanBody = body.trim()
+        require(cleanBody.isNotEmpty() && cleanBody.length <= 4000) {
+            "Публикация должна содержать от 1 до 4000 символов."
+        }
+        return client.from("face_video_channel_posts").update(
+            UpdateFaceVideoChannelPost(body = cleanBody)
+        ) {
+            filter {
+                eq("id", postId)
+                eq("channel_id", channelId)
+            }
+            select()
+        }.decodeSingle<FaceVideoChannelPost>()
+    }
+
+    suspend fun deleteChannelPost(channelId: String, postId: String) {
+        client.from("face_video_channel_posts").delete {
+            filter {
+                eq("id", postId)
+                eq("channel_id", channelId)
+            }
+        }
     }
 
     suspend fun getGroupDetails(chatId: String): FaceVideoGroup? =
