@@ -1,7 +1,5 @@
 package com.facevideo.app
 
-import android.content.Context
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -139,6 +137,7 @@ internal fun GroupManagementScreen(
                 }.onSuccess {
                     group = it
                     infoMessage = "Фотография группы обновлена."
+                    onGroupUpdated(it.title?.takeIf { title -> title.isNotBlank() } ?: groupTitle)
                     refreshMembers()
                 }.onFailure {
                     errorMessage = it.message ?: "Не удалось обновить фотографию группы."
@@ -266,6 +265,7 @@ internal fun GroupManagementScreen(
                                         .onSuccess {
                                             group = it
                                             infoMessage = "Фотография группы удалена."
+                                            onGroupUpdated(it.title?.takeIf { title -> title.isNotBlank() } ?: groupTitle)
                                         }
                                         .onFailure { errorMessage = it.message ?: "Не удалось удалить фотографию." }
                                     isBusy = false
