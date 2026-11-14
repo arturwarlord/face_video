@@ -1067,6 +1067,9 @@ private fun FaceVideoApp(
                     scope.launch {
                         runCatching {
                             val latestChats = liveRepository.listMyChats(userId)
+                            latestChats.firstOrNull { it.id == currentChat.id }?.let { refreshed ->
+                                openedLiveChat = refreshed
+                            }
                             withContext(Dispatchers.IO) { localCache.saveChats(userId, latestChats) }
                         }.onFailure {
                             android.util.Log.w("ArturChatGroups", "Could not refresh group cache", it)
@@ -3100,10 +3103,20 @@ private fun LiveChatScreen(
                             .padding(2.dp)
                     ) {
                         if (chat.isGroup) {
-                            ArturChatTypeAvatar(
-                                ArturChatIconType.GROUP,
-                                Modifier.fillMaxSize().clickable { showGroupManagement = true }
-                            )
+                            if (!chat.avatarUrl.isNullOrBlank()) {
+                                Avatar(
+                                    initials = chat.title.take(1).uppercase().ifBlank { "G" },
+                                    style = 1,
+                                    modifier = Modifier.fillMaxSize().clickable { showGroupManagement = true },
+                                    imageUrl = chat.avatarUrl,
+                                    imageCacheKey = "group:${chat.id}"
+                                )
+                            } else {
+                                ArturChatTypeAvatar(
+                                    ArturChatIconType.GROUP,
+                                    Modifier.fillMaxSize().clickable { showGroupManagement = true }
+                                )
+                            }
                         } else {
                             Avatar(
                                 chat.title.take(2).uppercase(),
