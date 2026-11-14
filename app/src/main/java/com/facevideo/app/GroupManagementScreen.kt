@@ -1,5 +1,9 @@
 package com.facevideo.app
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,7 +57,9 @@ import com.facevideo.app.data.FaceVideoGroup
 import com.facevideo.app.data.FaceVideoGroupMemberProfile
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.SupabaseChatRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val GroupPanelAccent = Color(0xFF5369DC)
 private val GroupPanelAccentDark = Color(0xFF4054C5)
@@ -84,7 +91,9 @@ internal fun GroupManagementScreen(
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<FaceVideoGroupMemberProfile?>(null) }
     var pendingAdminPermissions by remember { mutableStateOf<FaceVideoGroupMemberProfile?>(null) }
+    var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(repository, chatId, refreshKey) {
         isLoading = true
@@ -114,6 +123,29 @@ internal fun GroupManagementScreen(
 
     fun refreshMembers() {
         refreshKey += 1
+    }
+
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                isBusy = true
+                errorMessage = null
+                runCatching {
+                    val prepared = withContext(Dispatchers.IO) {
+                        prepareChatImage(context, uri, maxDimension = 1280, maxBytes = 4 * 1024 * 1024)
+                    }
+                    val url = repository.uploadGroupAvatar(chatId, prepared.bytes)
+                    repository.setGroupAvatar(chatId, url)
+                }.onSuccess {
+                    group = it
+                    infoMessage = "Фотография группы обновлена."
+                    refreshMembers()
+                }.onFailure {
+                    errorMessage = it.message ?: "Не удалось обновить фотографию группы."
+                }
+                isBusy = false
+            }
+        }
     }
 
     Column(
@@ -165,7 +197,38 @@ internal fun GroupManagementScreen(
                         .padding(horizontal = 2.dp, vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(78.dp))
+                    Box(Modifier.size(92.dp)) {
+                        val groupAvatarUrl = group?.avatarUrl
+                        if (!groupAvatarUrl.isNullOrBlank()) {
+                            Avatar(
+                                initials = groupTitle.trim().take(1).uppercase().ifBlank { "G" },
+                                style = 1,
+                                modifier = Modifier.fillMaxSize(),
+                                imageUrl = groupAvatarUrl,
+                                imageCacheKey = "group:$chatId",
+                                onClick = { showAvatarPreview = true }
+                            )
+                        } else {
+                            ArturChatTypeAvatar(
+                                ArturChatIconType.GROUP,
+                                Modifier.fillMaxSize().then(
+                                    if (canManageInfo) Modifier.clickable { avatarPicker.launch("image/*") } else Modifier
+                                )
+                            )
+                        }
+                        if (canManageInfo) {
+                            Box(
+                                Modifier.align(Alignment.BottomEnd)
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .background(GroupPanelAccent)
+                                    .clickable(enabled = !isBusy) { avatarPicker.launch("image/*") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✎", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         groupTitle,
@@ -191,6 +254,26 @@ internal fun GroupManagementScreen(
                             lineHeight = 17.sp,
                             textAlign = TextAlign.Center
                         )
+                    }
+                    if (canManageInfo && !group?.avatarUrl.isNullOrBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(
+                            enabled = !isBusy,
+                            onClick = {
+                                scope.launch {
+                                    isBusy = true
+                                    runCatching { repository.setGroupAvatar(chatId, null) }
+                                        .onSuccess {
+                                            group = it
+                                            infoMessage = "Фотография группы удалена."
+                                        }
+                                        .onFailure { errorMessage = it.message ?: "Не удалось удалить фотографию." }
+                                    isBusy = false
+                                }
+                            }
+                        ) {
+                            Text("Удалить фотографию", color = GroupPanelDanger, fontSize = 10.sp)
+                        }
                     }
                     if (canManageInfo || canInviteMembers) {
                         Spacer(Modifier.height(15.dp))
@@ -314,6 +397,15 @@ internal fun GroupManagementScreen(
             }
         }
     }
+    if (showAvatarPreview && !group?.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = group!!.avatarUrl!!,
+            imageCacheKey = "group:$chatId",
+            title = groupTitle,
+            onDismiss = { showAvatarPreview = false }
+        )
+    }
+
     if (showEditDialog && group != null) {
         EditGroupDialog(
             group = group!!,
