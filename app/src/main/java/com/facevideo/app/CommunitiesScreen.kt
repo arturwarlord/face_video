@@ -1132,7 +1132,7 @@ private fun ChannelDetailsScreen(
                     items(posts, key = { it.id }) { post ->
                         ChannelPostCard(
                             post = post,
-                            canManage = isOwner || (canPublishPosts && post.authorId == userId),
+                            canManage = post.authorId == userId && (isOwner || canPublishPosts),
                             onEdit = { editingPost = post },
                             onDelete = { deletingPost = post }
                         )
