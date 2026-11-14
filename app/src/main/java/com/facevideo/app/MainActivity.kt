@@ -1479,7 +1479,7 @@ private fun LiveChatListScreen(
                             )
                             Spacer(Modifier.weight(1f))
                             Text(
-                                "${visibleChats.size} личных чатов",
+                                "Личные чаты: ${visibleChats.size}",
                                 color = InboxMuted,
                                 fontSize = 10.sp
                             )
