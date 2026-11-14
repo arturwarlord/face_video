@@ -844,7 +844,7 @@ private fun ChannelDetailsScreen(
                 Text("Канал", color = CommunityMuted, fontSize = 9.sp)
             }
             Spacer(Modifier.weight(1f))
-            if (isOwner || canManageMembers || canChangeInfo || canPublishPosts) {
+            if (isOwner || canManageMembers || canChangeInfo) {
                 Box {
                     TextButton(
                         onClick = { showManageMenu = true },
