@@ -8289,5 +8289,4 @@ private fun BottomNavigation(
             }
         }
     }
-    }
 }
