@@ -50,6 +50,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.facevideo.app.data.FaceVideoChannel
 import com.facevideo.app.data.FaceVideoChannelEntry
 import com.facevideo.app.data.FaceVideoChannelPost
@@ -770,13 +772,21 @@ private fun ChannelDetailsScreen(
     var showManageMenu by remember { mutableStateOf(false) }
     var showEditChannel by remember { mutableStateOf(false) }
     var showDeleteChannelConfirmation by remember { mutableStateOf(false) }
-    var showSubscribers by remember { mutableStateOf(false) }
+    var showChannelManagement by remember { mutableStateOf(false) }
     var editingPost by remember { mutableStateOf<FaceVideoChannelPost?>(null) }
     var deletingPost by remember { mutableStateOf<FaceVideoChannelPost?>(null) }
     var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val isOwner = currentChannel.createdBy == userId
+    val myMembership = members.firstOrNull { it.member.userId == userId }?.member
+    val isOwner = currentChannel.createdBy == userId || myMembership?.role == "owner"
+    val isAdmin = myMembership?.role == "admin"
+    val canChangeInfo = isOwner || (isAdmin && myMembership?.canChangeInfo == true)
+    val canInviteMembers = isOwner || (isAdmin && myMembership?.canInviteUsers == true)
+    val canRemoveMembers = isOwner || (isAdmin && myMembership?.canRemoveUsers == true)
+    val canPublishPosts = isOwner || (isAdmin && myMembership?.canPublishPosts == true)
+    val canViewMembers = isOwner || canInviteMembers || canRemoveMembers
+    val canManageMembers = isOwner || canInviteMembers || canRemoveMembers
     val subscribers = members.filter { it.member.role == "subscriber" }
 
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -801,17 +811,15 @@ private fun ChannelDetailsScreen(
         }
     }
 
-    LaunchedEffect(repository, currentChannel.id, isOwner) {
+    LaunchedEffect(repository, currentChannel.id) {
         isLoading = true
         errorMessage = null
         runCatching { repository.listChannelPosts(currentChannel.id) }
             .onSuccess { posts = it }
             .onFailure { errorMessage = it.message ?: "Не удалось загрузить публикации." }
-        if (isOwner) {
-            runCatching { repository.listChannelMembers(currentChannel.id) }
-                .onSuccess { members = it }
-                .onFailure { errorMessage = it.message ?: "Не удалось загрузить список подписчиков." }
-        }
+        runCatching { repository.listChannelMembers(currentChannel.id) }
+            .onSuccess { members = it }
+            .onFailure { errorMessage = it.message ?: "Не удалось загрузить участников канала." }
         isLoading = false
     }
 
@@ -836,7 +844,7 @@ private fun ChannelDetailsScreen(
                 Text("Канал", color = CommunityMuted, fontSize = 9.sp)
             }
             Spacer(Modifier.weight(1f))
-            if (isOwner) {
+            if (isOwner || canManageMembers || canChangeInfo || canPublishPosts) {
                 Box {
                     TextButton(
                         onClick = { showManageMenu = true },
@@ -848,52 +856,60 @@ private fun ChannelDetailsScreen(
                         expanded = showManageMenu,
                         onDismissRequest = { showManageMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Изменить канал") },
-                            onClick = {
-                                showManageMenu = false
-                                showEditChannel = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Изменить фотографию") },
+                        if (canChangeInfo) {
+                            DropdownMenuItem(
+                                text = { Text("Изменить канал") },
+                                onClick = {
+                                    showManageMenu = false
+                                    showEditChannel = true
+                                }
+                            )
+                        }
+                        if (isOwner) {
+                            DropdownMenuItem(
+                                text = { Text("Изменить фотографию") },
                             onClick = {
                                 showManageMenu = false
                                 avatarPicker.launch("image/*")
                             }
                         )
-                        if (!currentChannel.avatarUrl.isNullOrBlank()) {
+                            if (!currentChannel.avatarUrl.isNullOrBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("Удалить фотографию", color = CommunityDanger) },
+                                    onClick = {
+                                        showManageMenu = false
+                                        scope.launch {
+                                            isBusy = true
+                                            runCatching { repository.setChannelAvatar(currentChannel.id, null) }
+                                                .onSuccess {
+                                                    currentChannel = it
+                                                    onMembershipChanged()
+                                                }
+                                                .onFailure { errorMessage = it.message ?: "Не удалось удалить фотографию." }
+                                            isBusy = false
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        if (canManageMembers) {
                             DropdownMenuItem(
-                                text = { Text("Удалить фотографию", color = CommunityDanger) },
+                                text = { Text("Управление участниками · ${subscribers.size}") },
                                 onClick = {
                                     showManageMenu = false
-                                    scope.launch {
-                                        isBusy = true
-                                        runCatching { repository.setChannelAvatar(currentChannel.id, null) }
-                                            .onSuccess {
-                                                currentChannel = it
-                                                onMembershipChanged()
-                                            }
-                                            .onFailure { errorMessage = it.message ?: "Не удалось удалить фотографию." }
-                                        isBusy = false
-                                    }
+                                    showChannelManagement = true
                                 }
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text("Подписчики · ${subscribers.size}") },
-                            onClick = {
-                                showManageMenu = false
-                                showSubscribers = true
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Удалить канал", color = CommunityDanger) },
-                            onClick = {
-                                showManageMenu = false
-                                showDeleteChannelConfirmation = true
-                            }
-                        )
+                        if (isOwner) {
+                            DropdownMenuItem(
+                                text = { Text("Удалить канал", color = CommunityDanger) },
+                                onClick = {
+                                    showManageMenu = false
+                                    showDeleteChannelConfirmation = true
+                                }
+                            )
+                        }
                     }
                 }
             } else {
@@ -970,7 +986,7 @@ private fun ChannelDetailsScreen(
                     lineHeight = 18.sp
                 )
             }
-            if (isOwner) {
+            if (canViewMembers) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -981,13 +997,14 @@ private fun ChannelDetailsScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            "Только владелец видит список подписчиков",
+                            if (isOwner) "${members.count { it.member.role == "admin" }} администраторов"
+                            else "Управление участниками канала",
                             color = CommunityMuted,
                             fontSize = 9.sp
                         )
                     }
-                    TextButton(onClick = { showSubscribers = true }) {
-                        Text("Посмотреть", color = CommunityAccent, fontSize = 11.sp)
+                    TextButton(onClick = { showChannelManagement = true }) {
+                        Text("Управлять", color = CommunityAccent, fontSize = 11.sp)
                     }
                 }
             } else {
@@ -1023,7 +1040,7 @@ private fun ChannelDetailsScreen(
             }
         }
 
-        if (isOwner) {
+        if (canPublishPosts) {
             Spacer(Modifier.height(11.dp))
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -1099,7 +1116,7 @@ private fun ChannelDetailsScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        if (isOwner) "В канале пока нет публикаций. Напиши первую запись выше."
+                        if (canPublishPosts) "В канале пока нет публикаций. Напиши первую запись выше."
                         else "В этом канале пока нет публикаций.",
                         color = CommunityMuted,
                         fontSize = 12.sp,
@@ -1115,7 +1132,7 @@ private fun ChannelDetailsScreen(
                     items(posts, key = { it.id }) { post ->
                         ChannelPostCard(
                             post = post,
-                            canManage = isOwner,
+                            canManage = isOwner || (canPublishPosts && post.authorId == userId),
                             onEdit = { editingPost = post },
                             onDelete = { deletingPost = post }
                         )
@@ -1199,11 +1216,26 @@ private fun ChannelDetailsScreen(
         )
     }
 
-    if (showSubscribers) {
-        ChannelSubscribersDialog(
-            members = subscribers,
-            onDismiss = { showSubscribers = false }
-        )
+    if (showChannelManagement) {
+        Dialog(
+            onDismissRequest = { showChannelManagement = false },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = false
+            )
+        ) {
+            ChannelManagementScreen(
+                repository = repository,
+                userId = userId,
+                channel = currentChannel,
+                onDismiss = { showChannelManagement = false },
+                onEditChannel = {
+                    showChannelManagement = false
+                    showEditChannel = true
+                },
+                onChannelChanged = onMembershipChanged
+            )
+        }
     }
 
     if (editingPost != null) {
