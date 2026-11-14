@@ -132,168 +132,168 @@ internal fun GroupManagementScreen(
         }
 
 
-                if (isLoading && group == null) {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GroupPanelAccent)
+        if (isLoading && group == null) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = GroupPanelAccent)
+            }
+        } else {
+            Column(
+                Modifier.fillMaxWidth().weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp)
+            ) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(23.dp))
+                        .background(Color.White)
+                        .border(1.dp, GroupPanelBorder, RoundedCornerShape(23.dp))
+                        .padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(78.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        groupTitle,
+                        color = GroupPanelText,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${members.size} участников",
+                        color = GroupPanelMuted,
+                        fontSize = 11.sp
+                    )
+                    if (description.isNotBlank()) {
+                        Spacer(Modifier.height(11.dp))
+                        Text(
+                            description,
+                            color = GroupPanelMuted,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
-                } else {
-                    Column(
-                        Modifier.fillMaxWidth().weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 18.dp)
-                    ) {
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(23.dp))
-                                .background(Color.White)
-                                .border(1.dp, GroupPanelBorder, RoundedCornerShape(23.dp))
-                                .padding(18.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(78.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                groupTitle,
-                                color = GroupPanelText,
-                                fontSize = 19.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "${members.size} участников",
-                                color = GroupPanelMuted,
-                                fontSize = 11.sp
-                            )
-                            if (description.isNotBlank()) {
-                                Spacer(Modifier.height(11.dp))
-                                Text(
-                                    description,
-                                    color = GroupPanelMuted,
-                                    fontSize = 12.sp,
-                                    lineHeight = 17.sp,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                            if (isAdmin) {
-                                Spacer(Modifier.height(15.dp))
-                                Row(
-                                    Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    GroupPanelAction(
-                                        label = "Изменить",
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { showEditDialog = true }
-                                    )
-                                    GroupPanelAction(
-                                        label = "Добавить людей",
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { showInviteDialog = true }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(17.dp))
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "УЧАСТНИКИ",
-                                color = GroupPanelAccentDark,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.1.sp
-                            )
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                members.size.toString(),
-                                color = GroupPanelMuted,
-                                fontSize = 10.sp
-                            )
-                        }
-                        Spacer(Modifier.height(8.dp))
-
-                        if (members.isEmpty() && !isLoading) {
-                            Text("Список участников пока пуст.", color = GroupPanelMuted, fontSize = 11.sp)
-                        } else {
-                            members.forEach { entry ->
-                                GroupMemberRow(
-                                    entry = entry,
-                                    isCurrentUser = entry.member.userId == userId,
-                                    showActions = isAdmin && entry.member.userId != userId &&
-                                        entry.member.role != "owner" &&
-                                        (isOwner || entry.member.role == "member"),
-                                    isOwner = isOwner,
-                                    isBusy = isBusy,
-                                    onPromote = {
-                                        scope.launch {
-                                            isBusy = true
-                                            errorMessage = null
-                                            runCatching {
-                                                repository.setGroupMemberRole(chatId, entry.member.userId, "admin")
-                                            }.onSuccess {
-                                                infoMessage = "Участник назначен администратором."
-                                                refreshMembers()
-                                            }.onFailure {
-                                                errorMessage = it.message ?: "Не удалось изменить роль."
-                                            }
-                                            isBusy = false
-                                        }
-                                    },
-                                    onDemote = {
-                                        scope.launch {
-                                            isBusy = true
-                                            errorMessage = null
-                                            runCatching {
-                                                repository.setGroupMemberRole(chatId, entry.member.userId, "member")
-                                            }.onSuccess {
-                                                infoMessage = "Права администратора сняты."
-                                                refreshMembers()
-                                            }.onFailure {
-                                                errorMessage = it.message ?: "Не удалось изменить роль."
-                                            }
-                                            isBusy = false
-                                        }
-                                    },
-                                    onRemove = { pendingRemoval = entry }
-                                )
-                            }
-                        }
-
-                        if (errorMessage != null) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(errorMessage.orEmpty(), color = GroupPanelDanger, fontSize = 11.sp)
-                        }
-                        if (infoMessage != null) {
-                            Spacer(Modifier.height(5.dp))
-                            Text(infoMessage.orEmpty(), color = GroupPanelAccentDark, fontSize = 11.sp)
-                        }
-
+                    if (isAdmin) {
                         Spacer(Modifier.height(15.dp))
-                        if (isOwner) {
-                            GroupPanelDangerAction(
-                                label = "Удалить группу",
-                                description = "Группа и её переписка будут удалены у всех участников",
-                                onClick = { showDeleteConfirmation = true },
-                                enabled = !isBusy
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            GroupPanelAction(
+                                label = "Изменить",
+                                modifier = Modifier.weight(1f),
+                                onClick = { showEditDialog = true }
                             )
-                        } else if (myMembership != null) {
-                            GroupPanelDangerAction(
-                                label = "Покинуть группу",
-                                description = "Группа останется у остальных участников",
-                                onClick = { showLeaveConfirmation = true },
-                                enabled = !isBusy
+                            GroupPanelAction(
+                                label = "Добавить людей",
+                                modifier = Modifier.weight(1f),
+                                onClick = { showInviteDialog = true }
                             )
                         }
-                        Spacer(Modifier.height(18.dp))
                     }
                 }
+
+                Spacer(Modifier.height(17.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "УЧАСТНИКИ",
+                        color = GroupPanelAccentDark,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.1.sp
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        members.size.toString(),
+                        color = GroupPanelMuted,
+                        fontSize = 10.sp
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+
+                if (members.isEmpty() && !isLoading) {
+                    Text("Список участников пока пуст.", color = GroupPanelMuted, fontSize = 11.sp)
+                } else {
+                    members.forEach { entry ->
+                        GroupMemberRow(
+                            entry = entry,
+                            isCurrentUser = entry.member.userId == userId,
+                            showActions = isAdmin && entry.member.userId != userId &&
+                                entry.member.role != "owner" &&
+                                (isOwner || entry.member.role == "member"),
+                            isOwner = isOwner,
+                            isBusy = isBusy,
+                            onPromote = {
+                                scope.launch {
+                                    isBusy = true
+                                    errorMessage = null
+                                    runCatching {
+                                        repository.setGroupMemberRole(chatId, entry.member.userId, "admin")
+                                    }.onSuccess {
+                                        infoMessage = "Участник назначен администратором."
+                                        refreshMembers()
+                                    }.onFailure {
+                                        errorMessage = it.message ?: "Не удалось изменить роль."
+                                    }
+                                    isBusy = false
+                                }
+                            },
+                            onDemote = {
+                                scope.launch {
+                                    isBusy = true
+                                    errorMessage = null
+                                    runCatching {
+                                        repository.setGroupMemberRole(chatId, entry.member.userId, "member")
+                                    }.onSuccess {
+                                        infoMessage = "Права администратора сняты."
+                                        refreshMembers()
+                                    }.onFailure {
+                                        errorMessage = it.message ?: "Не удалось изменить роль."
+                                    }
+                                    isBusy = false
+                                }
+                            },
+                            onRemove = { pendingRemoval = entry }
+                        )
+                    }
+                }
+
+                if (errorMessage != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(errorMessage.orEmpty(), color = GroupPanelDanger, fontSize = 11.sp)
+                }
+                if (infoMessage != null) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(infoMessage.orEmpty(), color = GroupPanelAccentDark, fontSize = 11.sp)
+                }
+
+                Spacer(Modifier.height(15.dp))
+                if (isOwner) {
+                    GroupPanelDangerAction(
+                        label = "Удалить группу",
+                        description = "Группа и её переписка будут удалены у всех участников",
+                        onClick = { showDeleteConfirmation = true },
+                        enabled = !isBusy
+                    )
+                } else if (myMembership != null) {
+                    GroupPanelDangerAction(
+                        label = "Покинуть группу",
+                        description = "Группа останется у остальных участников",
+                        onClick = { showLeaveConfirmation = true },
+                        enabled = !isBusy
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
             }
+        }
+    }
     if (showEditDialog && group != null) {
         EditGroupDialog(
             group = group!!,
