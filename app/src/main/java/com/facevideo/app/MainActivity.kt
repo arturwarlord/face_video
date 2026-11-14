@@ -2707,6 +2707,10 @@ private fun LiveChatScreen(
     ) {
         selectedMessageIds = emptySet()
     }
+
+    BackHandler(enabled = chat.isGroup && showGroupManagement) {
+        showGroupManagement = false
+    }
     var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
     var actionBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -2973,7 +2977,17 @@ private fun LiveChatScreen(
     }
 
 
-    Column(
+    if (chat.isGroup && showGroupManagement) {
+        GroupManagementScreen(
+            repository = repository,
+            userId = userId,
+            chatId = chat.id,
+            onDismiss = { showGroupManagement = false },
+            onGroupUpdated = onGroupUpdated,
+            onGroupClosed = onGroupClosed
+        )
+    } else {
+        Column(
         Modifier.fillMaxSize()
             .background(
                 Brush.verticalGradient(
@@ -3561,16 +3575,6 @@ private fun LiveChatScreen(
         }
     }
 
-    if (chat.isGroup && showGroupManagement) {
-        GroupManagementDialog(
-            repository = repository,
-            userId = userId,
-            chatId = chat.id,
-            onDismiss = { showGroupManagement = false },
-            onGroupUpdated = onGroupUpdated,
-            onGroupClosed = onGroupClosed
-        )
-    }
 }
 
 
@@ -8284,5 +8288,6 @@ private fun BottomNavigation(
                 }
             }
         }
+    }
     }
 }
