@@ -1662,17 +1662,6 @@ private fun StoriesStrip(
                     fontSize = 10.sp
                 )
             }
-            Surface(
-                onClick = { refreshKey++ },
-                shape = CircleShape,
-                color = Color.White.copy(alpha = 0.72f),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
-                modifier = Modifier.size(34.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("↻", color = InboxAccentStrong, fontSize = 19.sp, fontWeight = FontWeight.Medium)
-                }
-            }
         }
 
         Row(
@@ -5968,9 +5957,6 @@ private fun CallsScreen(
                 Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("История аудио- и видеовызовов", color = Muted, fontSize = 11.sp)
             }
-            ChatHeaderIconButton(onClick = { refreshKey++ }) {
-                Text("↻", color = InboxAccentStrong, fontSize = 23.sp, fontWeight = FontWeight.Light)
-            }
         }
 
         Spacer(Modifier.height(16.dp))
@@ -6279,15 +6265,6 @@ private fun FriendsScreen(
                 Spacer(Modifier.height(4.dp))
                 Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("Люди, с которыми вы взаимно подружились", color = Muted, fontSize = 11.sp)
-            }
-            Surface(
-                color = Color(0xDFFFFFFF),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Color.White),
-                modifier = Modifier.clickable(interactionSource = null, indication = null) { refreshKey++ }
-            ) {
-                Text("↻", color = AccentSlate, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
         }
         Spacer(Modifier.height(19.dp))
