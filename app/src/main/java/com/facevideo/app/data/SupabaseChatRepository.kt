@@ -71,7 +71,11 @@ data class FaceVideoChannelMember(
     @SerialName("channel_id") val channelId: String,
     @SerialName("user_id") val userId: String,
     val role: String,
-    @SerialName("joined_at") val joinedAt: String
+    @SerialName("joined_at") val joinedAt: String,
+    @SerialName("can_change_info") val canChangeInfo: Boolean = false,
+    @SerialName("can_invite_users") val canInviteUsers: Boolean = false,
+    @SerialName("can_remove_users") val canRemoveUsers: Boolean = false,
+    @SerialName("can_publish_posts") val canPublishPosts: Boolean = false
 )
 
 data class FaceVideoChannelMemberProfile(
@@ -307,6 +311,35 @@ private data class NewFaceVideoChannelMembership(
     @SerialName("channel_id") val channelId: String,
     @SerialName("user_id") val userId: String,
     val role: String = "subscriber"
+)
+
+@Serializable
+private data class AddChannelMembersArguments(
+    @SerialName("p_channel_id") val channelId: String,
+    @SerialName("p_member_ids") val memberIds: List<String>
+)
+
+@Serializable
+private data class ChannelMemberRoleArguments(
+    @SerialName("p_channel_id") val channelId: String,
+    @SerialName("p_target_user_id") val targetUserId: String,
+    @SerialName("p_role") val role: String
+)
+
+@Serializable
+private data class ChannelMemberPermissionsArguments(
+    @SerialName("p_channel_id") val channelId: String,
+    @SerialName("p_target_user_id") val targetUserId: String,
+    @SerialName("p_can_change_info") val canChangeInfo: Boolean,
+    @SerialName("p_can_invite_users") val canInviteUsers: Boolean,
+    @SerialName("p_can_remove_users") val canRemoveUsers: Boolean,
+    @SerialName("p_can_publish_posts") val canPublishPosts: Boolean
+)
+
+@Serializable
+private data class ChannelMemberTargetArguments(
+    @SerialName("p_channel_id") val channelId: String,
+    @SerialName("p_target_user_id") val targetUserId: String
 )
 
 @Serializable
@@ -903,10 +936,61 @@ class SupabaseChatRepository(
         ) {
             filter {
                 eq("id", channelId)
-                eq("created_by", userId)
             }
             select()
         }.decodeSingle<FaceVideoChannel>()
+    }
+
+    suspend fun addChannelMembers(channelId: String, memberIds: List<String>): Int {
+        val ids = memberIds.distinct()
+        require(ids.isNotEmpty()) { "Выбери хотя бы одного друга." }
+        return client.postgrest.rpc(
+            "face_video_add_channel_members",
+            AddChannelMembersArguments(channelId = channelId, memberIds = ids)
+        ).decodeAs<Int>()
+    }
+
+    suspend fun setChannelMemberRole(channelId: String, targetUserId: String, role: String) {
+        require(role in setOf("admin", "subscriber")) { "Недопустимая роль участника канала." }
+        client.postgrest.rpc(
+            "face_video_set_channel_member_role",
+            ChannelMemberRoleArguments(
+                channelId = channelId,
+                targetUserId = targetUserId,
+                role = role
+            )
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun setChannelAdminPermissions(
+        channelId: String,
+        targetUserId: String,
+        canChangeInfo: Boolean,
+        canInviteUsers: Boolean,
+        canRemoveUsers: Boolean,
+        canPublishPosts: Boolean
+    ) {
+        client.postgrest.rpc(
+            "face_video_set_channel_admin_permissions",
+            ChannelMemberPermissionsArguments(
+                channelId = channelId,
+                targetUserId = targetUserId,
+                canChangeInfo = canChangeInfo,
+                canInviteUsers = canInviteUsers,
+                canRemoveUsers = canRemoveUsers,
+                canPublishPosts = canPublishPosts
+            )
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun removeChannelMember(channelId: String, targetUserId: String) {
+        client.postgrest.rpc(
+            "face_video_remove_channel_member",
+            ChannelMemberTargetArguments(
+                channelId = channelId,
+                targetUserId = targetUserId
+            )
+        ).decodeAs<Boolean>()
     }
 
     suspend fun deleteChannel(channelId: String, userId: String) {
