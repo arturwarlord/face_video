@@ -154,6 +154,29 @@ data class FaceVideoMessage(
 )
 
 @Serializable
+data class FaceVideoGroup(
+    val id: String,
+    val title: String?,
+    val description: String = "",
+    @SerialName("is_group") val isGroup: Boolean,
+    @SerialName("created_by") val createdBy: String,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class FaceVideoGroupMember(
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("user_id") val userId: String,
+    val role: String,
+    @SerialName("joined_at") val joinedAt: String
+)
+
+data class FaceVideoGroupMemberProfile(
+    val member: FaceVideoGroupMember,
+    val profile: FaceVideoProfile?
+)
+
+@Serializable
 data class FaceVideoChatUnreadCount(
     @SerialName("chat_id") val chatId: String,
     @SerialName("unread_count") val unreadCount: Long
@@ -204,6 +227,37 @@ private data class CreateChatArguments(
     @SerialName("p_member_ids") val memberIds: List<String>,
     @SerialName("p_title") val title: String? = null,
     @SerialName("p_is_group") val isGroup: Boolean = false
+)
+
+@Serializable
+private data class UpdateGroupArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_title") val title: String,
+    @SerialName("p_description") val description: String
+)
+
+@Serializable
+private data class AddGroupMembersArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_member_ids") val memberIds: List<String>
+)
+
+@Serializable
+private data class GroupMemberRoleArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_target_user_id") val targetUserId: String,
+    @SerialName("p_role") val role: String
+)
+
+@Serializable
+private data class GroupMemberTargetArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_target_user_id") val targetUserId: String
+)
+
+@Serializable
+private data class GroupChatTargetArguments(
+    @SerialName("p_chat_id") val chatId: String
 )
 
 @Serializable
@@ -779,6 +833,105 @@ class SupabaseChatRepository(
                 body = cleanBody
             )
         ) { select() }.decodeSingle<FaceVideoChannelPost>()
+    }
+
+    suspend fun getGroupDetails(chatId: String): FaceVideoGroup? =
+        client.from("face_video_chats").select {
+            filter { eq("id", chatId) }
+        }.decodeList<FaceVideoGroup>().firstOrNull { it.isGroup }
+
+    suspend fun listGroupMembers(chatId: String): List<FaceVideoGroupMemberProfile> {
+        val members = client.from("face_video_chat_members").select {
+            filter { eq("chat_id", chatId) }
+            order("joined_at", Order.ASCENDING)
+        }.decodeList<FaceVideoGroupMember>()
+        if (members.isEmpty()) return emptyList()
+
+        val profiles = listProfiles(members.map { it.userId })
+            .associateBy { it.id }
+        return members.map { member ->
+            FaceVideoGroupMemberProfile(
+                member = member,
+                profile = profiles[member.userId]
+            )
+        }
+    }
+
+    suspend fun listProfiles(userIds: List<String>): List<FaceVideoProfile> {
+        val distinctIds = userIds.distinct()
+        if (distinctIds.isEmpty()) return emptyList()
+        return client.from("face_video_profiles").select {
+            filter { isIn("id", distinctIds) }
+        }.decodeList<FaceVideoProfile>()
+    }
+
+    suspend fun updateGroup(
+        chatId: String,
+        title: String,
+        description: String
+    ) {
+        val cleanTitle = title.trim()
+        val cleanDescription = description.trim()
+        require(cleanTitle.length in 2..80) {
+            "Название группы должно содержать от 2 до 80 символов."
+        }
+        require(cleanDescription.length <= 500) {
+            "Описание группы должно содержать не более 500 символов."
+        }
+        client.postgrest.rpc(
+            "face_video_update_group",
+            UpdateGroupArguments(
+                chatId = chatId,
+                title = cleanTitle,
+                description = cleanDescription
+            )
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun addGroupMembers(chatId: String, memberIds: List<String>): Int {
+        val ids = memberIds.distinct()
+        require(ids.isNotEmpty()) { "Выбери хотя бы одного друга." }
+        return client.postgrest.rpc(
+            "face_video_add_group_members",
+            AddGroupMembersArguments(chatId = chatId, memberIds = ids)
+        ).decodeAs<Int>()
+    }
+
+    suspend fun setGroupMemberRole(
+        chatId: String,
+        targetUserId: String,
+        role: String
+    ) {
+        require(role == "admin" || role == "member")
+        client.postgrest.rpc(
+            "face_video_set_group_member_role",
+            GroupMemberRoleArguments(
+                chatId = chatId,
+                targetUserId = targetUserId,
+                role = role
+            )
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun removeGroupMember(chatId: String, targetUserId: String) {
+        client.postgrest.rpc(
+            "face_video_remove_group_member",
+            GroupMemberTargetArguments(chatId = chatId, targetUserId = targetUserId)
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun leaveGroup(chatId: String) {
+        client.postgrest.rpc(
+            "face_video_leave_group",
+            GroupChatTargetArguments(chatId = chatId)
+        ).decodeAs<Boolean>()
+    }
+
+    suspend fun deleteGroup(chatId: String) {
+        client.postgrest.rpc(
+            "face_video_delete_group",
+            GroupChatTargetArguments(chatId = chatId)
+        ).decodeAs<Boolean>()
     }
 
     suspend fun listMessages(chatId: String): List<FaceVideoMessage> =
