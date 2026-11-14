@@ -46,8 +46,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.facevideo.app.data.FaceVideoGroup
 import com.facevideo.app.data.FaceVideoGroupMemberProfile
 import com.facevideo.app.data.FaceVideoProfile
@@ -64,7 +62,7 @@ private val GroupPanelDanger = Color(0xFFB45F6D)
 private val GroupPanelBackground = Color(0xFFF7F8FC)
 
 @Composable
-internal fun GroupManagementDialog(
+internal fun GroupManagementScreen(
     repository: SupabaseChatRepository,
     userId: String,
     chatId: String,
@@ -113,33 +111,26 @@ internal fun GroupManagementDialog(
         refreshKey += 1
     }
 
-    Dialog(
-        onDismissRequest = { if (!isBusy) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    Column(
+        Modifier.fillMaxSize().background(GroupPanelBackground)
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 470.dp).heightIn(max = 720.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = GroupPanelBackground,
-            shadowElevation = 12.dp
+        Row(
+            Modifier.fillMaxWidth()
+                .background(Color.White)
+                .padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 720.dp)
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 16.dp, bottom = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
-                        Text("‹ Назад", color = GroupPanelAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Text("Информация о группе", color = GroupPanelText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
-                        Text("Готово", color = GroupPanelMuted, fontSize = 11.sp)
-                    }
-                }
+            TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
+                Text("‹ Назад", color = GroupPanelAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Информация о группе", color = GroupPanelText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
+                Text("Готово", color = GroupPanelMuted, fontSize = 11.sp)
+            }
+        }
+
 
                 if (isLoading && group == null) {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -147,7 +138,7 @@ internal fun GroupManagementDialog(
                     }
                 } else {
                     Column(
-                        Modifier.fillMaxWidth().weight(1f, fill = false)
+                        Modifier.fillMaxWidth().weight(1f)
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 18.dp)
                     ) {
@@ -303,9 +294,6 @@ internal fun GroupManagementDialog(
                     }
                 }
             }
-        }
-    }
-
     if (showEditDialog && group != null) {
         EditGroupDialog(
             group = group!!,
