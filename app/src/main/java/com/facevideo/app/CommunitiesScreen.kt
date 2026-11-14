@@ -316,7 +316,7 @@ private fun CommunityGroupRow(
             .padding(horizontal = 13.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CommunityInitial(icon = "◎", label = chat.title)
+        ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -354,7 +354,7 @@ private fun CommunityChannelRow(
             .padding(horizontal = 13.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CommunityInitial(icon = "◉", label = entry.channel.title)
+        ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -652,7 +652,7 @@ private fun ChannelDetailsScreen(
                 .padding(17.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CommunityInitial(icon = "◉", label = channel.title)
+                ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(channel.title, color = CommunityText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
