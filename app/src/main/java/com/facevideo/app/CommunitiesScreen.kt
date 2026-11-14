@@ -1137,57 +1137,6 @@ private fun ChannelDetailsScreen(
 }
 
 @Composable
-private fun CommunityChannelRow(
-    entry: FaceVideoChannelEntry,
-    userId: String,
-    onOpen: () -> Unit,
-    onJoin: () -> Unit
-) {
-    val isOwner = entry.channel.createdBy == userId
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(19.dp))
-            .background(CommunitySurface)
-            .border(1.dp, CommunityBorder.copy(alpha = 0.7f), RoundedCornerShape(19.dp))
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 13.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                entry.channel.title,
-                color = CommunityText,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                entry.channel.description.ifBlank { "Канал ArturChat" },
-                color = CommunityMuted,
-                fontSize = 10.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        when {
-            isOwner -> Text("Мой канал", color = CommunityAccentDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            entry.isSubscribed -> Text("Открыть", color = CommunityAccent, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            else -> Box(
-                Modifier.clip(RoundedCornerShape(11.dp))
-                    .background(CommunitySoft)
-                    .clickable(onClick = onJoin)
-                    .padding(horizontal = 10.dp, vertical = 7.dp)
-            ) {
-                Text("Подписаться", color = CommunityAccentDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-    }
-}
-
-@Composable
 private fun EditCommunityChannelDialog(
     channel: FaceVideoChannel,
     onDismiss: () -> Unit,
