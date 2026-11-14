@@ -29,7 +29,8 @@ data class FaceVideoChatSummary(
     @SerialName("created_at") val createdAt: String,
     // Enriched on the client from chat members + profiles; not columns in the SQL view.
     @SerialName("peer_user_id") val peerUserId: String? = null,
-    @SerialName("peer_avatar_url") val peerAvatarUrl: String? = null
+    @SerialName("peer_avatar_url") val peerAvatarUrl: String? = null,
+    @SerialName("avatar_url") val avatarUrl: String? = null
 )
 
 @Serializable
@@ -54,6 +55,7 @@ data class FaceVideoChannel(
     val title: String,
     val description: String = "",
     @SerialName("created_by") val createdBy: String,
+    @SerialName("avatar_url") val avatarUrl: String? = null,
     @SerialName("is_public") val isPublic: Boolean = true,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String? = null
@@ -173,7 +175,8 @@ data class FaceVideoGroup(
     val description: String = "",
     @SerialName("is_group") val isGroup: Boolean,
     @SerialName("created_by") val createdBy: String,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("avatar_url") val avatarUrl: String? = null
 )
 
 @Serializable
@@ -323,6 +326,11 @@ private data class UpdateFaceVideoChannel(
 @Serializable
 private data class UpdateFaceVideoChannelPost(
     val body: String
+)
+
+@Serializable
+private data class UpdateAvatarUrl(
+    @SerialName("avatar_url") val avatarUrl: String?
 )
 
 @Serializable
@@ -983,6 +991,74 @@ class SupabaseChatRepository(
         return client.from("face_video_profiles").select {
             filter { isIn("id", distinctIds) }
         }.decodeList<FaceVideoProfile>()
+    }
+
+    private fun validateCommunityAvatar(bytes: ByteArray) {
+        require(bytes.isNotEmpty() && bytes.size <= 4 * 1024 * 1024) {
+            "Фото должно быть не больше 4 МБ."
+        }
+    }
+
+    private suspend fun uploadCommunityAvatar(folder: String, bytes: ByteArray): String {
+        validateCommunityAvatar(bytes)
+        val path = "$folder/${UUID.randomUUID()}.jpg"
+        client.storage.from("arturchat-avatars").upload(path = path, data = bytes) {
+            contentType = ContentType.parse("image/jpeg")
+            upsert = false
+        }
+        return client.storage.from("arturchat-avatars").publicUrl(path)
+    }
+
+    private fun communityAvatarPath(url: String?, folderPrefix: String): String? {
+        if (url.isNullOrBlank()) return null
+        val marker = "/storage/v1/object/public/arturchat-avatars/"
+        val path = url.substringAfter(marker, "").substringBefore('?')
+        return path.takeIf { it.startsWith(folderPrefix) && !it.contains("..") }
+    }
+
+    private suspend fun deleteCommunityAvatar(url: String?, folderPrefix: String) {
+        val path = communityAvatarPath(url, folderPrefix) ?: return
+        runCatching { client.storage.from("arturchat-avatars").delete(path) }
+    }
+
+    suspend fun uploadGroupAvatar(chatId: String, bytes: ByteArray): String =
+        uploadCommunityAvatar("groups/$chatId", bytes)
+
+    suspend fun setGroupAvatar(chatId: String, avatarUrl: String?): FaceVideoGroup {
+        val prefix = "groups/$chatId/"
+        require(avatarUrl == null || communityAvatarPath(avatarUrl, prefix) != null) {
+            "Недопустимый адрес фотографии группы."
+        }
+        val existing = getGroupDetails(chatId)
+        val updated = client.from("face_video_chats").update(UpdateAvatarUrl(avatarUrl)) {
+            filter { eq("id", chatId) }
+            select()
+        }.decodeSingle<FaceVideoGroup>()
+        if (existing?.avatarUrl != avatarUrl) {
+            deleteCommunityAvatar(existing?.avatarUrl, prefix)
+        }
+        return updated
+    }
+
+    suspend fun uploadChannelAvatar(channelId: String, bytes: ByteArray): String =
+        uploadCommunityAvatar("channels/$channelId", bytes)
+
+    suspend fun setChannelAvatar(channelId: String, avatarUrl: String?): FaceVideoChannel {
+        val prefix = "channels/$channelId/"
+        require(avatarUrl == null || communityAvatarPath(avatarUrl, prefix) != null) {
+            "Недопустимый адрес фотографии канала."
+        }
+        val existing = client.from("face_video_channels").select {
+            filter { eq("id", channelId) }
+        }.decodeSingle<FaceVideoChannel>()
+        val updated = client.from("face_video_channels").update(UpdateAvatarUrl(avatarUrl)) {
+            filter { eq("id", channelId) }
+            select()
+        }.decodeSingle<FaceVideoChannel>()
+        if (existing.avatarUrl != avatarUrl) {
+            deleteCommunityAvatar(existing.avatarUrl, prefix)
+        }
+        return updated
     }
 
     suspend fun updateGroup(
