@@ -2477,13 +2477,17 @@ private fun LiveChatRow(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-        Avatar(
-            initials,
-            chat.id.hashCode().ushr(1) % 4,
-            Modifier.size(52.dp),
-            imageUrl = chat.peerAvatarUrl,
-            imageCacheKey = chat.peerUserId
-        )
+        if (chat.isGroup) {
+            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(52.dp))
+        } else {
+            Avatar(
+                initials,
+                chat.id.hashCode().ushr(1) % 4,
+                Modifier.size(52.dp),
+                imageUrl = chat.peerAvatarUrl,
+                imageCacheKey = chat.peerUserId
+            )
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(chat.title, color = InboxPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
@@ -3087,17 +3091,23 @@ private fun LiveChatScreen(
                             )
                             .padding(2.dp)
                     ) {
-                        Avatar(
-                            chat.title.take(2).uppercase(),
-                            chat.id.hashCode().ushr(1) % 4,
-                            Modifier.fillMaxSize().clip(CircleShape)
-                                .clickable(enabled = chat.isGroup || peerUserId != null) {
-                                    if (chat.isGroup) showGroupManagement = true
-                                    else peerUserId?.let(onOpenProfile)
-                                },
-                            imageUrl = peerAvatarUrl,
-                            imageCacheKey = peerUserId
-                        )
+                        if (chat.isGroup) {
+                            ArturChatTypeAvatar(
+                                ArturChatIconType.GROUP,
+                                Modifier.fillMaxSize().clickable { showGroupManagement = true }
+                            )
+                        } else {
+                            Avatar(
+                                chat.title.take(2).uppercase(),
+                                chat.id.hashCode().ushr(1) % 4,
+                                Modifier.fillMaxSize().clip(CircleShape)
+                                    .clickable(enabled = peerUserId != null) {
+                                        peerUserId?.let(onOpenProfile)
+                                    },
+                                imageUrl = peerAvatarUrl,
+                                imageCacheKey = peerUserId
+                            )
+                        }
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(
@@ -7950,25 +7960,11 @@ private fun ChatSendGlyph() {
 
 @Composable
 private fun ChatVideoNoteGlyph(tint: Color = InboxAccentStrong) {
-    Canvas(Modifier.size(23.dp)) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        drawCircle(
-            color = tint.copy(alpha = 0.16f),
-            radius = size.minDimension * 0.46f,
-            center = center
-        )
-        drawCircle(
-            color = tint,
-            radius = size.minDimension * 0.32f,
-            center = center,
-            style = Stroke(width = 1.8.dp.toPx())
-        )
-        drawCircle(
-            color = tint,
-            radius = size.minDimension * 0.105f,
-            center = center
-        )
-    }
+    ArturChatTypeGlyph(
+        type = ArturChatIconType.VIDEO_NOTE,
+        tint = tint,
+        modifier = Modifier.size(23.dp)
+    )
 }
 
 @Composable
