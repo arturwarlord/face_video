@@ -1,6 +1,8 @@
 package com.facevideo.app
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,7 +58,9 @@ import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoFriendship
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.SupabaseChatRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val CommunityAccent = Color(0xFF5267DB)
 private val CommunityAccentDark = Color(0xFF4053C7)
@@ -399,6 +404,7 @@ private fun CommunityGroupRow(
     chat: FaceVideoChatSummary,
     onClick: () -> Unit
 ) {
+    var showAvatarPreview by remember(chat.id) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(19.dp))
@@ -408,7 +414,18 @@ private fun CommunityGroupRow(
             .padding(horizontal = 13.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp))
+        if (!chat.avatarUrl.isNullOrBlank()) {
+            Avatar(
+                initials = chat.title.take(1).uppercase().ifBlank { "G" },
+                style = 1,
+                modifier = Modifier.size(48.dp),
+                imageUrl = chat.avatarUrl,
+                imageCacheKey = "group:${chat.id}",
+                onClick = { showAvatarPreview = true }
+            )
+        } else {
+            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp))
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -429,6 +446,14 @@ private fun CommunityGroupRow(
         }
         Text("›", color = CommunityAccent, fontSize = 24.sp, fontWeight = FontWeight.Light)
     }
+    if (showAvatarPreview && !chat.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = chat.avatarUrl!!,
+            imageCacheKey = "group:${chat.id}",
+            title = chat.title,
+            onDismiss = { showAvatarPreview = false }
+        )
+    }
 }
 
 @Composable
@@ -439,6 +464,7 @@ private fun CommunityChannelRow(
     onJoin: () -> Unit
 ) {
     val isOwner = entry.channel.createdBy == userId
+    var showAvatarPreview by remember(entry.channel.id) { mutableStateOf(false) }
     Row(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(19.dp))
@@ -448,7 +474,18 @@ private fun CommunityChannelRow(
             .padding(horizontal = 13.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
+        if (!entry.channel.avatarUrl.isNullOrBlank()) {
+            Avatar(
+                initials = entry.channel.title.take(1).uppercase().ifBlank { "К" },
+                style = 2,
+                modifier = Modifier.size(48.dp),
+                imageUrl = entry.channel.avatarUrl,
+                imageCacheKey = "channel:${entry.channel.id}",
+                onClick = { showAvatarPreview = true }
+            )
+        } else {
+            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -481,6 +518,14 @@ private fun CommunityChannelRow(
                 Text("Подписаться", color = CommunityAccentDark, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+    if (showAvatarPreview && !entry.channel.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = entry.channel.avatarUrl!!,
+            imageCacheKey = "channel:${entry.channel.id}",
+            title = entry.channel.title,
+            onDismiss = { showAvatarPreview = false }
+        )
     }
 }
 
@@ -728,9 +773,33 @@ private fun ChannelDetailsScreen(
     var showSubscribers by remember { mutableStateOf(false) }
     var editingPost by remember { mutableStateOf<FaceVideoChannelPost?>(null) }
     var deletingPost by remember { mutableStateOf<FaceVideoChannelPost?>(null) }
+    var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val isOwner = currentChannel.createdBy == userId
     val subscribers = members.filter { it.member.role == "subscriber" }
+
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && isOwner) {
+            scope.launch {
+                isBusy = true
+                errorMessage = null
+                runCatching {
+                    val prepared = withContext(Dispatchers.IO) {
+                        prepareChatImage(context, uri, maxDimension = 1280, maxBytes = 4 * 1024 * 1024)
+                    }
+                    val url = repository.uploadChannelAvatar(currentChannel.id, prepared.bytes)
+                    repository.setChannelAvatar(currentChannel.id, url)
+                }.onSuccess {
+                    currentChannel = it
+                    onMembershipChanged()
+                }.onFailure {
+                    errorMessage = it.message ?: "Не удалось обновить фотографию канала."
+                }
+                isBusy = false
+            }
+        }
+    }
 
     LaunchedEffect(repository, currentChannel.id, isOwner) {
         isLoading = true
@@ -787,6 +856,31 @@ private fun ChannelDetailsScreen(
                             }
                         )
                         DropdownMenuItem(
+                            text = { Text("Изменить фотографию") },
+                            onClick = {
+                                showManageMenu = false
+                                avatarPicker.launch("image/*")
+                            }
+                        )
+                        if (!currentChannel.avatarUrl.isNullOrBlank()) {
+                            DropdownMenuItem(
+                                text = { Text("Удалить фотографию", color = CommunityDanger) },
+                                onClick = {
+                                    showManageMenu = false
+                                    scope.launch {
+                                        isBusy = true
+                                        runCatching { repository.setChannelAvatar(currentChannel.id, null) }
+                                            .onSuccess {
+                                                currentChannel = it
+                                                onMembershipChanged()
+                                            }
+                                            .onFailure { errorMessage = it.message ?: "Не удалось удалить фотографию." }
+                                        isBusy = false
+                                    }
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
                             text = { Text("Подписчики · ${subscribers.size}") },
                             onClick = {
                                 showManageMenu = false
@@ -815,7 +909,37 @@ private fun ChannelDetailsScreen(
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(54.dp))
+                Box(Modifier.size(66.dp)) {
+                    if (!currentChannel.avatarUrl.isNullOrBlank()) {
+                        Avatar(
+                            initials = currentChannel.title.take(1).uppercase().ifBlank { "К" },
+                            style = 2,
+                            modifier = Modifier.fillMaxSize(),
+                            imageUrl = currentChannel.avatarUrl,
+                            imageCacheKey = "channel:${currentChannel.id}",
+                            onClick = { showAvatarPreview = true }
+                        )
+                    } else {
+                        ArturChatTypeAvatar(
+                            ArturChatIconType.CHANNEL,
+                            Modifier.fillMaxSize().then(
+                                if (isOwner) Modifier.clickable(enabled = !isBusy) { avatarPicker.launch("image/*") } else Modifier
+                            )
+                        )
+                    }
+                    if (isOwner) {
+                        Box(
+                            Modifier.align(Alignment.BottomEnd)
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(CommunityAccent)
+                                .clickable(enabled = !isBusy) { avatarPicker.launch("image/*") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("✎", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -999,6 +1123,15 @@ private fun ChannelDetailsScreen(
                 }
             }
         }
+    }
+
+    if (showAvatarPreview && !currentChannel.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = currentChannel.avatarUrl!!,
+            imageCacheKey = "channel:${currentChannel.id}",
+            title = currentChannel.title,
+            onDismiss = { showAvatarPreview = false }
+        )
     }
 
     if (showEditChannel) {
