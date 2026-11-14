@@ -257,7 +257,7 @@ internal data class PreparedChatImage(
 /**
  * Decodes modern formats through ImageDecoder (including HEIF/HEIC on supported
  * Android versions), scales before allocating large bitmaps, then normalizes
- * every selected image to JPEG for the private chat bucket.
+ * selected chat photos and group/channel avatars to JPEG.
  */
 internal fun prepareChatImage(context: Context, uri: Uri, maxDimension: Int = 1920, maxBytes: Int = 10 * 1024 * 1024): PreparedChatImage {
     val resolver = context.contentResolver
