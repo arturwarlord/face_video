@@ -1250,7 +1250,7 @@ private fun ChannelSubscribersDialog(
                 } else {
                     members.forEach { entry ->
                         val profile = entry.profile
-                        val name = profile?.displayName?.ifBlank { profile.username } ?: "Пользователь"
+                        val name = profile?.let { it.displayName.ifBlank { it.username } } ?: "Пользователь"
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
