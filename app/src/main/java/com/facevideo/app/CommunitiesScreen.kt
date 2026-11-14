@@ -313,6 +313,13 @@ internal fun GroupsScreen(
                             action = "Создать канал",
                             onAction = { showCreateChannel = true }
                         )
+                        channelQuery.isNotBlank() -> CommunityEmptyState(
+                            icon = "⌕",
+                            title = "Ничего не найдено",
+                            description = "Попробуй изменить поисковый запрос.",
+                            action = "Очистить поиск",
+                            onAction = { channelQuery = "" }
+                        )
                         channelFilter == ChannelDirectoryFilter.OWNED -> CommunityEmptyState(
                             icon = "✦",
                             title = "У тебя пока нет каналов",
