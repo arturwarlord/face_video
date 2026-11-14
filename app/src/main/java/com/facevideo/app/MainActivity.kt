@@ -3574,6 +3574,7 @@ private fun LiveChatScreen(
             }
         }
     }
+    }
 
 }
 
