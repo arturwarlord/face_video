@@ -355,8 +355,11 @@ internal fun GroupManagementDialog(
             containerColor = Color.White,
             title = { Text("Удалить участника?", color = GroupPanelText, fontWeight = FontWeight.Bold) },
             text = {
+                val targetName = target.profile?.let { profile ->
+                    profile.displayName.ifBlank { profile.username }
+                } ?: "Участник"
                 Text(
-                    "Пользователь ${target.profile?.displayName?.ifBlank { target.profile.username } ?: "Участник"} будет удалён из группы.",
+                    "Пользователь $targetName будет удалён из группы.",
                     color = GroupPanelMuted,
                     fontSize = 12.sp
                 )
@@ -683,6 +686,7 @@ private fun InviteGroupMembersDialog(
     var isLoading by remember(chatId, userId) { mutableStateOf(true) }
     var localBusy by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
+    var actionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(repository, userId, currentMemberIds) {
@@ -714,6 +718,10 @@ private fun InviteGroupMembersDialog(
             ) {
                 Text("Выбери друзей, которых нужно пригласить в группу.", color = GroupPanelMuted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
+                if (actionError != null) {
+                    Text(actionError.orEmpty(), color = GroupPanelDanger, fontSize = 11.sp)
+                    Spacer(Modifier.height(7.dp))
+                }
                 when {
                     isLoading -> CircularProgressIndicator(
                         modifier = Modifier.size(26.dp),
@@ -763,7 +771,11 @@ private fun InviteGroupMembersDialog(
                         localBusy = true
                         runCatching { repository.addGroupMembers(chatId, selectedIds.toList()) }
                             .onSuccess(onInvite)
-                            .onFailure { onError(it.message ?: "Не удалось пригласить участников.") }
+                            .onFailure {
+                                val message = it.message ?: "Не удалось пригласить участников."
+                                actionError = message
+                                onError(message)
+                            }
                         localBusy = false
                     }
                 }
