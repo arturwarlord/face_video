@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,7 +61,6 @@ private val GroupPanelMuted = Color(0xFF7A8796)
 private val GroupPanelBorder = Color(0xFFE2E7F0)
 private val GroupPanelSoft = Color(0xFFE9EDFF)
 private val GroupPanelDanger = Color(0xFFB45F6D)
-private val GroupPanelBackground = Color(0xFFF7F8FC)
 
 @Composable
 internal fun GroupManagementScreen(
@@ -83,6 +83,7 @@ internal fun GroupManagementScreen(
     var showLeaveConfirmation by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<FaceVideoGroupMemberProfile?>(null) }
+    var pendingAdminPermissions by remember { mutableStateOf<FaceVideoGroupMemberProfile?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(repository, chatId, refreshKey) {
@@ -104,7 +105,10 @@ internal fun GroupManagementScreen(
 
     val myMembership = members.firstOrNull { it.member.userId == userId }?.member
     val isOwner = myMembership?.role == "owner"
-    val isAdmin = myMembership?.role == "admin" || isOwner
+    val isAdmin = myMembership?.role == "admin"
+    val canManageInfo = isOwner || (isAdmin && myMembership?.canChangeInfo == true)
+    val canInviteMembers = isOwner || (isAdmin && myMembership?.canInviteUsers == true)
+    val canRemoveMembers = isOwner || (isAdmin && myMembership?.canRemoveUsers == true)
     val groupTitle = group?.title?.takeIf { it.isNotBlank() } ?: "Группа"
     val description = group?.description.orEmpty()
 
@@ -113,11 +117,19 @@ internal fun GroupManagementScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().background(GroupPanelBackground)
+        Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xFFE2DCFF),
+                    Color(0xFFE2E9FF),
+                    Color(0xFFE8F0FF),
+                    Color(0xFFF2F5FF)
+                )
+            )
+        )
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .background(Color.White)
                 .padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -127,9 +139,6 @@ internal fun GroupManagementScreen(
             Spacer(Modifier.weight(1f))
             Text("Информация о группе", color = GroupPanelText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
-                Text("Готово", color = GroupPanelMuted, fontSize = 11.sp)
-            }
         }
 
 
@@ -145,10 +154,7 @@ internal fun GroupManagementScreen(
             ) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(23.dp))
-                        .background(Color.White)
-                        .border(1.dp, GroupPanelBorder, RoundedCornerShape(23.dp))
-                        .padding(18.dp),
+                        .padding(horizontal = 2.dp, vertical = 14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(78.dp))
@@ -178,22 +184,26 @@ internal fun GroupManagementScreen(
                             textAlign = TextAlign.Center
                         )
                     }
-                    if (isAdmin) {
+                    if (canManageInfo || canInviteMembers) {
                         Spacer(Modifier.height(15.dp))
                         Row(
                             Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            GroupPanelAction(
-                                label = "Изменить",
-                                modifier = Modifier.weight(1f),
-                                onClick = { showEditDialog = true }
-                            )
-                            GroupPanelAction(
-                                label = "Добавить людей",
-                                modifier = Modifier.weight(1f),
-                                onClick = { showInviteDialog = true }
-                            )
+                            if (canManageInfo) {
+                                GroupPanelAction(
+                                    label = "Изменить",
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { showEditDialog = true }
+                                )
+                            }
+                            if (canInviteMembers) {
+                                GroupPanelAction(
+                                    label = "Добавить людей",
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { showInviteDialog = true }
+                                )
+                            }
                         }
                     }
                 }
@@ -226,9 +236,9 @@ internal fun GroupManagementScreen(
                         GroupMemberRow(
                             entry = entry,
                             isCurrentUser = entry.member.userId == userId,
-                            showActions = isAdmin && entry.member.userId != userId &&
+                            showActions = entry.member.userId != userId &&
                                 entry.member.role != "owner" &&
-                                (isOwner || entry.member.role == "member"),
+                                (isOwner || (canRemoveMembers && entry.member.role == "member")),
                             isOwner = isOwner,
                             isBusy = isBusy,
                             onPromote = {
@@ -261,7 +271,8 @@ internal fun GroupManagementScreen(
                                     isBusy = false
                                 }
                             },
-                            onRemove = { pendingRemoval = entry }
+                            onRemove = { pendingRemoval = entry },
+                            onManagePermissions = { pendingAdminPermissions = entry }
                         )
                     }
                 }
@@ -313,6 +324,37 @@ internal fun GroupManagementScreen(
                         showEditDialog = false
                     }.onFailure {
                         errorMessage = it.message ?: "Не удалось изменить группу."
+                    }
+                    isBusy = false
+                }
+            }
+        )
+    }
+
+    if (pendingAdminPermissions != null) {
+        val target = pendingAdminPermissions!!
+        GroupAdminPermissionsDialog(
+            member = target,
+            isBusy = isBusy,
+            onDismiss = { if (!isBusy) pendingAdminPermissions = null },
+            onSave = { canChangeInfo, canInviteUsers, canRemoveUsers ->
+                scope.launch {
+                    isBusy = true
+                    errorMessage = null
+                    runCatching {
+                        repository.setGroupAdminPermissions(
+                            chatId = chatId,
+                            targetUserId = target.member.userId,
+                            canChangeInfo = canChangeInfo,
+                            canInviteUsers = canInviteUsers,
+                            canRemoveUsers = canRemoveUsers
+                        )
+                    }.onSuccess {
+                        pendingAdminPermissions = null
+                        infoMessage = "Права администратора обновлены."
+                        refreshMembers()
+                    }.onFailure {
+                        errorMessage = it.message ?: "Не удалось сохранить права администратора."
                     }
                     isBusy = false
                 }
@@ -495,7 +537,8 @@ private fun GroupMemberRow(
     isBusy: Boolean,
     onPromote: () -> Unit,
     onDemote: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onManagePermissions: () -> Unit
 ) {
     var menuExpanded by remember(entry.member.userId) { mutableStateOf(false) }
     val profile = entry.profile
@@ -505,9 +548,6 @@ private fun GroupMemberRow(
 
     Row(
         Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(1.dp, GroupPanelBorder.copy(alpha = 0.72f), RoundedCornerShape(16.dp))
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -557,6 +597,13 @@ private fun GroupMemberRow(
                         if (isOwner) {
                             if (entry.member.role == "admin") {
                                 DropdownMenuItem(
+                                    text = { Text("Права администратора") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onManagePermissions()
+                                    }
+                                )
+                                DropdownMenuItem(
                                     text = { Text("Снять права администратора") },
                                     onClick = {
                                         menuExpanded = false
@@ -573,17 +620,113 @@ private fun GroupMemberRow(
                                 )
                             }
                         }
-                        DropdownMenuItem(
-                            text = { Text("Удалить из группы", color = GroupPanelDanger) },
-                            onClick = {
-                                menuExpanded = false
-                                onRemove()
-                            }
-                        )
+                        if (isOwner || entry.member.role == "member") {
+                            DropdownMenuItem(
+                                text = { Text("Удалить из группы", color = GroupPanelDanger) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRemove()
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GroupAdminPermissionsDialog(
+    member: FaceVideoGroupMemberProfile,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Boolean, Boolean, Boolean) -> Unit
+) {
+    val displayName = member.profile?.let { it.displayName.ifBlank { it.username } } ?: "Администратор"
+    var canChangeInfo by remember(member.member.userId) { mutableStateOf(member.member.canChangeInfo) }
+    var canInviteUsers by remember(member.member.userId) { mutableStateOf(member.member.canInviteUsers) }
+    var canRemoveUsers by remember(member.member.userId) { mutableStateOf(member.member.canRemoveUsers) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isBusy) onDismiss() },
+        containerColor = Color.White,
+        title = {
+            Column {
+                Text("Права администратора", color = GroupPanelText, fontWeight = FontWeight.Bold)
+                Text(displayName, color = GroupPanelMuted, fontSize = 11.sp)
+            }
+        },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                Text(
+                    "Выбери, какие действия сможет выполнять этот администратор.",
+                    color = GroupPanelMuted,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                GroupPermissionToggle(
+                    title = "Изменять информацию группы",
+                    description = "Название и описание группы",
+                    checked = canChangeInfo,
+                    enabled = !isBusy,
+                    onCheckedChange = { canChangeInfo = it }
+                )
+                GroupPermissionToggle(
+                    title = "Добавлять участников",
+                    description = "Приглашать друзей в группу",
+                    checked = canInviteUsers,
+                    enabled = !isBusy,
+                    onCheckedChange = { canInviteUsers = it }
+                )
+                GroupPermissionToggle(
+                    title = "Удалять участников",
+                    description = "Удалять обычных участников группы",
+                    checked = canRemoveUsers,
+                    enabled = !isBusy,
+                    onCheckedChange = { canRemoveUsers = it }
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !isBusy,
+                onClick = { onSave(canChangeInfo, canInviteUsers, canRemoveUsers) }
+            ) {
+                Text(if (isBusy) "Сохраняем…" else "Сохранить", color = GroupPanelAccent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isBusy) {
+                Text("Отмена", color = GroupPanelMuted)
+            }
+        }
+    )
+}
+
+@Composable
+private fun GroupPermissionToggle(
+    title: String,
+    description: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, color = GroupPanelText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(description, color = GroupPanelMuted, fontSize = 9.sp)
+        }
+        Checkbox(
+            checked = checked,
+            enabled = enabled,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 
