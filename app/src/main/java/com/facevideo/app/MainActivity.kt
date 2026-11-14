@@ -1061,6 +1061,21 @@ private fun FaceVideoApp(
                             if (isVideo) "video" else "audio"
                         )
                     )
+                },
+                onGroupUpdated = { newTitle ->
+                    openedLiveChat = openedLiveChat?.copy(title = newTitle)
+                    scope.launch {
+                        runCatching {
+                            val latestChats = liveRepository.listMyChats(userId)
+                            withContext(Dispatchers.IO) { localCache.saveChats(userId, latestChats) }
+                        }.onFailure {
+                            android.util.Log.w("ArturChatGroups", "Could not refresh group cache", it)
+                        }
+                    }
+                },
+                onGroupClosed = {
+                    openedLiveChat = null
+                    unreadRefreshKey += 1
                 }
             )
         } else if (openedChat != null) {
@@ -2650,7 +2665,9 @@ private fun LiveChatScreen(
     onBack: () -> Unit,
     onMarkedRead: () -> Unit,
     onOpenProfile: (String) -> Unit,
-    onCall: (Boolean) -> Unit
+    onCall: (Boolean) -> Unit,
+    onGroupUpdated: (String) -> Unit,
+    onGroupClosed: () -> Unit
 ) {
     val cachedMessages = remember(cache, userId, chat.id) {
         cache.readMessages(userId, chat.id)
@@ -2703,6 +2720,7 @@ private fun LiveChatScreen(
     var draft by remember { mutableStateOf("") }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var showGroupManagement by remember(chat.id) { mutableStateOf(false) }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showForwardPicker by remember { mutableStateOf(false) }
     // Exit message-selection mode before the parent screen handles system Back.
@@ -3073,8 +3091,9 @@ private fun LiveChatScreen(
                             chat.title.take(2).uppercase(),
                             chat.id.hashCode().ushr(1) % 4,
                             Modifier.fillMaxSize().clip(CircleShape)
-                                .clickable(enabled = peerUserId != null && !chat.isGroup) {
-                                    peerUserId?.let(onOpenProfile)
+                                .clickable(enabled = chat.isGroup || peerUserId != null) {
+                                    if (chat.isGroup) showGroupManagement = true
+                                    else peerUserId?.let(onOpenProfile)
                                 },
                             imageUrl = peerAvatarUrl,
                             imageCacheKey = peerUserId
@@ -3082,8 +3101,9 @@ private fun LiveChatScreen(
                     }
                     Spacer(Modifier.width(10.dp))
                     Column(
-                        Modifier.weight(1f).clickable(enabled = peerUserId != null && !chat.isGroup) {
-                            peerUserId?.let(onOpenProfile)
+                        Modifier.weight(1f).clickable(enabled = chat.isGroup || peerUserId != null) {
+                            if (chat.isGroup) showGroupManagement = true
+                            else peerUserId?.let(onOpenProfile)
                         }
                     ) {
                         Text(
@@ -3108,7 +3128,7 @@ private fun LiveChatScreen(
                             Spacer(Modifier.width(5.dp))
                             Text(
                                 when {
-                                    chat.isGroup -> "Групповой чат"
+                                    chat.isGroup -> "Нажмите, чтобы открыть информацию"
                                     peerUserId == null -> "Проверяем статус…"
                                     peerIsOnline -> "В сети"
                                     !presenceAvailable -> "Статус обновляется…"
@@ -3121,12 +3141,23 @@ private fun LiveChatScreen(
                         }
                     }
                     Spacer(Modifier.width(7.dp))
-                    ChatChromeActionButton(onClick = { onCall(false) }, filled = false, transparent = true, size = 40.dp) {
-                        ChatCallGlyph(video = false, tint = InboxAccentStrong)
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    ChatChromeActionButton(onClick = { onCall(true) }, filled = false, transparent = true, size = 40.dp) {
-                        ChatCallGlyph(video = true, tint = InboxAccentStrong)
+                    if (chat.isGroup) {
+                        ChatChromeActionButton(
+                            onClick = { showGroupManagement = true },
+                            filled = false,
+                            transparent = true,
+                            size = 40.dp
+                        ) {
+                            Text("⋯", color = InboxAccentStrong, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        ChatChromeActionButton(onClick = { onCall(false) }, filled = false, transparent = true, size = 40.dp) {
+                            ChatCallGlyph(video = false, tint = InboxAccentStrong)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        ChatChromeActionButton(onClick = { onCall(true) }, filled = false, transparent = true, size = 40.dp) {
+                            ChatCallGlyph(video = true, tint = InboxAccentStrong)
+                        }
                     }
                 }
             }
@@ -3544,6 +3575,17 @@ private fun LiveChatScreen(
                 }
             }
         }
+    }
+
+    if (chat.isGroup && showGroupManagement) {
+        GroupManagementDialog(
+            repository = repository,
+            userId = userId,
+            chatId = chat.id,
+            onDismiss = { showGroupManagement = false },
+            onGroupUpdated = onGroupUpdated,
+            onGroupClosed = onGroupClosed
+        )
     }
 }
 
