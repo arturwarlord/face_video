@@ -3,6 +3,7 @@ package com.facevideo.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -50,7 +51,7 @@ internal fun ArturChatTypeAvatar(
         ArturChatTypeGlyph(
             type = type,
             tint = palette.third,
-            modifier = Modifier.fillMaxSize().then(Modifier)
+            modifier = Modifier.fillMaxSize().padding(10.dp)
         )
     }
 }
