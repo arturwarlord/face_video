@@ -767,19 +767,18 @@ private fun ChannelDetailsScreen(
                 Text("Канал", color = CommunityMuted, fontSize = 9.sp)
             }
             Spacer(Modifier.weight(1f))
-            Box {
-                TextButton(
-                    onClick = { showManageMenu = true },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
-                    enabled = isOwner || subscribed
-                ) {
-                    Text("⋯", color = CommunityAccentDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                }
-                DropdownMenu(
-                    expanded = showManageMenu,
-                    onDismissRequest = { showManageMenu = false }
-                ) {
-                    if (isOwner) {
+            if (isOwner) {
+                Box {
+                    TextButton(
+                        onClick = { showManageMenu = true },
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                    ) {
+                        Text("⋯", color = CommunityAccentDark, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                    DropdownMenu(
+                        expanded = showManageMenu,
+                        onDismissRequest = { showManageMenu = false }
+                    ) {
                         DropdownMenuItem(
                             text = { Text("Изменить канал") },
                             onClick = {
@@ -801,25 +800,10 @@ private fun ChannelDetailsScreen(
                                 showDeleteChannelConfirmation = true
                             }
                         )
-                    } else if (subscribed) {
-                        DropdownMenuItem(
-                            text = { Text("Отписаться") },
-                            onClick = {
-                                showManageMenu = false
-                                scope.launch {
-                                    isBusy = true
-                                    runCatching { repository.leaveChannel(currentChannel.id, userId) }
-                                        .onSuccess {
-                                            subscribed = false
-                                            onMembershipChanged()
-                                        }
-                                        .onFailure { errorMessage = it.message ?: "Не удалось отменить подписку." }
-                                    isBusy = false
-                                }
-                            }
-                        )
                     }
                 }
+            } else {
+                Spacer(Modifier.width(36.dp))
             }
         }
 
