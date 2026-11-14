@@ -225,6 +225,7 @@ internal fun ChannelManagementScreen(
                             entry = entry,
                             userId = userId,
                             canManage = isOwner && entry.member.userId != userId,
+                            isOwner = isOwner,
                             isBusy = isBusy,
                             onManagePermissions = { permissionsTarget = entry },
                             onDemote = {
@@ -262,7 +263,8 @@ internal fun ChannelManagementScreen(
                         ChannelMemberRow(
                             entry = entry,
                             userId = userId,
-                            canManage = canRemove && entry.member.userId != userId,
+                            canManage = (isOwner || canRemove) && entry.member.userId != userId,
+                            isOwner = isOwner,
                             isBusy = isBusy,
                             onManagePermissions = {},
                             onDemote = {},
@@ -370,7 +372,7 @@ internal fun ChannelManagementScreen(
 
     if (removalTarget != null) {
         val target = removalTarget!!
-        val name = target.profile?.displayName?.ifBlank { target.profile.username } ?: "участника"
+        val name = target.profile?.let { it.displayName.ifBlank { it.username } } ?: "участника"
         AlertDialog(
             onDismissRequest = { if (!isBusy) removalTarget = null },
             containerColor = Color.White,
@@ -408,6 +410,7 @@ private fun ChannelMemberRow(
     entry: FaceVideoChannelMemberProfile,
     userId: String,
     canManage: Boolean,
+    isOwner: Boolean,
     isBusy: Boolean,
     onManagePermissions: () -> Unit,
     onDemote: () -> Unit,
@@ -470,7 +473,7 @@ private fun ChannelMemberRow(
                         fontWeight = FontWeight.Bold
                     )
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        if (entry.member.role == "admin") {
+                        if (isOwner && entry.member.role == "admin") {
                             DropdownMenuItem(
                                 text = { Text("Права администратора") },
                                 onClick = { menuExpanded = false; onManagePermissions() }
@@ -479,7 +482,7 @@ private fun ChannelMemberRow(
                                 text = { Text("Снять права администратора") },
                                 onClick = { menuExpanded = false; onDemote() }
                             )
-                        } else {
+                        } else if (isOwner && entry.member.role == "subscriber") {
                             DropdownMenuItem(
                                 text = { Text("Назначить администратором") },
                                 onClick = { menuExpanded = false; onPromote() }
