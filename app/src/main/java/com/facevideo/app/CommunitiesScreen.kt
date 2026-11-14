@@ -70,6 +70,12 @@ private enum class CommunitySection(val title: String) {
     CHANNELS("Каналы")
 }
 
+private enum class ChannelDirectoryFilter(val title: String) {
+    ALL("Все"),
+    SUBSCRIBED("Подписки"),
+    OWNED("Мои")
+}
+
 @Composable
 internal fun GroupsScreen(
     repository: SupabaseChatRepository,
@@ -86,6 +92,8 @@ internal fun GroupsScreen(
     var showCreateGroup by remember { mutableStateOf(false) }
     var showCreateChannel by remember { mutableStateOf(false) }
     var selectedChannel by remember { mutableStateOf<FaceVideoChannel?>(null) }
+    var channelFilter by remember(userId) { mutableStateOf(ChannelDirectoryFilter.ALL) }
+    var channelQuery by remember(userId) { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
     BackHandler(enabled = selectedChannel != null) {
@@ -104,6 +112,24 @@ internal fun GroupsScreen(
         } finally {
             isLoading = false
         }
+    }
+
+    val visibleChannels = remember(channels, channelFilter, channelQuery, userId) {
+        val filtered = channels.filter { entry ->
+            val isOwner = entry.channel.createdBy == userId
+            val matchesFilter = when (channelFilter) {
+                ChannelDirectoryFilter.ALL -> true
+                ChannelDirectoryFilter.SUBSCRIBED -> entry.isSubscribed && !isOwner
+                ChannelDirectoryFilter.OWNED -> isOwner
+            }
+            val query = channelQuery.trim()
+            matchesFilter && (
+                query.isBlank() ||
+                    entry.channel.title.contains(query, ignoreCase = true) ||
+                    entry.channel.description.contains(query, ignoreCase = true)
+                )
+        }
+        filtered
     }
 
     if (selectedChannel != null) {
@@ -131,14 +157,14 @@ internal fun GroupsScreen(
                     )
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        "Группы",
+                        "Сообщества",
                         color = CommunityText,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.5).sp
                     )
                     Text(
-                        "Общайся вместе и следи за любимыми каналами",
+                        "Групповые чаты и каналы для публикаций",
                         color = CommunityMuted,
                         fontSize = 11.sp
                     )
@@ -243,23 +269,81 @@ internal fun GroupsScreen(
                     }
                 }
             } else {
-                if (channels.isEmpty()) {
-                    CommunityEmptyState(
-                        icon = "◉",
-                        title = "Каналов пока нет",
-                        description = "Создай собственный канал или загляни сюда позже — новые каналы появятся в этом списке.",
-                        action = "Создать канал",
-                        onAction = { showCreateChannel = true }
-                    )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xAFFFFFFF))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    ChannelDirectoryFilter.values().forEach { filter ->
+                        val selected = filter == channelFilter
+                        Box(
+                            Modifier.weight(1f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Color.White else Color.Transparent)
+                                .clickable { channelFilter = filter }
+                                .padding(vertical = 9.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                filter.title,
+                                color = if (selected) CommunityAccentDark else CommunityMuted,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = channelQuery,
+                    onValueChange = { channelQuery = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp),
+                    singleLine = true,
+                    placeholder = { Text("Поиск каналов", fontSize = 12.sp) },
+                    shape = RoundedCornerShape(14.dp)
+                )
+                if (visibleChannels.isEmpty()) {
+                    when {
+                        channels.isEmpty() -> CommunityEmptyState(
+                            icon = "◉",
+                            title = "Каналов пока нет",
+                            description = "Создай канал, чтобы публиковать новости, фотографии и объявления для подписчиков.",
+                            action = "Создать канал",
+                            onAction = { showCreateChannel = true }
+                        )
+                        channelFilter == ChannelDirectoryFilter.OWNED -> CommunityEmptyState(
+                            icon = "✦",
+                            title = "У тебя пока нет каналов",
+                            description = "Создай свой канал и публикуй новости и важные обновления.",
+                            action = "Создать канал",
+                            onAction = { showCreateChannel = true }
+                        )
+                        channelFilter == ChannelDirectoryFilter.SUBSCRIBED -> CommunityEmptyState(
+                            icon = "◉",
+                            title = "Нет подписок",
+                            description = "Переключись на «Все», чтобы найти интересные каналы.",
+                            action = "Все каналы",
+                            onAction = { channelFilter = ChannelDirectoryFilter.ALL }
+                        )
+                        else -> CommunityEmptyState(
+                            icon = "⌕",
+                            title = "Ничего не найдено",
+                            description = "Попробуй изменить поисковый запрос.",
+                            action = "Очистить поиск",
+                            onAction = { channelQuery = "" }
+                        )
+                    }
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 18.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(channels, key = { it.channel.id }) { entry ->
+                        items(visibleChannels, key = { it.channel.id }) { entry ->
                             CommunityChannelRow(
                                 entry = entry,
+                                userId = userId,
                                 onOpen = { selectedChannel = entry.channel },
                                 onJoin = {
                                     scope.launch {
