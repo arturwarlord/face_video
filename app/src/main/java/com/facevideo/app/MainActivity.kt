@@ -249,7 +249,7 @@ private data class MessageReplyPreview(
     val text: String
 )
 
-private data class PreparedChatImage(
+internal data class PreparedChatImage(
     val bytes: ByteArray,
     val fileName: String
 )
@@ -259,7 +259,7 @@ private data class PreparedChatImage(
  * Android versions), scales before allocating large bitmaps, then normalizes
  * every selected image to JPEG for the private chat bucket.
  */
-private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
+internal fun prepareChatImage(context: Context, uri: Uri, maxDimension: Int = 1920, maxBytes: Int = 10 * 1024 * 1024): PreparedChatImage {
     val resolver = context.contentResolver
 
     val decoded = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -271,8 +271,8 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
                 "Не удалось определить размер выбранного изображения."
             }
             val longestSide = maxOf(width, height)
-            if (longestSide > 1920) {
-                val scale = 1920f / longestSide
+            if (longestSide > maxDimension) {
+                val scale = maxDimension.toFloat() / longestSide
                 decoder.setTargetSize(
                     (width * scale).toInt().coerceAtLeast(1),
                     (height * scale).toInt().coerceAtLeast(1)
@@ -292,7 +292,7 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
         }
 
         var sampleSize = 1
-        while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 1920) {
+        while (maxOf(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > maxDimension) {
             sampleSize *= 2
         }
         val options = BitmapFactory.Options().apply {
@@ -313,12 +313,12 @@ private fun prepareChatImage(context: Context, uri: Uri): PreparedChatImage {
             if (!decoded.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, output)) {
                 throw IllegalStateException("Не удалось преобразовать фото в JPEG.")
             }
-            if (output.size() <= 10 * 1024 * 1024) {
+            if (output.size() <= maxBytes) {
                 encoded = true
                 break
             }
         }
-        require(encoded && output.size() in 1..(10 * 1024 * 1024)) {
+        require(encoded && output.size() in 1..maxBytes) {
             "Фото слишком большое. Выбери изображение поменьше."
         }
 
@@ -3727,13 +3727,14 @@ private fun ChatRow(chat: ChatSummary, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Avatar(
+internal fun Avatar(
     initials: String,
     style: Int,
     modifier: Modifier = Modifier,
     highlighted: Boolean = false,
     imageUrl: String? = null,
-    imageCacheKey: String? = null
+    imageCacheKey: String? = null,
+    onClick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val imageCache = remember(context) { ArturChatImageCache(context) }
@@ -3769,9 +3770,11 @@ private fun Avatar(
         if (freshBytes != null) avatarBitmap = decodeCachedImage(freshBytes, 512)
     }
     Box(
-        modifier.clip(CircleShape).background(
-            Brush.linearGradient(listOf(AvatarColors[style % AvatarColors.size], PanelLight))
-        ),
+        modifier.clip(CircleShape)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .background(
+                Brush.linearGradient(listOf(AvatarColors[style % AvatarColors.size], PanelLight))
+            ),
         contentAlignment = Alignment.Center
     ) {
         val bitmap = avatarBitmap
@@ -3782,6 +3785,89 @@ private fun Avatar(
         }
         if (highlighted) {
             Box(Modifier.align(Alignment.BottomEnd).padding(1.dp).size(10.dp).clip(CircleShape).background(AccentSlate))
+        }
+    }
+}
+
+@Composable
+internal fun FullscreenAvatarDialog(
+    imageUrl: String,
+    imageCacheKey: String,
+    title: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val imageCache = remember(context) { ArturChatImageCache(context) }
+    var bitmap by remember(imageUrl, imageCacheKey) {
+        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    }
+    var isLoading by remember(imageUrl, imageCacheKey) { mutableStateOf(true) }
+    var loadError by remember(imageUrl, imageCacheKey) { mutableStateOf(false) }
+
+    LaunchedEffect(imageUrl, imageCacheKey) {
+        isLoading = true
+        loadError = false
+        val bytes = withContext(Dispatchers.IO) {
+            val cached = runCatching {
+                imageCache.readBytes("avatars", "public", imageCacheKey)
+            }.getOrNull()
+            val fresh = runCatching {
+                imageCache.fetchAndStore(
+                    kind = "avatars",
+                    ownerId = "public",
+                    mediaId = imageCacheKey,
+                    sourceUrl = imageUrl,
+                    freshnessMillis = 0,
+                    refreshWhenSourceChanges = true
+                )
+            }.getOrNull()
+            fresh ?: cached
+        }
+        bitmap = bytes?.let { decodeCachedImage(it, 2560)?.asImageBitmap() }
+        loadError = bitmap == null
+        isLoading = false
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        val loaded = bitmap
+        if (loaded != null) {
+            FullscreenChatImageViewer(
+                bitmap = loaded,
+                title = title,
+                onDismiss = onDismiss
+            )
+        } else {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (isLoading) {
+                        androidx.compose.material3.CircularProgressIndicator(color = Color.White)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Text(
+                        if (loadError) "Не удалось загрузить фотографию" else "Загружаем фото…",
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = 12.sp
+                    )
+                }
+                Text(
+                    "‹",
+                    modifier = Modifier.align(Alignment.TopStart)
+                        .padding(18.dp)
+                        .clickable(onClick = onDismiss)
+                        .padding(8.dp),
+                    color = Color.White,
+                    fontSize = 34.sp
+                )
+            }
         }
     }
 }
@@ -3957,6 +4043,7 @@ private fun ImageMessageMetadata(
 @Composable
 private fun FullscreenChatImageViewer(
     bitmap: androidx.compose.ui.graphics.ImageBitmap,
+    title: String = "Фото",
     onDismiss: () -> Unit
 ) {
     var scale by remember(bitmap) { mutableFloatStateOf(1f) }
@@ -4091,7 +4178,7 @@ private fun FullscreenChatImageViewer(
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(
-                        "Фото",
+                        title,
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold
@@ -6670,6 +6757,7 @@ private fun ProfileScreen(
     var isEditing by remember(userId) { mutableStateOf(false) }
     var editSection by remember(userId) { mutableStateOf(0) }
     var showDiscardChanges by remember { mutableStateOf(false) }
+    var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -6864,7 +6952,8 @@ private fun ProfileScreen(
                                 Modifier.size(92.dp),
                                 highlighted = true,
                                 imageUrl = profile?.avatarUrl,
-                                imageCacheKey = userId
+                                imageCacheKey = userId,
+                                onClick = { if (!profile?.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
                             )
                             Spacer(Modifier.width(15.dp))
                             Column(Modifier.weight(1f)) {
@@ -7200,7 +7289,8 @@ private fun ProfileScreen(
                             Modifier.size(136.dp),
                             highlighted = true,
                             imageUrl = profile?.avatarUrl,
-                            imageCacheKey = userId
+                            imageCacheKey = userId,
+                            onClick = { if (!profile?.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
                         )
                         Spacer(Modifier.height(17.dp))
                         Text(
@@ -7355,6 +7445,15 @@ private fun ProfileScreen(
             )
         }
         Spacer(Modifier.height(20.dp))
+    }
+
+    if (showAvatarPreview && !profile?.avatarUrl.isNullOrBlank() && userId != null) {
+        FullscreenAvatarDialog(
+            imageUrl = profile!!.avatarUrl!!,
+            imageCacheKey = userId,
+            title = displayName.ifBlank { username }.ifBlank { "Фото профиля" },
+            onDismiss = { showAvatarPreview = false }
+        )
     }
 
     if (showDiscardChanges) {
@@ -7610,6 +7709,7 @@ private fun UserProfileScreen(
     var isBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRemoveFriend by remember { mutableStateOf(false) }
+    var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(repository, userId, currentUserId, cache) {
@@ -7653,7 +7753,8 @@ private fun UserProfileScreen(
                     2,
                     Modifier.size(124.dp),
                     imageUrl = p.avatarUrl,
-                    imageCacheKey = p.id
+                    imageCacheKey = p.id,
+                    onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(p.displayName.ifBlank { p.username }, color = MainText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -7772,6 +7873,15 @@ private fun UserProfileScreen(
         } else {
             Text(errorMessage ?: "Не удалось загрузить профиль пользователя.", color = Muted)
         }
+    }
+
+    if (showAvatarPreview && !profile?.avatarUrl.isNullOrBlank()) {
+        FullscreenAvatarDialog(
+            imageUrl = profile!!.avatarUrl!!,
+            imageCacheKey = profile!!.id,
+            title = profile!!.displayName.ifBlank { profile!!.username },
+            onDismiss = { showAvatarPreview = false }
+        )
     }
 
     if (showRemoveFriend) {
