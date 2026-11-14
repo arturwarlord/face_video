@@ -128,17 +128,25 @@ internal fun GroupManagementScreen(
             )
         )
     ) {
-        Row(
+        Box(
             Modifier.fillMaxWidth()
-                .padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(start = 18.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
         ) {
-            TextButton(onClick = onDismiss, enabled = !isBusy, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)) {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isBusy,
+                modifier = Modifier.align(Alignment.CenterStart),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp)
+            ) {
                 Text("‹ Назад", color = GroupPanelAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.weight(1f))
-            Text("Информация о группе", color = GroupPanelText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
+            Text(
+                "Информация о группе",
+                modifier = Modifier.align(Alignment.Center),
+                color = GroupPanelText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
 
 
