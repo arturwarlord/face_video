@@ -1348,8 +1348,11 @@ private fun LiveChatListScreen(
         onOpenChat(chat)
     }
 
+    // Keep the Chats tab strictly for one-to-one conversations.
+    // Group conversations are loaded independently in the Groups tab.
     val visibleChats = remember(chats, query, unreadSummaries) {
-        if (query.isBlank()) chats else chats.filter { chat ->
+        val directChats = chats.filterNot { it.isGroup }
+        if (query.isBlank()) directChats else directChats.filter { chat ->
             chat.title.contains(query.trim(), ignoreCase = true) ||
                 chat.lastMessagePreview.contains(query.trim(), ignoreCase = true) ||
                 unreadSummaries[chat.id]?.lastUnreadBody.orEmpty().contains(query.trim(), ignoreCase = true)
@@ -1443,7 +1446,7 @@ private fun LiveChatListScreen(
                     ) {
                         Avatar("FV", 1, Modifier.size(68.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(if (query.isBlank()) "Пока нет переписок" else "Ничего не найдено", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (query.isBlank()) "Пока нет личных чатов" else "Ничего не найдено", color = MainText, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(7.dp))
                         Text(
                             if (query.isBlank()) "Начни переписку с другом — нажми кнопку создания чата внизу."
@@ -1476,7 +1479,7 @@ private fun LiveChatListScreen(
                             )
                             Spacer(Modifier.weight(1f))
                             Text(
-                                "${visibleChats.size} чатов",
+                                "${visibleChats.size} личных чатов",
                                 color = InboxMuted,
                                 fontSize = 10.sp
                             )
