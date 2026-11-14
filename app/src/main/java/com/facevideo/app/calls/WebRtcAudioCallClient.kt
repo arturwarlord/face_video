@@ -35,6 +35,8 @@ import org.webrtc.DefaultVideoDecoderFactory
 import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.RendererCommon
+import org.webrtc.RtpParameters
+import org.webrtc.RtpSender
 import org.webrtc.SurfaceTextureHelper
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoSource
@@ -445,11 +447,12 @@ class WebRtcAudioCallClient(
                 object : RendererCommon.RendererEvents {
                     override fun onFirstFrameRendered() {
                         Log.i(TAG, "Remote video first frame rendered")
-                        setStatus("Видео собеседника получено")
+                        setStatus("Видео собеседника подключено")
                     }
 
                     override fun onFrameResolutionChanged(width: Int, height: Int, rotation: Int) {
                         Log.i(TAG, "Remote video frame: ${width}x${height}, rotation=$rotation")
+                        setStatus("Качество видео: ${width}×${height}")
                     }
                 }
             )
@@ -480,13 +483,45 @@ class WebRtcAudioCallClient(
         localVideoTrack = track
         track.setEnabled(true)
         track.addSink(localRenderer)
-        check(peerConnection?.addTrack(track, listOf("arturchat-${call.id}")) != null) {
-            "Не удалось добавить видеопоток в WebRTC."
-        }
+        val videoSender = peerConnection?.addTrack(track, listOf("arturchat-${call.id}"))
+            ?: error("Не удалось добавить видеопоток в WebRTC.")
+        configureVideoSender(videoSender)
 
-        // Conservative starting profile for mobile networks and mid-range phones.
-        capturer.startCapture(640, 480, 24)
-        Log.i(TAG, "Local camera started: 640x480@24fps")
+        // Request HD capture. WebRTC's congestion controller can reduce the
+        // encoded bitrate and frame rate when the peer's network is constrained.
+        // The previous 640x480@24 profile unnecessarily limited every call to SD.
+        capturer.startCapture(VIDEO_CAPTURE_WIDTH, VIDEO_CAPTURE_HEIGHT, VIDEO_CAPTURE_FPS)
+        Log.i(
+            TAG,
+            "Local camera started: ${VIDEO_CAPTURE_WIDTH}x${VIDEO_CAPTURE_HEIGHT}@ ${VIDEO_CAPTURE_FPS}fps"
+        )
+    }
+
+    private fun configureVideoSender(sender: RtpSender) {
+        runCatching {
+            val parameters = sender.parameters
+            val encoding = parameters.encodings.firstOrNull()
+                ?: error("WebRTC не вернул параметры видеокодирования.")
+
+            encoding.maxBitrateBps = VIDEO_MAX_BITRATE_BPS
+            encoding.minBitrateBps = VIDEO_MIN_BITRATE_BPS
+            encoding.maxFramerate = VIDEO_CAPTURE_FPS
+            parameters.degradationPreference = RtpParameters.DegradationPreference.BALANCED
+
+            check(sender.setParameters(parameters)) {
+                "WebRTC отклонил профиль качества видео."
+            }
+            Log.i(
+                TAG,
+                "Video sender quality configured: min=${VIDEO_MIN_BITRATE_BPS}bps, " +
+                    "max=${VIDEO_MAX_BITRATE_BPS}bps, maxFps=$VIDEO_CAPTURE_FPS, " +
+                    "degradation=${parameters.degradationPreference}"
+            )
+        }.onFailure {
+            // A device-specific sender may reject optional tuning. Keep the
+            // negotiated defaults rather than failing the whole video call.
+            Log.w(TAG, "Could not apply HD video sender parameters; using WebRTC defaults", it)
+        }
     }
 
     /**
@@ -1053,6 +1088,11 @@ class WebRtcAudioCallClient(
         private const val ICE_RECOVERY_GRACE_MS = 6_000L
         private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
+        private const val VIDEO_CAPTURE_WIDTH = 1280
+        private const val VIDEO_CAPTURE_HEIGHT = 720
+        private const val VIDEO_CAPTURE_FPS = 30
+        private const val VIDEO_MIN_BITRATE_BPS = 250_000
+        private const val VIDEO_MAX_BITRATE_BPS = 2_500_000
         private const val DIRECT_P2P_FAILED_MESSAGE =
             "Не удалось установить прямое соединение между телефонами. " +
                 "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
