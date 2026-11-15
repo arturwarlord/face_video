@@ -87,7 +87,7 @@ async function sendToDevice(
           android: payload.type === "call"
             ? {
                 priority: "HIGH",
-                ttl: "60s",
+                ttl: "45s",
                 notification: {
                   channel_id: "arturchat_calls_v2",
                   sound: "default",
