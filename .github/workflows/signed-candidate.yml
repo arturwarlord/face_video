@@ -70,7 +70,7 @@ jobs:
           if value.startswith("{"):
               config_text = value
           else:
-              compact = re.sub(r"\\s+", "", value)
+              compact = re.sub(r"\s+", "", value)
               try:
                   padded = compact + ("=" * (-len(compact) % 4))
                   config_text = base64.b64decode(padded, validate=True).decode("utf-8")
@@ -88,7 +88,7 @@ jobs:
           if "com.facevideo.app" not in package_names:
               raise SystemExit("Firebase config does not contain Android package com.facevideo.app")
 
-          Path("app/google-services.json").write_text(config_text + "\\n", encoding="utf-8")
+          Path("app/google-services.json").write_text(config_text + "\n", encoding="utf-8")
           print("Firebase Android configuration validated for com.facevideo.app.")
           PY
 
