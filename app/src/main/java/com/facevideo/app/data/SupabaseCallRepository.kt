@@ -4,8 +4,6 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.annotations.SupabaseExperimental
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
-import io.github.jan.supabase.functions.functions
-import io.ktor.client.call.body
 import io.github.jan.supabase.realtime.selectAsFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -16,19 +14,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
-
-@Serializable
-data class FaceVideoTurnIceServer(
-    val urls: List<String> = emptyList(),
-    val username: String,
-    val credential: String
-)
-
-@Serializable
-private data class FaceVideoTurnCredentialsResponse(
-    val iceServers: List<FaceVideoTurnIceServer> = emptyList(),
-    val expiresAt: String? = null
-)
 
 @Serializable
 data class FaceVideoCall(
@@ -83,15 +68,6 @@ private data class FaceVideoCallStatusUpdate(val status: String)
  * participants can see a call and that signaling payloads go only to the peer.
  */
 class SupabaseCallRepository(private val client: SupabaseClient) {
-    /**
-     * Fetch short-lived TURN credentials from the authenticated Supabase Edge Function.
-     * Failure is handled by the caller: direct STUN/P2P remains available as before.
-     */
-    suspend fun fetchTurnIceServers(): List<FaceVideoTurnIceServer> {
-        val response = client.functions.invoke("get-arturchat-turn-credentials")
-        return response.body<FaceVideoTurnCredentialsResponse>().iceServers
-    }
-
     private companion object {
         const val TAG = "ArturChatIncomingCall"
         const val INCOMING_CALL_POLL_INTERVAL_MS = 1_500L
