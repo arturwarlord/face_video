@@ -58,6 +58,7 @@ Deno.serve(async (request: Request) => {
     const iceServers = [{
       urls: [
         `turn:${OPEN_RELAY_HOST}:80?transport=udp`,
+        `turn:${OPEN_RELAY_HOST}:80?transport=tcp`,
         `turn:${OPEN_RELAY_HOST}:443?transport=udp`,
         `turn:${OPEN_RELAY_HOST}:443?transport=tcp`,
         `turns:${OPEN_RELAY_HOST}:443?transport=tcp`,
