@@ -9,6 +9,7 @@ import android.util.Log
 import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.buildJsonObject
@@ -70,6 +72,9 @@ class WebRtcAudioCallClient(
     // Video is strictly opt-in per call row. Audio calls retain the old media path.
     private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
+    @Volatile private var iceGatheringCompleted = CompletableDeferred<Unit>()
+    @Volatile private var lastLocalSdpCandidateCount = 0
+    @Volatile private var lastRemoteSdpCandidateCount = 0
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
@@ -316,6 +321,9 @@ class WebRtcAudioCallClient(
                 }
                 override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
                     Log.i(TAG, "P2P ICE gathering state=$state, candidates=${gatheredCandidateCount.get()}")
+                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                        iceGatheringCompleted.complete(Unit)
+                    }
                 }
 
                 override fun onIceCandidate(candidate: IceCandidate) {
@@ -682,23 +690,32 @@ class WebRtcAudioCallClient(
         signalType: String,
         fallbackDescription: SessionDescription
     ) {
-        // Preserve the proven direct-P2P signaling order: send SDP as soon as
-        // setLocalDescription succeeds. Candidate callbacks continue separately
-        // through Trickle ICE and are queued by the receiver until remote SDP is set.
         callScope.launch {
+            setStatus("Собираем прямые сетевые маршруты…")
+            // Restore the previous working direct-P2P sequence: let the ICE
+            // agent embed host/srflx candidates in SDP for up to five seconds.
+            // Trickle ICE remains enabled as a fallback for later candidates.
+            val gatheringFinished = withTimeoutOrNull(LOCAL_ICE_GATHER_WAIT_MS) {
+                iceGatheringCompleted.await()
+                true
+            } ?: false
             if (closed.get()) return@launch
-            setStatus("Отправляем параметры прямого соединения…")
+
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
+            lastLocalSdpCandidateCount = candidatesInSdp
             Log.i(
                 TAG,
-                "Sending direct P2P $signalType SDP immediately: candidatesInSdp=$candidatesInSdp; " +
-                    "candidateCallbacks=${gatheredCandidateCount.get()}; remaining candidates use trickle ICE"
+                "Sending direct P2P $signalType SDP: gatheringFinished=$gatheringFinished; " +
+                    "embeddedCandidates=$candidatesInSdp; candidateCallbacks=${gatheredCandidateCount.get()}"
             )
-            if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
-                Log.i(TAG, "No ICE candidates embedded yet; Trickle ICE callbacks remain active.")
+            if (!gatheringFinished) {
+                Log.w(TAG, "ICE gathering reached ${LOCAL_ICE_GATHER_WAIT_MS}ms; continue with gathered candidates and Trickle ICE")
+            }
+            if (candidatesInSdp == 0) {
+                Log.w(TAG, "No ICE candidates were embedded in SDP; Trickle ICE remains active")
             }
 
             runCatching {
@@ -713,7 +730,8 @@ class WebRtcAudioCallClient(
                     }
                 )
             }.onSuccess {
-                Log.i(TAG, "$signalType SDP sent; direct Trickle ICE continues in background")
+                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp embedded ICE candidates")
+                setStatus("Отправляем параметры прямого соединения…")
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
             }
@@ -740,6 +758,7 @@ class WebRtcAudioCallClient(
                 }
             remoteSdpCandidateKeys.size
         }
+        lastRemoteSdpCandidateCount = embeddedCandidateCount
         Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
@@ -820,8 +839,8 @@ class WebRtcAudioCallClient(
         }.joinToString("/").ifBlank { "нет" }
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}; signal=$lastHandledSignal; " +
-            "selectedPair=$selectedPairSummary; " +
-            "сети=$networkPair; общие IP-семейства=$commonFamilies; " +
+            "selectedPair=$selectedPairSummary; localSDP=$lastLocalSdpCandidateCount; " +
+            "remoteSDP=$lastRemoteSdpCandidateCount; сети=$networkPair; общие IP-семейства=$commonFamilies; " +
             "local v4/v6=${localIpv4Candidates.get()}/${localIpv6Candidates.get()} " +
             "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
             "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
@@ -935,6 +954,7 @@ class WebRtcAudioCallClient(
     companion object {
         private const val TAG = "ArturChatWebRTC"
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
+        private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val VIDEO_CAPTURE_WIDTH = 1280
         private const val VIDEO_CAPTURE_HEIGHT = 720
