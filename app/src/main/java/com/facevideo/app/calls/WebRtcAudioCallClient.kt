@@ -10,6 +10,7 @@ import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -244,14 +245,66 @@ class WebRtcAudioCallClient(
     }
 
     /**
-     * Direct peer-to-peer mode. STUN is used only to discover public-facing
-     * network addresses; audio is never relayed by these STUN services.
-     * No TURN server or third-party media relay is configured in this build.
+     * ICE prefers the existing direct STUN/P2P route whenever it works.
+     * Authenticated TURN endpoints are appended only as a fallback for VPN,
+     * symmetric NAT and restrictive firewall combinations.
      */
-    private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
-        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-    )
+    /**
+     * Keep the existing STUN/P2P route first and add TURN as a fallback.
+     * If Supabase or the relay credential service is unavailable, calls still
+     * use the exact direct-connection path that existed before this change.
+     */
+    private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
+        val iceServers = mutableListOf(
+            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+        )
+
+        val turnConfiguration = try {
+            withTimeoutOrNull(TURN_CREDENTIAL_FETCH_TIMEOUT_MS) {
+                repository.fetchTurnIceServers()
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Log.w(TAG, "TURN credentials unavailable; preserving direct STUN/P2P mode", error)
+            null
+        }
+
+        var addedTurnServers = 0
+        turnConfiguration.orEmpty().forEach { server ->
+            val username = server.username.trim()
+            val credential = server.credential.trim()
+            if (username.isEmpty() || credential.isEmpty()) return@forEach
+
+            server.urls.map(String::trim)
+                .filter { url ->
+                    url.startsWith("turn:$OPEN_RELAY_HOST:") ||
+                        url.startsWith("turns:$OPEN_RELAY_HOST:")
+                }
+                .distinct()
+                .forEach { url ->
+                    runCatching {
+                        PeerConnection.IceServer.builder(url)
+                            .setUsername(username)
+                            .setPassword(credential)
+                            .createIceServer()
+                    }.onSuccess { iceServer ->
+                        iceServers += iceServer
+                        addedTurnServers++
+                    }.onFailure {
+                        Log.w(TAG, "Ignoring invalid TURN ICE URL: $url", it)
+                    }
+                }
+        }
+
+        if (addedTurnServers > 0) {
+            Log.i(TAG, "TURN fallback configured with $addedTurnServers transport endpoints; direct ICE remains enabled")
+        } else {
+            Log.w(TAG, "No TURN endpoints were returned; direct STUN/P2P mode remains enabled")
+        }
+        return iceServers
+    }
 
     private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
@@ -1087,6 +1140,8 @@ class WebRtcAudioCallClient(
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
         private const val ICE_RECOVERY_GRACE_MS = 6_000L
         private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
+        private const val TURN_CREDENTIAL_FETCH_TIMEOUT_MS = 3_500L
+        private const val OPEN_RELAY_HOST = "staticauth.openrelay.metered.ca"
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val VIDEO_CAPTURE_WIDTH = 1280
         private const val VIDEO_CAPTURE_HEIGHT = 720
