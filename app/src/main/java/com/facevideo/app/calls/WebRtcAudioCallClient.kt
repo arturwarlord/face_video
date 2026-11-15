@@ -93,7 +93,8 @@ class WebRtcAudioCallClient(
     private val remoteUdpCandidates = AtomicInteger(0)
     private val remoteTcpCandidates = AtomicInteger(0)
     @Volatile private var remoteNetworkType = "unknown"
-    @Volatile private var lastStunErrorSummary = "none"
+    @Volatile private var turnConfigurationSummary = "TURN ещё не запрашивался"
+    private val iceServerErrors = mutableListOf<String>()
     private val remoteCandidatesQueued = AtomicInteger(0)
     private val remoteCandidatesApplied = AtomicInteger(0)
     private val remoteCandidatesRejected = AtomicInteger(0)
@@ -260,21 +261,25 @@ class WebRtcAudioCallClient(
         // request and no additional ICE servers. A device using VPN receives
         // TURN candidates so its peer can reach it even if the peer is not on VPN.
         if (currentNetworkType() != "VPN") {
+            turnConfigurationSummary = "VPN не обнаружен; TURN не запрашивался"
             Log.i(TAG, "No Android VPN transport detected; using the original STUN-only route")
             return iceServers
         }
 
+        var turnFetchStatus = "ok"
         val turnConfiguration = try {
             withTimeoutOrNull(TURN_CREDENTIAL_FETCH_TIMEOUT_MS) {
                 repository.fetchTurnIceServers()
-            }
+            }.also { if (it == null) turnFetchStatus = "timeout" }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
+            turnFetchStatus = "error:${error.javaClass.simpleName}"
             Log.w(TAG, "TURN credentials unavailable; preserving direct STUN/P2P mode", error)
             null
         }
 
+        val returnedTurnUrlCount = turnConfiguration.orEmpty().sumOf { it.urls.size }
         var addedTurnServers = 0
         turnConfiguration.orEmpty().forEach { server ->
             val username = server.username.trim()
@@ -302,10 +307,12 @@ class WebRtcAudioCallClient(
                 }
         }
 
+        turnConfigurationSummary =
+            "$turnFetchStatus; TURN URLs=$returnedTurnUrlCount; configured=$addedTurnServers"
         if (addedTurnServers > 0) {
             Log.i(TAG, "TURN fallback configured with $addedTurnServers transport endpoints; direct ICE remains enabled")
         } else {
-            Log.w(TAG, "No TURN endpoints were returned; direct STUN/P2P mode remains enabled")
+            Log.w(TAG, "No TURN endpoints were configured ($turnConfigurationSummary); direct STUN/P2P mode remains enabled")
         }
         return iceServers
     }
@@ -435,10 +442,15 @@ class WebRtcAudioCallClient(
                 }
 
                 override fun onIceCandidateError(event: IceCandidateErrorEvent) {
-                    // Do not log the local address from this event.
-                    val server = event.url.substringAfter("://").substringBefore("/")
-                    lastStunErrorSummary = "$server:${event.errorCode}"
-                    Log.w(TAG, "STUN candidate gathering error: $lastStunErrorSummary; ${event.errorText}")
+                    // Do not log the local address from this event. Preserve the full
+                    // STUN/TURN URL and transport so failures can be mapped to a port.
+                    val detail = "${event.url}: ${event.errorCode}; port=${event.port}; " +
+                        event.errorText.replace(Regex("\\s+"), " ").take(100)
+                    synchronized(iceServerErrors) {
+                        if (iceServerErrors.size >= 6) iceServerErrors.removeAt(0)
+                        iceServerErrors += detail
+                    }
+                    Log.w(TAG, "ICE server candidate gathering error: $detail")
                 }
 
                 override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) = Unit
@@ -933,6 +945,9 @@ class WebRtcAudioCallClient(
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
         val networkPair = "${currentNetworkType()}↔$remoteNetworkType"
+        val iceErrors = synchronized(iceServerErrors) {
+            iceServerErrors.joinToString(" | ").ifBlank { "none" }
+        }
         val commonFamilies = buildList {
             if (localIpv4Candidates.get() > 0 && remoteIpv4Candidates.get() > 0) add("IPv4")
             if (localIpv6Candidates.get() > 0 && remoteIpv6Candidates.get() > 0) add("IPv6")
@@ -948,7 +963,8 @@ class WebRtcAudioCallClient(
             "local host/srflx/relay/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/" +
             "${localRelayCandidates.get()}/${localOtherCandidates.get()}; " +
             "remote host/srflx/prflx/relay=${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
-            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; STUN error=$lastStunErrorSummary; " +
+            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; " +
+            "TURN config=$turnConfigurationSummary; ICE server errors=$iceErrors; " +
             "remote received/queued/pending/accepted/rejected/alreadyInSdp=" +
             "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
             "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
@@ -1155,9 +1171,8 @@ class WebRtcAudioCallClient(
         private const val VIDEO_MIN_BITRATE_BPS = 250_000
         private const val VIDEO_MAX_BITRATE_BPS = 2_500_000
         private const val DIRECT_P2P_FAILED_MESSAGE =
-            "Не удалось установить прямое соединение между телефонами. " +
-                "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
-                "или переключить один из телефонов на другую сеть."
+            "Не удалось установить медиасоединение: прямой маршрут и TURN-реле недоступны. " +
+                "Попробуйте сменить VPN-сервер или протокол соединения."
         // Keep the proven audio-only factory completely unchanged. Video
         // calls use a second factory with real encoder/decoder implementations;
         // otherwise SDP can advertise an empty/rejected m=video section.
