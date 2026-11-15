@@ -16,6 +16,7 @@ type PushPayload = {
   body: string;
   entityId: string;
   chatId?: string;
+  mediaType?: "audio" | "video";
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -69,6 +70,7 @@ async function sendToDevice(
     entity_id: payload.entityId,
   };
   if (payload.chatId) data.chat_id = payload.chatId;
+  if (payload.mediaType) data.media_type = payload.mediaType;
 
   const response = await fetch(
     "https://fcm.googleapis.com/v1/projects/" + projectId + "/messages:send",
@@ -83,7 +85,18 @@ async function sendToDevice(
           token: target.token,
           data,
           android: payload.type === "call"
-            ? { priority: "HIGH" }
+            ? {
+                priority: "HIGH",
+                ttl: "60s",
+                notification: {
+                  channel_id: "arturchat_calls_v2",
+                  sound: "default",
+                  visibility: "PUBLIC",
+                  notification_priority: "PRIORITY_MAX",
+                  default_vibrate_timings: true,
+                  tag: "arturchat-call-" + payload.entityId,
+                },
+              }
             : {
                 priority: "HIGH",
                 notification: {
@@ -91,9 +104,12 @@ async function sendToDevice(
                   sound: "default",
                 },
               },
-          ...(payload.type === "message"
-            ? { notification: { title: payload.title, body: payload.body } }
-            : {}),
+          // Notification + data is intentional for calls: when ArturChat is
+          // backgrounded or its process was removed, Android posts the call
+          // alert itself and places the data (including entity_id) in the
+          // launcher Activity intent when the user taps it. Foreground calls
+          // still reach onMessageReceived and use the native CallStyle UI.
+          notification: { title: payload.title, body: payload.body },
         },
       }),
     },
@@ -190,8 +206,11 @@ Deno.serve(async (request: Request) => {
     notification = {
       type: "call",
       title: (caller?.display_name?.trim() || caller?.username || "Собеседник") + " звонит вам",
-      body: "Входящий аудиозвонок в ArturChat",
+      body: row.media_type === "video"
+        ? "Входящий видеозвонок в ArturChat"
+        : "Входящий аудиозвонок в ArturChat",
       entityId: callId,
+      mediaType: row.media_type === "video" ? "video" : "audio",
     };
   } else {
     return jsonResponse(202, { skipped: true });
