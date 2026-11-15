@@ -112,7 +112,23 @@ async function sendToDevice(
 
 Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return jsonResponse(405, { error: "Method not allowed." });
-  if (!WEBHOOK_SECRET || request.headers.get("x-arturchat-webhook-secret") !== WEBHOOK_SECRET) {
+  const legacySecret = request.headers.get("x-arturchat-webhook-secret") ?? "";
+  const vaultSecret = request.headers.get("x-arturchat-push-secret") ?? "";
+  let webhookAuthorized = Boolean(WEBHOOK_SECRET) && legacySecret === WEBHOOK_SECRET;
+
+  if (!webhookAuthorized && vaultSecret) {
+    try {
+      const { data, error } = await getSupabaseAdmin().rpc("verify_arturchat_push_secret", {
+        p_supplied_secret: vaultSecret,
+      });
+      webhookAuthorized = !error && data === true;
+      if (error) console.error("Webhook secret verification failed", error.message);
+    } catch (error) {
+      console.error("Webhook secret verification unavailable", error);
+    }
+  }
+
+  if (!webhookAuthorized) {
     return jsonResponse(401, { error: "Invalid webhook secret." });
   }
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !SERVICE_ACCOUNT_JSON) {
