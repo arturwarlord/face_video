@@ -51,9 +51,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A one-to-one audio call using direct WebRTC peer-to-peer media and Supabase
- * only for signaling. STUN helps discover public-facing addresses; no TURN
- * relay is configured, so strict NAT/firewall combinations may block the call.
+ * A one-to-one audio/video call using direct WebRTC P2P media and Supabase
+ * only for signaling. STUN discovers public-facing addresses; media stays
+ * directly between the two peers.
  */
 class WebRtcAudioCallClient(
     context: Context,
@@ -236,11 +236,7 @@ class WebRtcAudioCallClient(
         }
     }
 
-    /**
-     * Direct peer-to-peer mode. STUN is used only to discover public-facing
-     * network addresses; audio is never relayed by these STUN services.
-     * No TURN server or third-party media relay is configured in this build.
-     */
+    /** STUN is used only for address discovery; media stays peer-to-peer. */
     private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
@@ -947,8 +943,7 @@ class WebRtcAudioCallClient(
         private const val VIDEO_MAX_BITRATE_BPS = 2_500_000
         private const val DIRECT_P2P_FAILED_MESSAGE =
             "Не удалось установить прямое соединение между телефонами. " +
-                "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
-                "или переключить один из телефонов на другую сеть."
+                "Проверьте доступ к интернету на обоих устройствах и попробуйте ещё раз."
         // Keep the proven audio-only factory completely unchanged. Video
         // calls use a second factory with real encoder/decoder implementations;
         // otherwise SDP can advertise an empty/rejected m=video section.
