@@ -52,7 +52,11 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -147,6 +151,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -2333,29 +2338,14 @@ private fun StoryViewerScreen(
                                 STORY_REACTION_OPTIONS.forEach { emoji ->
                                     val count = reactionSummary.counts[emoji] ?: 0
                                     val selected = reactionSummary.currentUserReaction == emoji
-                                    Surface(
-                                        onClick = { onStoryReactionTapped(emoji) },
+                                    StoryReactionButton(
+                                        modifier = Modifier.weight(1f),
+                                        reaction = emoji,
+                                        count = count,
+                                        selected = selected,
                                         enabled = !isLoadingReactions && !isSavingReaction,
-                                        shape = CircleShape,
-                                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.Transparent,
-                                        border = if (selected) BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null,
-                                        modifier = Modifier.weight(1f).height(42.dp)
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(emoji, fontSize = if (selected) 21.sp else 19.sp, lineHeight = 22.sp)
-                                            if (count > 0) {
-                                                Text(
-                                                    count.toString(),
-                                                    color = Color.White.copy(alpha = 0.92f),
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                    }
+                                        onClick = { onStoryReactionTapped(emoji) }
+                                    )
                                 }
                             }
                         }
@@ -2415,6 +2405,137 @@ private fun StoryViewerScreen(
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text("Отмена") } }
         )
+    }
+}
+
+
+@Composable
+private fun StoryReactionButton(
+    modifier: Modifier = Modifier,
+    reaction: String,
+    count: Int,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val iconRes = when (reaction) {
+        "❤️" -> R.drawable.ic_story_reaction_heart
+        "😂" -> R.drawable.ic_story_reaction_laugh
+        "😮" -> R.drawable.ic_story_reaction_wow
+        "😢" -> R.drawable.ic_story_reaction_sad
+        "🔥" -> R.drawable.ic_story_reaction_fire
+        "👏" -> R.drawable.ic_story_reaction_clap
+        else -> R.drawable.ic_story_reaction_heart
+    }
+    val iconLabel = when (reaction) {
+        "❤️" -> "Нравится"
+        "😂" -> "Смешно"
+        "😮" -> "Удивление"
+        "😢" -> "Грусть"
+        "🔥" -> "Огонь"
+        "👏" -> "Аплодисменты"
+        else -> "Реакция"
+    }
+    val accent = when (reaction) {
+        "❤️" -> Color(0xFFFF8FAE)
+        "😂" -> Color(0xFFFFD27A)
+        "😮" -> Color(0xFFB5A1FF)
+        "😢" -> Color(0xFF91BFFF)
+        "🔥" -> Color(0xFFFF986A)
+        "👏" -> Color(0xFFD6B4FF)
+        else -> Color(0xFF9AAEFF)
+    }
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        animationSpec = tween(190),
+        label = "story-reaction-scale"
+    )
+    val pulseTransition = rememberInfiniteTransition(label = "story-reaction-glow-$reaction")
+    val glowPulse by pulseTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1050),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "story-reaction-glow-pulse"
+    )
+
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .drawBehind {
+                if (selected) {
+                    val glowRadius = size.minDimension * 0.78f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                accent.copy(alpha = 0.40f * glowPulse),
+                                accent.copy(alpha = 0.17f * glowPulse),
+                                Color.Transparent
+                            ),
+                            center = center,
+                            radius = glowRadius
+                        ),
+                        radius = glowRadius,
+                        center = center
+                    )
+                }
+            }
+            .clickable(enabled = enabled, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
+                .background(
+                    color = if (selected) accent.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.045f),
+                    shape = CircleShape
+                )
+                .border(
+                    width = if (selected) 1.15.dp else 0.65.dp,
+                    brush = if (selected) {
+                        Brush.linearGradient(
+                            listOf(
+                                accent.copy(alpha = 0.98f),
+                                Color.White.copy(alpha = 0.72f),
+                                accent.copy(alpha = 0.62f)
+                            )
+                        )
+                    } else {
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.22f),
+                                Color.White.copy(alpha = 0.09f)
+                            )
+                        )
+                    },
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = iconLabel,
+                modifier = Modifier.size(21.dp)
+            )
+        }
+        if (count > 0) {
+            Text(
+                text = count.toString(),
+                color = Color.White.copy(alpha = if (selected) 1f else 0.74f),
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else {
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
