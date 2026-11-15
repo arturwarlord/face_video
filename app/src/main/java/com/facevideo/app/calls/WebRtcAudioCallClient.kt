@@ -268,9 +268,15 @@ class WebRtcAudioCallClient(
         val iceServers = loadIceServers()
         val configuration = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            // Restore the earlier direct-P2P candidate preparation strategy.
-            // Pre-gather two candidates and perform one ICE gathering pass;
-            // candidates are still sent through Trickle ICE as they arrive.
+            // Keep every available IP family in ICE. Make IPv6-on-Wi-Fi
+            // explicitly enabled so future edits cannot silently suppress it.
+            candidateNetworkPolicy = PeerConnection.CandidateNetworkPolicy.ALL
+            disableIPv6OnWifi = false
+            // The SDK defaults to five IPv6 interfaces. Enumerate every
+            // available IPv6 interface while gathering candidates.
+            maxIPv6Networks = Int.MAX_VALUE
+
+            // Preserve the proven direct-P2P candidate preparation strategy.
             iceCandidatePoolSize = 2
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
@@ -844,6 +850,7 @@ class WebRtcAudioCallClient(
             "remote SDP=${remoteDescriptionSet.get()}; signal=$lastHandledSignal; " +
             "selectedPair=$selectedPairSummary; localSDP=$lastLocalSdpCandidateCount; " +
             "remoteSDP=$lastRemoteSdpCandidateCount; сети=$networkPair; общие IP-семейства=$commonFamilies; " +
+            activeNetworkFamilySummary() + "; " +
             "local v4/v6=${localIpv4Candidates.get()}/${localIpv6Candidates.get()} " +
             "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
             "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
@@ -855,6 +862,37 @@ class WebRtcAudioCallClient(
             "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
             "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
             "${remoteCandidatesAlreadyInSdp.get()}"
+    }
+
+    /**
+     * Shows whether Android assigned IPv4/IPv6 addresses and default routes
+     * to the active network, without exposing raw IP addresses.
+     */
+    private fun activeNetworkFamilySummary(): String {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "Android link=connectivity-manager-missing"
+        val network = manager.activeNetwork ?: return "Android link=offline"
+        val properties = manager.getLinkProperties(network)
+            ?: return "Android link=link-properties-unavailable"
+
+        val addresses = properties.linkAddresses.map { it.address }
+        val ipv4Count = addresses.count {
+            it is java.net.Inet4Address && !it.isAnyLocalAddress && !it.isLoopbackAddress
+        }
+        val ipv6Addresses = addresses.filterIsInstance<java.net.Inet6Address>()
+            .filter { !it.isAnyLocalAddress && !it.isLoopbackAddress && !it.isMulticastAddress }
+        val ipv6UsableCount = ipv6Addresses.count { !it.isLinkLocalAddress }
+        val ipv6LinkLocalCount = ipv6Addresses.count { it.isLinkLocalAddress }
+        val hasIpv4DefaultRoute = properties.routes.any {
+            it.isDefaultRoute && it.destination.address is java.net.Inet4Address
+        }
+        val hasIpv6DefaultRoute = properties.routes.any {
+            it.isDefaultRoute && it.destination.address is java.net.Inet6Address
+        }
+
+        return "Android link v4/v6=$ipv4Count/$ipv6UsableCount; " +
+            "v6-link-local=$ipv6LinkLocalCount; " +
+            "default-route v4/v6=$hasIpv4DefaultRoute/$hasIpv6DefaultRoute"
     }
 
     private fun currentNetworkType(): String {
