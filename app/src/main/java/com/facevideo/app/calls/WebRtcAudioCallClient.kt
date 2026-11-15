@@ -49,6 +49,8 @@ import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import org.webrtc.StatsObserver
+import org.webrtc.StatsReport
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -72,6 +74,7 @@ class WebRtcAudioCallClient(
     // Video is strictly opt-in per call row. Audio calls retain the old media path.
     private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
+    private val iceFailureStatsRequested = AtomicBoolean(false)
     @Volatile private var iceGatheringCompleted = CompletableDeferred<Unit>()
     @Volatile private var lastLocalSdpCandidateCount = 0
     @Volatile private var lastRemoteSdpCandidateCount = 0
@@ -896,7 +899,107 @@ class WebRtcAudioCallClient(
 
     private fun reportDirectConnectionFailure(reason: String) {
         Log.w(TAG, "$reason. ${diagnosticSummary()}")
-        reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}")
+        if (!iceFailureStatsRequested.compareAndSet(false, true)) return
+
+        val connection = peerConnection
+        if (connection == null) {
+            reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}\nICE pair stats=connection missing")
+            return
+        }
+
+        val requested = runCatching {
+            connection.getStats(object : StatsObserver {
+                override fun onComplete(reports: Array<StatsReport>) {
+                    val statsSummary = summarizeIcePairStats(reports)
+                    Log.w(TAG, "ICE failure stats: $statsSummary")
+                    reportError(
+                        "$DIRECT_P2P_FAILED_MESSAGE\n$reason\n" +
+                            "${diagnosticSummary()}\n$statsSummary"
+                    )
+                }
+            }, null)
+        }.getOrElse {
+            Log.w(TAG, "Could not request ICE pair statistics", it)
+            false
+        }
+
+        if (!requested) {
+            reportError(
+                "$DIRECT_P2P_FAILED_MESSAGE\n$reason\n" +
+                    "${diagnosticSummary()}\nICE pair stats=unavailable"
+            )
+        }
+    }
+
+    /**
+     * Collect the local WebRTC candidate-pair state without exposing raw IP
+     * addresses. Request/response counters distinguish failed NAT checks from
+     * candidates that never entered ICE connectivity checking.
+     */
+    private fun summarizeIcePairStats(reports: Array<StatsReport>): String {
+        val reportsById = reports.associateBy { it.id }
+
+        fun values(report: StatsReport?): Map<String, String> =
+            report?.values?.associate { it.name to it.value }.orEmpty()
+
+        fun endpoint(reportId: String?, local: Boolean): String {
+            val report = reportId?.let { reportsById[it] } ?: return "unknown"
+            val fields = values(report)
+            val type = fields["candidateType"]
+                ?: fields[if (local) "googLocalCandidateType" else "googRemoteCandidateType"]
+                ?: "?"
+            val protocol = fields["protocol"] ?: fields["googTransportType"] ?: "?"
+            val address = fields["address"] ?: fields["ip"] ?: ""
+            val family = when {
+                address.contains(":") -> "v6"
+                address.isNotBlank() -> "v4"
+                else -> "ip?"
+            }
+            val port = fields["port"] ?: "?"
+            return "$type/$protocol/$family:$port"
+        }
+
+        val pairReports = reports.filter {
+            it.type == "candidate-pair" || it.type == "googCandidatePair"
+        }
+        if (pairReports.isEmpty()) {
+            val availableTypes = reports.asSequence()
+                .map { it.type }
+                .filter { it.contains("candidate", ignoreCase = true) }
+                .distinct()
+                .take(5)
+                .joinToString(",")
+                .ifBlank { "none" }
+            return "ICE pair stats=0; candidateStats=$availableTypes"
+        }
+
+        val summaries = pairReports
+            .map { report -> report to values(report) }
+            .sortedByDescending { (_, fields) ->
+                fields["nominated"] == "true" ||
+                    fields["googActiveConnection"] == "true" ||
+                    fields["state"] == "succeeded"
+            }
+            .take(4)
+            .mapIndexed { index, (report, fields) ->
+                val localId = fields["localCandidateId"]
+                val remoteId = fields["remoteCandidateId"]
+                val local = endpoint(localId, local = true)
+                val remote = endpoint(remoteId, local = false)
+                val state = fields["state"]
+                    ?: "writable=${fields["googWritable"] ?: "?"},readable=${fields["googReadable"] ?: "?"}"
+                val sent = fields["requestsSent"] ?: "?"
+                val received = fields["responsesReceived"] ?: "?"
+                val inbound = fields["requestsReceived"] ?: "?"
+                val outbound = fields["responsesSent"] ?: "?"
+                val bytesSent = fields["bytesSent"] ?: "?"
+                val bytesReceived = fields["bytesReceived"] ?: "?"
+                "pair$index[$state;nominated=${fields["nominated"] ?: fields["googActiveConnection"] ?: "?"};" +
+                    "checks=$sent/$received;inbound=$inbound/$outbound;bytes=$bytesSent/$bytesReceived;" +
+                    "local=$local;remote=$remote;id=${report.id.takeLast(12)}]"
+            }
+
+        return "ICE pair stats: " + summaries.joinToString(" | ")
     }
 
     private fun describeCandidate(candidateSdp: String): String {
