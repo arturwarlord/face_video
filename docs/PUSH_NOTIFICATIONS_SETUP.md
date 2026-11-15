@@ -7,7 +7,7 @@ This guide documents the current remote push setup for incoming calls and new me
 The Supabase project `mitvjkhlsvxcnzhbiwye` is configured with:
 
 - `pg_net` enabled (version 0.20.4).
-- `send-arturchat-push` Edge Function deployed and active (version 6).
+- `send-arturchat-push` Edge Function deployed and active (version 8).
 - An encrypted, internally generated webhook secret in Supabase Vault.
 - An AFTER INSERT trigger on `public.face_video_messages`.
 - An AFTER INSERT trigger on `public.face_video_calls`.
@@ -15,7 +15,7 @@ The Supabase project `mitvjkhlsvxcnzhbiwye` is configured with:
 
 The triggers send the default INSERT payload to the Edge Function asynchronously via `net.http_post`. They do not block message or call creation if push delivery itself fails. No trigger is created on `face_video_call_signals`, so ICE/SDP candidates never produce notifications.
 
-The database-to-function authorization path was tested successfully and returned HTTP 202 for a deliberately unhandled probe event. This validates the internal secret check and HTTP route; it does not yet prove delivery to a phone.
+The database-to-function authorization path was tested successfully. FCM device tokens are registered for both test accounts. Incoming calls are sent as a high-priority FCM notification plus data payload with a 45-second expiry; Android posts that notification itself when the app is backgrounded or its process is absent. The data payload is passed to the launcher Activity when the user taps the alert. In the foreground, the app still uses its native CallStyle notification.
 
 ## 1. Firebase Android configuration
 
@@ -51,7 +51,7 @@ Do not add a webhook or trigger to `face_video_call_signals`.
 
 ## 4. Signed app build and device registration
 
-The Firebase-enabled candidate is **ArturChat 0.7.48** (`versionCode=7048`). The signed GitHub Actions workflow:
+The Firebase-enabled candidate is **ArturChat 0.7.49** (`versionCode=7049`). The signed GitHub Actions workflow:
 
 1. Validates the Firebase Android configuration for `com.facevideo.app`.
 2. Runs unit tests.
