@@ -256,6 +256,14 @@ class WebRtcAudioCallClient(
             PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
         )
 
+        // Keep non-VPN calls on the exact legacy route: no Edge Function
+        // request and no additional ICE servers. A device using VPN receives
+        // TURN candidates so its peer can reach it even if the peer is not on VPN.
+        if (currentNetworkType() != "VPN") {
+            Log.i(TAG, "No Android VPN transport detected; using the original STUN-only route")
+            return iceServers
+        }
+
         val turnConfiguration = try {
             withTimeoutOrNull(TURN_CREDENTIAL_FETCH_TIMEOUT_MS) {
                 repository.fetchTurnIceServers()
