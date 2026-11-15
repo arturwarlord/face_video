@@ -55,15 +55,31 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${FIREBASE_GOOGLE_SERVICES_BASE64:-}" ]; then
-            echo "::warning::FIREBASE_GOOGLE_SERVICES_BASE64 is not configured; this APK will not register FCM tokens."
-            exit 0
+            echo "::error::FIREBASE_GOOGLE_SERVICES_BASE64 is not configured."
+            exit 1
           fi
-          printf '%s' "$FIREBASE_GOOGLE_SERVICES_BASE64" | base64 --decode > app/google-services.json
           python3 - <<'PY'
+          import base64
+          import binascii
           import json
+          import os
+          import re
           from pathlib import Path
 
-          config = json.loads(Path("app/google-services.json").read_text(encoding="utf-8"))
+          value = os.environ["FIREBASE_GOOGLE_SERVICES_BASE64"].strip()
+          if value.startswith("{"):
+              config_text = value
+          else:
+              compact = re.sub(r"\\s+", "", value)
+              try:
+                  padded = compact + ("=" * (-len(compact) % 4))
+                  config_text = base64.b64decode(padded, validate=True).decode("utf-8")
+              except (binascii.Error, UnicodeDecodeError) as exc:
+                  raise SystemExit(
+                      "Firebase secret must contain raw google-services.json or valid Base64 JSON."
+                  ) from exc
+
+          config = json.loads(config_text)
           clients = config.get("client", [])
           package_names = {
               item.get("client_info", {}).get("android_client_info", {}).get("package_name")
@@ -71,6 +87,9 @@ jobs:
           }
           if "com.facevideo.app" not in package_names:
               raise SystemExit("Firebase config does not contain Android package com.facevideo.app")
+
+          Path("app/google-services.json").write_text(config_text + "\\n", encoding="utf-8")
+          print("Firebase Android configuration validated for com.facevideo.app.")
           PY
 
       - name: Set up Gradle
