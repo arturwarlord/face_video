@@ -102,6 +102,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:postgrest-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     implementation("io.github.jan-tennert.supabase:storage-kt")
+    implementation("io.github.jan-tennert.supabase:functions-kt")
     implementation("io.ktor:ktor-client-okhttp:3.4.3")
     implementation("io.github.webrtc-sdk:android:150.7871.04")
     implementation(platform("com.google.firebase:firebase-bom:35.1.0"))
