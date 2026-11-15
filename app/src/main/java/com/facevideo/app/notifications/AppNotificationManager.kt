@@ -46,9 +46,18 @@ class AppNotificationManager(context: Context) {
                         enableVibration(true)
                         setShowBadge(true)
                     },
-                    NotificationChannel(CALL_CHANNEL_ID, "Звонки", NotificationManager.IMPORTANCE_HIGH).apply {
-                        description = "Входящие звонки ArturChat"
+                    NotificationChannel(CALL_CHANNEL_ID, "Входящие звонки", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "Аудио- и видеозвонки ArturChat"
                         enableVibration(true)
+                        vibrationPattern = longArrayOf(0, 700, 400, 700, 400, 700)
+                        setSound(
+                            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        )
+                        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
                         setShowBadge(true)
                     }
                 )
@@ -87,7 +96,7 @@ class AppNotificationManager(context: Context) {
             .setAutoCancel(!isCall)
             .setOngoing(isCall)
             .setCategory(if (isCall) Notification.CATEGORY_CALL else Notification.CATEGORY_MESSAGE)
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(if (isCall) Notification.VISIBILITY_PUBLIC else Notification.VISIBILITY_PRIVATE)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
 
         if (isCall && notificationId.isNotBlank()) {
@@ -244,7 +253,7 @@ class AppNotificationManager(context: Context) {
 
     private companion object {
         const val MESSAGE_CHANNEL_ID = "arturchat_messages"
-        const val CALL_CHANNEL_ID = "arturchat_calls"
+        const val CALL_CHANNEL_ID = "arturchat_calls_v2"
         const val TAG = "ArturChatCallAlert"
     }
 }
