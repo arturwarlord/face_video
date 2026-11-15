@@ -98,7 +98,6 @@ class AppNotificationManager(context: Context) {
             .setCategory(if (isCall) Notification.CATEGORY_CALL else Notification.CATEGORY_MESSAGE)
             .setVisibility(if (isCall) Notification.VISIBILITY_PUBLIC else Notification.VISIBILITY_PRIVATE)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
-            .setSilent(isCall)
 
         if (isCall && notificationId.isNotBlank()) {
             val answerIntent = callActionPendingIntent(notificationId, CallNotificationIntents.ACTION_ANSWER)
