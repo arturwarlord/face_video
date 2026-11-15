@@ -54,9 +54,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A one-to-one audio call using direct WebRTC peer-to-peer media and Supabase
- * only for signaling. STUN helps discover public-facing addresses; no TURN
- * relay is configured, so strict NAT/firewall combinations may block the call.
+ * A one-to-one audio/video call using WebRTC and Supabase only for signaling.
+ * Direct STUN/P2P remains preferred; authenticated TURN is used as a fallback
+ * when VPN, NAT or firewall rules prevent a direct media path.
  */
 class WebRtcAudioCallClient(
     context: Context,
@@ -77,6 +77,7 @@ class WebRtcAudioCallClient(
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
+    private val localRelayCandidates = AtomicInteger(0)
     private val localOtherCandidates = AtomicInteger(0)
     private val localIpv4Candidates = AtomicInteger(0)
     private val localIpv6Candidates = AtomicInteger(0)
@@ -245,11 +246,6 @@ class WebRtcAudioCallClient(
     }
 
     /**
-     * ICE prefers the existing direct STUN/P2P route whenever it works.
-     * Authenticated TURN endpoints are appended only as a fallback for VPN,
-     * symmetric NAT and restrictive firewall combinations.
-     */
-    /**
      * Keep the existing STUN/P2P route first and add TURN as a fallback.
      * If Supabase or the relay credential service is unavailable, calls still
      * use the exact direct-connection path that existed before this change.
@@ -277,7 +273,7 @@ class WebRtcAudioCallClient(
             val credential = server.credential.trim()
             if (username.isEmpty() || credential.isEmpty()) return@forEach
 
-            server.urls.map(String::trim)
+            server.urls.map { it.trim() }
                 .filter { url ->
                     url.startsWith("turn:$OPEN_RELAY_HOST:") ||
                         url.startsWith("turns:$OPEN_RELAY_HOST:")
@@ -402,6 +398,7 @@ class WebRtcAudioCallClient(
                     when (candidateType) {
                         "host" -> localHostCandidates.incrementAndGet()
                         "srflx" -> localSrflxCandidates.incrementAndGet()
+                        "relay" -> localRelayCandidates.incrementAndGet()
                         else -> localOtherCandidates.incrementAndGet()
                     }
                     recordCandidateMetadata(candidate.sdp, local = true)
@@ -940,7 +937,8 @@ class WebRtcAudioCallClient(
             "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
             "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
             "udp/tcp=${remoteUdpCandidates.get()}/${remoteTcpCandidates.get()}; " +
-            "local host/srflx/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
+            "local host/srflx/relay/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/" +
+            "${localRelayCandidates.get()}/${localOtherCandidates.get()}; " +
             "remote host/srflx/prflx/relay=${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
             "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; STUN error=$lastStunErrorSummary; " +
             "remote received/queued/pending/accepted/rejected/alreadyInSdp=" +
