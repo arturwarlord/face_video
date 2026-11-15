@@ -10,7 +10,6 @@ import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -54,9 +53,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A one-to-one audio/video call using WebRTC and Supabase only for signaling.
- * Direct STUN/P2P remains preferred; authenticated TURN is used as a fallback
- * when VPN, NAT or firewall rules prevent a direct media path.
+ * A one-to-one audio call using direct WebRTC peer-to-peer media and Supabase
+ * only for signaling. STUN helps discover public-facing addresses; no TURN
+ * relay is configured, so strict NAT/firewall combinations may block the call.
  */
 class WebRtcAudioCallClient(
     context: Context,
@@ -77,7 +76,6 @@ class WebRtcAudioCallClient(
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
-    private val localRelayCandidates = AtomicInteger(0)
     private val localOtherCandidates = AtomicInteger(0)
     private val localIpv4Candidates = AtomicInteger(0)
     private val localIpv6Candidates = AtomicInteger(0)
@@ -93,8 +91,7 @@ class WebRtcAudioCallClient(
     private val remoteUdpCandidates = AtomicInteger(0)
     private val remoteTcpCandidates = AtomicInteger(0)
     @Volatile private var remoteNetworkType = "unknown"
-    @Volatile private var turnConfigurationSummary = "TURN ещё не запрашивался"
-    private val iceServerErrors = mutableListOf<String>()
+    @Volatile private var lastStunErrorSummary = "none"
     private val remoteCandidatesQueued = AtomicInteger(0)
     private val remoteCandidatesApplied = AtomicInteger(0)
     private val remoteCandidatesRejected = AtomicInteger(0)
@@ -247,75 +244,14 @@ class WebRtcAudioCallClient(
     }
 
     /**
-     * Keep the existing STUN/P2P route first and add TURN as a fallback.
-     * If Supabase or the relay credential service is unavailable, calls still
-     * use the exact direct-connection path that existed before this change.
+     * Direct peer-to-peer mode. STUN is used only to discover public-facing
+     * network addresses; audio is never relayed by these STUN services.
+     * No TURN server or third-party media relay is configured in this build.
      */
-    private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
-        val iceServers = mutableListOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-        )
-
-        // Keep non-VPN calls on the exact legacy route: no Edge Function
-        // request and no additional ICE servers. A device using VPN receives
-        // TURN candidates so its peer can reach it even if the peer is not on VPN.
-        if (currentNetworkType() != "VPN") {
-            turnConfigurationSummary = "VPN не обнаружен; TURN не запрашивался"
-            Log.i(TAG, "No Android VPN transport detected; using the original STUN-only route")
-            return iceServers
-        }
-
-        var turnFetchStatus = "ok"
-        val turnConfiguration = try {
-            withTimeoutOrNull(TURN_CREDENTIAL_FETCH_TIMEOUT_MS) {
-                repository.fetchTurnIceServers()
-            }.also { if (it == null) turnFetchStatus = "timeout" }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            turnFetchStatus = "error:${error.javaClass.simpleName}"
-            Log.w(TAG, "TURN credentials unavailable; preserving direct STUN/P2P mode", error)
-            null
-        }
-
-        val returnedTurnUrlCount = turnConfiguration.orEmpty().sumOf { it.urls.size }
-        var addedTurnServers = 0
-        turnConfiguration.orEmpty().forEach { server ->
-            val username = server.username.trim()
-            val credential = server.credential.trim()
-            if (username.isEmpty() || credential.isEmpty()) return@forEach
-
-            server.urls.map { it.trim() }
-                .filter { url ->
-                    url.startsWith("turn:$OPEN_RELAY_HOST:") ||
-                        url.startsWith("turns:$OPEN_RELAY_HOST:")
-                }
-                .distinct()
-                .forEach { url ->
-                    runCatching {
-                        PeerConnection.IceServer.builder(url)
-                            .setUsername(username)
-                            .setPassword(credential)
-                            .createIceServer()
-                    }.onSuccess { iceServer ->
-                        iceServers += iceServer
-                        addedTurnServers++
-                    }.onFailure {
-                        Log.w(TAG, "Ignoring invalid TURN ICE URL: $url", it)
-                    }
-                }
-        }
-
-        turnConfigurationSummary =
-            "$turnFetchStatus; TURN URLs=$returnedTurnUrlCount; configured=$addedTurnServers"
-        if (addedTurnServers > 0) {
-            Log.i(TAG, "TURN fallback configured with $addedTurnServers transport endpoints; direct ICE remains enabled")
-        } else {
-            Log.w(TAG, "No TURN endpoints were configured ($turnConfigurationSummary); direct STUN/P2P mode remains enabled")
-        }
-        return iceServers
-    }
+    private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+    )
 
     private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
@@ -413,7 +349,6 @@ class WebRtcAudioCallClient(
                     when (candidateType) {
                         "host" -> localHostCandidates.incrementAndGet()
                         "srflx" -> localSrflxCandidates.incrementAndGet()
-                        "relay" -> localRelayCandidates.incrementAndGet()
                         else -> localOtherCandidates.incrementAndGet()
                     }
                     recordCandidateMetadata(candidate.sdp, local = true)
@@ -442,15 +377,10 @@ class WebRtcAudioCallClient(
                 }
 
                 override fun onIceCandidateError(event: IceCandidateErrorEvent) {
-                    // Do not log the local address from this event. Preserve the full
-                    // STUN/TURN URL and transport so failures can be mapped to a port.
-                    val detail = "${event.url}: ${event.errorCode}; port=${event.port}; " +
-                        event.errorText.replace(Regex("\\s+"), " ").take(100)
-                    synchronized(iceServerErrors) {
-                        if (iceServerErrors.size >= 6) iceServerErrors.removeAt(0)
-                        iceServerErrors += detail
-                    }
-                    Log.w(TAG, "ICE server candidate gathering error: $detail")
+                    // Do not log the local address from this event.
+                    val server = event.url.substringAfter("://").substringBefore("/")
+                    lastStunErrorSummary = "$server:${event.errorCode}"
+                    Log.w(TAG, "STUN candidate gathering error: $lastStunErrorSummary; ${event.errorText}")
                 }
 
                 override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) = Unit
@@ -945,9 +875,6 @@ class WebRtcAudioCallClient(
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
         val networkPair = "${currentNetworkType()}↔$remoteNetworkType"
-        val iceErrors = synchronized(iceServerErrors) {
-            iceServerErrors.joinToString(" | ").ifBlank { "none" }
-        }
         val commonFamilies = buildList {
             if (localIpv4Candidates.get() > 0 && remoteIpv4Candidates.get() > 0) add("IPv4")
             if (localIpv6Candidates.get() > 0 && remoteIpv6Candidates.get() > 0) add("IPv6")
@@ -960,11 +887,9 @@ class WebRtcAudioCallClient(
             "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
             "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
             "udp/tcp=${remoteUdpCandidates.get()}/${remoteTcpCandidates.get()}; " +
-            "local host/srflx/relay/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/" +
-            "${localRelayCandidates.get()}/${localOtherCandidates.get()}; " +
+            "local host/srflx/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
             "remote host/srflx/prflx/relay=${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
-            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; " +
-            "TURN config=$turnConfigurationSummary; ICE server errors=$iceErrors; " +
+            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; STUN error=$lastStunErrorSummary; " +
             "remote received/queued/pending/accepted/rejected/alreadyInSdp=" +
             "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
             "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
@@ -1162,8 +1087,6 @@ class WebRtcAudioCallClient(
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
         private const val ICE_RECOVERY_GRACE_MS = 6_000L
         private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
-        private const val TURN_CREDENTIAL_FETCH_TIMEOUT_MS = 3_500L
-        private const val OPEN_RELAY_HOST = "staticauth.openrelay.metered.ca"
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val VIDEO_CAPTURE_WIDTH = 1280
         private const val VIDEO_CAPTURE_HEIGHT = 720
@@ -1171,8 +1094,9 @@ class WebRtcAudioCallClient(
         private const val VIDEO_MIN_BITRATE_BPS = 250_000
         private const val VIDEO_MAX_BITRATE_BPS = 2_500_000
         private const val DIRECT_P2P_FAILED_MESSAGE =
-            "Не удалось установить медиасоединение: прямой маршрут и TURN-реле недоступны. " +
-                "Попробуйте сменить VPN-сервер или протокол соединения."
+            "Не удалось установить прямое соединение между телефонами. " +
+                "В этой версии нет TURN-реле. Попробуйте подключить оба телефона к одной Wi-Fi сети " +
+                "или переключить один из телефонов на другую сеть."
         // Keep the proven audio-only factory completely unchanged. Video
         // calls use a second factory with real encoder/decoder implementations;
         // otherwise SDP can advertise an empty/rejected m=video section.
