@@ -52,6 +52,9 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -5350,12 +5353,14 @@ private fun MessageBubble(
     onReplyPreviewClick: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     reactions: List<MessageReactionCount> = emptyList(),
-    onReaction: ((String) -> Unit)? = null,
+    onReaction: ((String?) -> Unit)? = null,
     selected: Boolean = false,
     onSelect: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null
 ) {
     var showActions by remember(message.id) { mutableStateOf(false) }
+    // Bounded swipe animation: the message follows the finger, then springs back.
+    val replyDragOffset = remember(message.id) { Animatable(0f) }
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
@@ -5399,25 +5404,67 @@ private fun MessageBubble(
                             else -> Modifier.widthIn(max = 310.dp)
                         }
                     )
-                    // Telegram-style reply gesture: swipe the message from right to left.
+                    // Telegram-style reply swipe: move the cloud gently with the finger,
+                    // then spring it back after replying or cancelling the gesture.
                     .pointerInput(message.id, onReply) {
                         if (onReply != null) {
                             var horizontalDragDistance = 0f
+                            var currentDragOffset = 0f
+                            val maxDragOffset = 72.dp.toPx()
+                            val replyThreshold = 56.dp.toPx()
+
                             detectHorizontalDragGestures(
-                                onDragStart = { horizontalDragDistance = 0f },
+                                onDragStart = {
+                                    horizontalDragDistance = 0f
+                                    currentDragOffset = 0f
+                                    launch { replyDragOffset.snapTo(0f) }
+                                },
                                 onHorizontalDrag = { change, dragAmount ->
                                     horizontalDragDistance += dragAmount
-                                    if (horizontalDragDistance < 0f) change.consume()
+                                    if (horizontalDragDistance < 0f) {
+                                        change.consume()
+                                        currentDragOffset = (currentDragOffset + dragAmount)
+                                            .coerceIn(-maxDragOffset, 0f)
+                                        launch { replyDragOffset.snapTo(currentDragOffset) }
+                                    }
                                 },
                                 onDragEnd = {
-                                    if (horizontalDragDistance <= -56.dp.toPx()) {
-                                        onReply.invoke()
-                                    }
+                                    val shouldReply = horizontalDragDistance <= -replyThreshold
+                                    if (shouldReply) onReply.invoke()
                                     horizontalDragDistance = 0f
+                                    currentDragOffset = 0f
+                                    launch {
+                                        replyDragOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                    }
                                 },
-                                onDragCancel = { horizontalDragDistance = 0f }
+                                onDragCancel = {
+                                    horizontalDragDistance = 0f
+                                    currentDragOffset = 0f
+                                    launch {
+                                        replyDragOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )
+                                    }
+                                }
                             )
                         }
+                    }
+                    .graphicsLayer {
+                        translationX = replyDragOffset.value
+                        val dragProgress = (-replyDragOffset.value / 72.dp.toPx()).coerceIn(0f, 1f)
+                        val subtleScale = 1f - dragProgress * 0.012f
+                        scaleX = subtleScale
+                        scaleY = subtleScale
                     }
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
@@ -5623,7 +5670,9 @@ private fun MessageBubble(
                                     modifier = Modifier.padding(end = 4.dp).clickable(
                                         enabled = onReaction != null
                                     ) {
-                                        onReaction?.invoke(reaction.reaction)
+                                        onReaction?.invoke(
+                                            if (reaction.selectedByMe) null else reaction.reaction
+                                        )
                                     },
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (reaction.selectedByMe) Color(0xFFDCE4FF) else Color(0xFFF2F4FA),
@@ -5676,7 +5725,10 @@ private fun MessageBubble(
                                         .clip(CircleShape)
                                         .clickable {
                                             showActions = false
-                                            onReaction.invoke(emoji)
+                                            val alreadySelected = reactions.any {
+                                                it.reaction == emoji && it.selectedByMe
+                                            }
+                                            onReaction.invoke(if (alreadySelected) null else emoji)
                                         }
                                         .padding(horizontal = 3.dp, vertical = 5.dp)
                                 ) {
