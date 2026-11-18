@@ -7,13 +7,13 @@ This guide documents the current remote push setup for incoming calls and new me
 The Supabase project `mitvjkhlsvxcnzhbiwye` is configured with:
 
 - `pg_net` enabled (version 0.20.4).
-- `send-arturchat-push` Edge Function deployed and active (version 8).
+- `send-arturchat-push` Edge Function deployed and active (version 9).
 - An encrypted, internally generated webhook secret in Supabase Vault.
 - An AFTER INSERT trigger on `public.face_video_messages`.
 - An AFTER INSERT trigger on `public.face_video_calls`.
 - A private trigger function and a verifier callable only by `service_role`.
 
-The triggers send the default INSERT payload to the Edge Function asynchronously via `net.http_post`. They do not block message or call creation if push delivery itself fails. No trigger is created on `face_video_call_signals`, so ICE/SDP candidates never produce notifications.
+The triggers send the default INSERT payload to the Edge Function asynchronously via `net.http_post`. They do not block message or call creation if push delivery itself fails. No trigger is created on `face_video_call_signals`, so ICE/SDP candidates never produce notifications. Message notifications carry a stable per-chat Android tag: subsequent messages replace the chat's previous notification, and opening/reading that chat clears the tagged notification.
 
 The database-to-function authorization path was tested successfully. FCM device tokens are registered for both test accounts. Incoming calls are sent as a high-priority FCM notification plus data payload with a 45-second expiry; Android posts that notification itself when the app is backgrounded or its process is absent. The data payload is passed to the launcher Activity when the user taps the alert. In the foreground, the app still uses its native CallStyle notification.
 
@@ -51,7 +51,7 @@ Do not add a webhook or trigger to `face_video_call_signals`.
 
 ## 4. Signed app build and device registration
 
-The Firebase-enabled candidate is **ArturChat 0.7.49** (`versionCode=7049`). The signed GitHub Actions workflow:
+The Firebase-enabled candidate is **ArturChat 0.7.50** (`versionCode=7050`). The signed GitHub Actions workflow:
 
 1. Validates the Firebase Android configuration for `com.facevideo.app`.
 2. Runs unit tests.
@@ -75,7 +75,7 @@ After a successful workflow:
 
    Two signed-in phones should register at least two device tokens. Do not expose token values in screenshots or logs.
 
-At the last server check, the token table contained zero rows; real phone delivery cannot be confirmed until both devices register their FCM tokens.
+Confirm device registration by checking token counts only; never expose token values in screenshots or logs.
 
 ## 5. Device delivery test
 
@@ -89,7 +89,7 @@ FCM carries notification metadata only. Audio/video media continues through the 
 
 ## Troubleshooting
 
-- **Token count remains 0:** make sure the APK came from the successful 0.7.48 signed workflow, open the app after installation, sign in, and grant notifications.
+- **Token count remains 0:** install the latest successful signed candidate, open the app after installation, sign in, and grant notifications.
 - **Firebase config step fails:** replace the GitHub Actions secret with the complete `google-services.json` text or its valid Base64 representation. Do not send it in chat.
 - **Tokens exist but notifications do not arrive:** inspect Supabase Edge Function logs for `send-arturchat-push`, confirm `FCM_SERVICE_ACCOUNT_JSON` is valid JSON with `project_id`, `client_email`, and `private_key`, and verify Android notification permission/channel settings.
 - **Function returns “Push delivery is not configured”:** confirm `FCM_SERVICE_ACCOUNT_JSON` exists in Edge Function secrets.
