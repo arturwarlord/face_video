@@ -49,6 +49,13 @@ internal object ActiveChatNotificationState {
         }
     }
 
+    fun clearAnyActiveChat(context: Context) {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_ACTIVE_CHAT)
+            .apply()
+    }
+
     fun isChatVisible(context: Context, chatId: String): Boolean {
         val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         return preferences.getBoolean(KEY_APP_FOREGROUND, false) &&
