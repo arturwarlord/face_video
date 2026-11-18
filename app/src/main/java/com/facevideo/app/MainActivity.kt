@@ -3281,7 +3281,7 @@ private fun LiveChatScreen(
                         replyPreview = replyPreview,
                         attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
-                        reactions = reactionSummaries[message.id].orEmpty(),
+                        reactions = if (message.deletedAt == null) reactionSummaries[message.id].orEmpty() else emptyList(),
                         onReaction = if (message.deletedAt == null) ({ reaction ->
                             scope.launch {
                                 runCatching {
