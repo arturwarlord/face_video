@@ -3320,7 +3320,7 @@ private fun LiveChatScreen(
                             deliveryStatus = if (message.senderId == userId && message.deletedAt == null) resolveMessageDeliveryStatus(message.id, receipts) else null,
                             forwardedFromName = message.forwardedFromName,
                             isDeleted = message.deletedAt != null,
-                            isEdited = message.editedAt != null,
+                            isEdited = message.editedAt != null && message.deletedAt == null,
                             attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
                             attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null,
                             attachmentWaveform = if (message.deletedAt == null) message.attachmentWaveform else null
