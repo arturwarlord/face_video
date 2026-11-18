@@ -197,6 +197,10 @@ import com.facevideo.app.model.buildVoiceWaveform
 import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
 import com.facevideo.app.model.STORY_REACTION_OPTIONS
 import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.MESSAGE_REACTION_OPTIONS
+import com.facevideo.app.model.MessageReactionCount
+import com.facevideo.app.model.MessageReactionEntry
+import com.facevideo.app.model.summarizeMessageReactions
 import com.facevideo.app.model.nextStoryReaction
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
@@ -2861,6 +2865,11 @@ private fun LiveChatScreen(
     }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
+    val messageReactionsFlow = remember(repository, chat.id) {
+        repository.observeMessageReactions(chat.id)
+    }
+    val messageReactions by messageReactionsFlow.collectAsState(initial = emptyList())
+    var reactingMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
@@ -3401,6 +3410,16 @@ private fun LiveChatScreen(
                             text = original.body
                         )
                     }
+                    val messageReactionSummary = remember(messageReactions, message.id, userId) {
+                        summarizeMessageReactions(
+                            entries = messageReactions
+                                .asSequence()
+                                .filter { it.messageId == message.id }
+                                .map { MessageReactionEntry(userId = it.userId, reaction = it.reaction) }
+                                .toList(),
+                            currentUserId = userId
+                        )
+                    }
                     MessageBubble(
                         message = ChatMessage(
                             id = message.id,
@@ -3421,6 +3440,26 @@ private fun LiveChatScreen(
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
+                        reactions = messageReactionSummary.items,
+                        onReact = if (message.deletedAt == null) ({ emoji ->
+                            if (message.id !in reactingMessageIds) {
+                                reactingMessageIds = reactingMessageIds + message.id
+                                scope.launch {
+                                    try {
+                                        repository.setMessageReaction(
+                                            messageId = message.id,
+                                            chatId = chat.id,
+                                            reaction = emoji
+                                        )
+                                    } catch (error: Exception) {
+                                        errorMessage = error.message ?: "Не удалось поставить реакцию."
+                                        android.util.Log.w("ArturChatReactions", "Could not set message reaction", error)
+                                    } finally {
+                                        reactingMessageIds = reactingMessageIds - message.id
+                                    }
+                                }
+                            }
+                        }) else null,
                         attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
                         onReply = if (message.deletedAt == null) ({ replyingTo = message }) else null,
@@ -5348,11 +5387,14 @@ private fun MessageBubble(
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null,
+    reactions: List<MessageReactionCount> = emptyList(),
+    onReact: ((String) -> Unit)? = null,
     selected: Boolean = false,
     onSelect: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null
 ) {
     var showActions by remember(message.id) { mutableStateOf(false) }
+    var replySwipeOffset by remember(message.id) { mutableFloatStateOf(0f) }
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
@@ -5385,9 +5427,38 @@ private fun MessageBubble(
         verticalAlignment = Alignment.Bottom
     ) {
         Box {
+            Column(
+                horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start
+            ) {
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
+                    .pointerInput(message.id, onReply, selected) {
+                        if (onReply != null && !selected) {
+                            var draggedRight = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, dragAmount ->
+                                    if (dragAmount > 0f) {
+                                        draggedRight = (draggedRight + dragAmount)
+                                            .coerceAtMost(size.width * 0.22f)
+                                        replySwipeOffset = draggedRight
+                                        change.consume()
+                                    }
+                                },
+                                onDragEnd = {
+                                    val threshold = maxOf(56.dp.toPx(), size.width * 0.18f)
+                                    if (draggedRight >= threshold) onReply.invoke()
+                                    draggedRight = 0f
+                                    replySwipeOffset = 0f
+                                },
+                                onDragCancel = {
+                                    draggedRight = 0f
+                                    replySwipeOffset = 0f
+                                }
+                            )
+                        }
+                    }
+                    .graphicsLayer { translationX = replySwipeOffset * 0.34f }
                     .then(
                         when {
                             isVideoNoteAttachment -> Modifier.size(190.dp)
@@ -5399,7 +5470,8 @@ private fun MessageBubble(
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
-                        onLongClick = { if (onSelect != null) onSelect() else showActions = true }
+                        // Telegram-style long press opens the reaction and message-action menu.
+                        onLongClick = { showActions = true }
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
@@ -5575,11 +5647,65 @@ private fun MessageBubble(
                     }
                 }
             }
+                if (reactions.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        reactions.forEach { reaction ->
+                            Text(
+                                text = "${reaction.emoji} ${reaction.count}",
+                                color = if (reaction.selectedByMe) Color(0xFF344A7C) else MainText,
+                                fontSize = 11.sp,
+                                fontWeight = if (reaction.selectedByMe) FontWeight.Bold else FontWeight.Medium,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (reaction.selectedByMe) Color(0xFFDCE5FF) else PanelLight
+                                    )
+                                    .then(
+                                        if (reaction.selectedByMe) Modifier.border(
+                                            1.dp,
+                                            Color(0xFF8DA4E0),
+                                            RoundedCornerShape(12.dp)
+                                        ) else Modifier
+                                    )
+                                    .clickable(enabled = onReact != null) {
+                                        onReact?.invoke(reaction.emoji)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
             DropdownMenu(
                 expanded = showActions,
                 onDismissRequest = { showActions = false },
                 containerColor = PanelLight
             ) {
+                if (onReact != null) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MESSAGE_REACTION_OPTIONS.forEach { emoji ->
+                            Text(
+                                text = emoji,
+                                fontSize = 20.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        showActions = false
+                                        onReact(emoji)
+                                    }
+                                    .padding(2.dp)
+                            )
+                        }
+                    }
+                }
                 if (onReply != null) {
                     DropdownMenuItem(
                         text = { Text("Ответить", color = MainText) },
@@ -5598,6 +5724,16 @@ private fun MessageBubble(
                         }
                     )
                 }
+                if (onSelect != null && !selected) {
+                    DropdownMenuItem(
+                        text = { Text("Выбрать", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onSelect()
+                        }
+                    )
+                }
+            }
             }
         }
     }
