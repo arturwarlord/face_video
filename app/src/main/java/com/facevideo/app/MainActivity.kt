@@ -52,7 +52,11 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -147,6 +151,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -181,6 +186,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.facevideo.app.notifications.AppNotificationManager
+import com.facevideo.app.notifications.ActiveChatNotificationState
 import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
@@ -191,6 +197,10 @@ import com.facevideo.app.model.buildVoiceWaveform
 import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
 import com.facevideo.app.model.STORY_REACTION_OPTIONS
 import com.facevideo.app.model.StoryReactionSummary
+import com.facevideo.app.model.MESSAGE_REACTION_OPTIONS
+import com.facevideo.app.model.MessageReactionCount
+import com.facevideo.app.model.MessageReactionEntry
+import com.facevideo.app.model.summarizeMessageReactions
 import com.facevideo.app.model.nextStoryReaction
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
@@ -357,6 +367,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Do not let a stale chat ID from a killed process suppress new message alerts.
+        ActiveChatNotificationState.clearAnyActiveChat(this)
 
         // Android 15+ enforces edge-to-edge for targetSdk 35+. Enable it
         // consistently on older Android versions and let Compose apply safe insets.
@@ -423,6 +435,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ActiveChatNotificationState.setAppForeground(this, true)
+    }
+
+    override fun onStop() {
+        ActiveChatNotificationState.setAppForeground(this, false)
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -611,7 +633,7 @@ private fun FaceVideoApp(
     LaunchedEffect(liveRepository, userId) {
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
-        val chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
+        val cachedChats = localCache.readChats(currentUserId).associateBy { it.id }
 
         suspend fun markIncomingMessagesDelivered(messages: List<com.facevideo.app.data.FaceVideoMessage>) {
             val incomingIds = messages
@@ -646,10 +668,25 @@ private fun FaceVideoApp(
             newMessages
                 .filter { it.senderId != currentUserId && it.chatId != currentOpenedLiveChatId }
                 .forEach { message ->
+                    val cachedChat = cachedChats[message.chatId]
+                    val cachedSender = localCache.readProfile(currentUserId, message.senderId)
+                    val senderName = cachedSender?.displayName?.ifBlank { cachedSender.username }
+                        ?: cachedChat?.takeIf { !it.isGroup && it.peerUserId == message.senderId }?.title
+                        ?: cachedChat?.title
+                        ?: "Новое сообщение"
+                    val senderAvatarUrl = cachedSender?.avatarUrl
+                        ?: cachedChat?.takeIf { !it.isGroup && it.peerUserId == message.senderId }?.peerAvatarUrl
+                    val timestampMillis = runCatching {
+                        java.time.Instant.parse(message.createdAt).toEpochMilli()
+                    }.getOrDefault(System.currentTimeMillis())
                     appNotifications.showMessage(
                         notificationId = message.id,
-                        title = chatTitles[message.chatId] ?: "Новое сообщение",
-                        body = message.body
+                        title = senderName,
+                        body = message.body,
+                        chatId = message.chatId,
+                        senderId = message.senderId,
+                        senderAvatarUrl = senderAvatarUrl,
+                        timestampMillis = timestampMillis
                     )
                 }
 
@@ -2333,29 +2370,14 @@ private fun StoryViewerScreen(
                                 STORY_REACTION_OPTIONS.forEach { emoji ->
                                     val count = reactionSummary.counts[emoji] ?: 0
                                     val selected = reactionSummary.currentUserReaction == emoji
-                                    Surface(
-                                        onClick = { onStoryReactionTapped(emoji) },
+                                    StoryReactionButton(
+                                        modifier = Modifier.weight(1f),
+                                        reaction = emoji,
+                                        count = count,
+                                        selected = selected,
                                         enabled = !isLoadingReactions && !isSavingReaction,
-                                        shape = CircleShape,
-                                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.Transparent,
-                                        border = if (selected) BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null,
-                                        modifier = Modifier.weight(1f).height(42.dp)
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(emoji, fontSize = if (selected) 21.sp else 19.sp, lineHeight = 22.sp)
-                                            if (count > 0) {
-                                                Text(
-                                                    count.toString(),
-                                                    color = Color.White.copy(alpha = 0.92f),
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
-                                    }
+                                        onClick = { onStoryReactionTapped(emoji) }
+                                    )
                                 }
                             }
                         }
@@ -2415,6 +2437,137 @@ private fun StoryViewerScreen(
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirmation = false }) { Text("Отмена") } }
         )
+    }
+}
+
+
+@Composable
+private fun StoryReactionButton(
+    modifier: Modifier = Modifier,
+    reaction: String,
+    count: Int,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val iconRes = when (reaction) {
+        "❤️" -> R.drawable.ic_story_reaction_heart
+        "😂" -> R.drawable.ic_story_reaction_laugh
+        "😮" -> R.drawable.ic_story_reaction_wow
+        "😢" -> R.drawable.ic_story_reaction_sad
+        "🔥" -> R.drawable.ic_story_reaction_fire
+        "👏" -> R.drawable.ic_story_reaction_clap
+        else -> R.drawable.ic_story_reaction_heart
+    }
+    val iconLabel = when (reaction) {
+        "❤️" -> "Нравится"
+        "😂" -> "Смешно"
+        "😮" -> "Удивление"
+        "😢" -> "Грусть"
+        "🔥" -> "Огонь"
+        "👏" -> "Аплодисменты"
+        else -> "Реакция"
+    }
+    val accent = when (reaction) {
+        "❤️" -> Color(0xFFFF8FAE)
+        "😂" -> Color(0xFFFFD27A)
+        "😮" -> Color(0xFFB5A1FF)
+        "😢" -> Color(0xFF91BFFF)
+        "🔥" -> Color(0xFFFF986A)
+        "👏" -> Color(0xFFD6B4FF)
+        else -> Color(0xFF9AAEFF)
+    }
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.08f else 1f,
+        animationSpec = tween(190),
+        label = "story-reaction-scale"
+    )
+    val pulseTransition = rememberInfiniteTransition(label = "story-reaction-glow-$reaction")
+    val glowPulse by pulseTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1050),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "story-reaction-glow-pulse"
+    )
+
+    Column(
+        modifier = modifier
+            .height(48.dp)
+            .drawBehind {
+                if (selected) {
+                    val glowRadius = size.minDimension * 0.78f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                accent.copy(alpha = 0.40f * glowPulse),
+                                accent.copy(alpha = 0.17f * glowPulse),
+                                Color.Transparent
+                            ),
+                            center = center,
+                            radius = glowRadius
+                        ),
+                        radius = glowRadius,
+                        center = center
+                    )
+                }
+            }
+            .clickable(enabled = enabled, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
+                .background(
+                    color = if (selected) accent.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.045f),
+                    shape = CircleShape
+                )
+                .border(
+                    width = if (selected) 1.15.dp else 0.65.dp,
+                    brush = if (selected) {
+                        Brush.linearGradient(
+                            listOf(
+                                accent.copy(alpha = 0.98f),
+                                Color.White.copy(alpha = 0.72f),
+                                accent.copy(alpha = 0.62f)
+                            )
+                        )
+                    } else {
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.22f),
+                                Color.White.copy(alpha = 0.09f)
+                            )
+                        )
+                    },
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = iconLabel,
+                modifier = Modifier.size(21.dp)
+            )
+        }
+        if (count > 0) {
+            Text(
+                text = count.toString(),
+                color = Color.White.copy(alpha = if (selected) 1f else 0.74f),
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        } else {
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
@@ -2670,6 +2823,12 @@ private fun LiveChatScreen(
     onGroupUpdated: (String) -> Unit,
     onGroupClosed: () -> Unit
 ) {
+    val chatContext = LocalContext.current
+    DisposableEffect(chatContext, chat.id) {
+        ActiveChatNotificationState.setActiveChat(chatContext, chat.id)
+        onDispose { ActiveChatNotificationState.clearActiveChat(chatContext, chat.id) }
+    }
+
     val cachedMessages = remember(cache, userId, chat.id) {
         cache.readMessages(userId, chat.id)
     }
@@ -2706,6 +2865,11 @@ private fun LiveChatScreen(
     }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
+    val messageReactionsFlow = remember(repository, chat.id) {
+        repository.observeMessageReactions(chat.id)
+    }
+    val messageReactions by messageReactionsFlow.collectAsState(initial = emptyList())
+    var reactingMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
@@ -2753,7 +2917,15 @@ private fun LiveChatScreen(
 
     LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
         runCatching { repository.markChatRead(chat.id) }
-            .onSuccess { onMarkedRead() }
+            .onSuccess {
+                AppNotificationManager(context).cancelChatNotifications(
+                    chatId = chat.id,
+                    messageIds = orderedMessages
+                        .filter { it.senderId != userId }
+                        .map { it.id }
+                )
+                onMarkedRead()
+            }
             .onFailure {
                 android.util.Log.w("ArturChatUnread", "Could not mark chat as read", it)
             }
@@ -3238,6 +3410,16 @@ private fun LiveChatScreen(
                             text = original.body
                         )
                     }
+                    val messageReactionSummary = remember(messageReactions, message.id, userId) {
+                        summarizeMessageReactions(
+                            entries = messageReactions
+                                .asSequence()
+                                .filter { it.messageId == message.id }
+                                .map { MessageReactionEntry(userId = it.userId, reaction = it.reaction) }
+                                .toList(),
+                            currentUserId = userId
+                        )
+                    }
                     MessageBubble(
                         message = ChatMessage(
                             id = message.id,
@@ -3258,6 +3440,26 @@ private fun LiveChatScreen(
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
+                        reactions = messageReactionSummary.items,
+                        onReact = if (message.deletedAt == null) ({ emoji ->
+                            if (message.id !in reactingMessageIds) {
+                                reactingMessageIds = reactingMessageIds + message.id
+                                scope.launch {
+                                    try {
+                                        repository.setMessageReaction(
+                                            messageId = message.id,
+                                            chatId = chat.id,
+                                            reaction = emoji
+                                        )
+                                    } catch (error: Exception) {
+                                        errorMessage = error.message ?: "Не удалось поставить реакцию."
+                                        android.util.Log.w("ArturChatReactions", "Could not set message reaction", error)
+                                    } finally {
+                                        reactingMessageIds = reactingMessageIds - message.id
+                                    }
+                                }
+                            }
+                        }) else null,
                         attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
                         onReply = if (message.deletedAt == null) ({ replyingTo = message }) else null,
@@ -5185,11 +5387,14 @@ private fun MessageBubble(
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null,
+    reactions: List<MessageReactionCount> = emptyList(),
+    onReact: ((String) -> Unit)? = null,
     selected: Boolean = false,
     onSelect: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null
 ) {
     var showActions by remember(message.id) { mutableStateOf(false) }
+    var replySwipeOffset by remember(message.id) { mutableFloatStateOf(0f) }
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
@@ -5222,9 +5427,38 @@ private fun MessageBubble(
         verticalAlignment = Alignment.Bottom
     ) {
         Box {
+            Column(
+                horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start
+            ) {
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
+                    .pointerInput(message.id, onReply, selected) {
+                        if (onReply != null && !selected) {
+                            var draggedRight = 0f
+                            detectHorizontalDragGestures(
+                                onHorizontalDrag = { change, dragAmount ->
+                                    if (dragAmount > 0f) {
+                                        draggedRight = (draggedRight + dragAmount)
+                                            .coerceAtMost(maxOf(72.dp.toPx(), size.width * 0.28f))
+                                        replySwipeOffset = draggedRight
+                                        change.consume()
+                                    }
+                                },
+                                onDragEnd = {
+                                    val threshold = maxOf(56.dp.toPx(), size.width * 0.18f)
+                                    if (draggedRight >= threshold) onReply.invoke()
+                                    draggedRight = 0f
+                                    replySwipeOffset = 0f
+                                },
+                                onDragCancel = {
+                                    draggedRight = 0f
+                                    replySwipeOffset = 0f
+                                }
+                            )
+                        }
+                    }
+                    .graphicsLayer { translationX = replySwipeOffset * 0.34f }
                     .then(
                         when {
                             isVideoNoteAttachment -> Modifier.size(190.dp)
@@ -5236,7 +5470,8 @@ private fun MessageBubble(
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
-                        onLongClick = { if (onSelect != null) onSelect() else showActions = true }
+                        // Telegram-style long press opens the reaction and message-action menu.
+                        onLongClick = { showActions = true }
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
@@ -5412,11 +5647,65 @@ private fun MessageBubble(
                     }
                 }
             }
+                if (reactions.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        reactions.forEach { reaction ->
+                            Text(
+                                text = "${reaction.emoji} ${reaction.count}",
+                                color = if (reaction.selectedByMe) Color(0xFF344A7C) else MainText,
+                                fontSize = 11.sp,
+                                fontWeight = if (reaction.selectedByMe) FontWeight.Bold else FontWeight.Medium,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (reaction.selectedByMe) Color(0xFFDCE5FF) else PanelLight
+                                    )
+                                    .then(
+                                        if (reaction.selectedByMe) Modifier.border(
+                                            1.dp,
+                                            Color(0xFF8DA4E0),
+                                            RoundedCornerShape(12.dp)
+                                        ) else Modifier
+                                    )
+                                    .clickable(enabled = onReact != null) {
+                                        onReact?.invoke(reaction.emoji)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
             DropdownMenu(
                 expanded = showActions,
                 onDismissRequest = { showActions = false },
                 containerColor = PanelLight
             ) {
+                if (onReact != null) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MESSAGE_REACTION_OPTIONS.forEach { emoji ->
+                            Text(
+                                text = emoji,
+                                fontSize = 20.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        showActions = false
+                                        onReact(emoji)
+                                    }
+                                    .padding(2.dp)
+                            )
+                        }
+                    }
+                }
                 if (onReply != null) {
                     DropdownMenuItem(
                         text = { Text("Ответить", color = MainText) },
@@ -5432,6 +5721,15 @@ private fun MessageBubble(
                         onClick = {
                             showActions = false
                             onCopy()
+                        }
+                    )
+                }
+                if (onSelect != null && !selected) {
+                    DropdownMenuItem(
+                        text = { Text("Выбрать", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onSelect()
                         }
                     )
                 }

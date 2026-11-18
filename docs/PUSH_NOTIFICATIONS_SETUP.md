@@ -1,80 +1,70 @@
 # ArturChat push notifications setup
 
-This guide activates remote notifications for incoming calls and new messages. The voice path is unchanged: calls continue to use direct WebRTC P2P. FCM carries only a small notification payload.
+This guide documents the current remote push setup for incoming calls and new messages. Push notifications carry metadata only; voice and video remain on the existing direct WebRTC P2P path. No TURN, Coturn, VPN routing or media relay is introduced.
 
-## What is already in the repository
+## Current server status
 
-- Android FCM dependency and `ArturChatFirebaseMessagingService`.
-- Device token registration in `public.face_video_push_tokens`.
-- Supabase Edge Function `send-arturchat-push` (already deployed to project `mitvjkhlsvxcnzhbiwye`).
-- Notification channels for messages and calls.
-- GitHub Actions support for building with a Firebase Android client configuration.
+The Supabase project `mitvjkhlsvxcnzhbiwye` is configured with:
 
-The missing one-time configuration was confirmed on 2026-11-02: zero FCM tokens registered, no database webhooks configured, and no `google-services.json` was included in GitHub Actions builds.
+- `pg_net` enabled (version 0.20.4).
+- `send-arturchat-push` Edge Function deployed and active (version 10).
+- An encrypted, internally generated webhook secret in Supabase Vault.
+- An AFTER INSERT trigger on `public.face_video_messages`.
+- An AFTER INSERT trigger on `public.face_video_calls`.
+- A private trigger function and a verifier callable only by `service_role`.
 
-## 1. Create Firebase Android app configuration
+The triggers send the default INSERT payload to the Edge Function asynchronously via `net.http_post`. They do not block message or call creation if push delivery itself fails. No trigger is created on `face_video_call_signals`, so ICE/SDP candidates never produce notifications. Message alerts use high-priority data-only FCM so Android can render a native MessagingStyle thread, group messages by chat, and display sender avatars. Incoming-call pushes keep their existing notification-plus-data delivery.
 
-1. Open Firebase Console and select or create the Firebase project that will send ArturChat notifications.
+The database-to-function authorization path was tested successfully. FCM device tokens are registered for both test accounts. Incoming calls are sent as a high-priority FCM notification plus data payload with a 45-second expiry; Android posts that notification itself when the app is backgrounded or its process is absent. The data payload is passed to the launcher Activity when the user taps the alert. In the foreground, the app still uses its native CallStyle notification.
+
+## 1. Firebase Android configuration
+
+1. Open Firebase Console and select the Firebase project used for ArturChat notifications.
 2. Add an Android app with package name **`com.facevideo.app`**.
-3. Download its `google-services.json`.
-4. On Windows, in PowerShell in the folder containing that file, run:
-
-   ```powershell
-   [Convert]::ToBase64String([IO.File]::ReadAllBytes(".\google-services.json")) | Set-Clipboard
-   ```
-
-5. Open the GitHub repository **Settings → Secrets and variables → Actions → New repository secret**:
+3. Download `google-services.json`.
+4. In GitHub repository **Settings → Secrets and variables → Actions**, create or update the repository secret:
    - Name: `FIREBASE_GOOGLE_SERVICES_BASE64`
-   - Value: paste the clipboard contents.
-6. Do not send this value in chat. Do not commit `google-services.json`; it is ignored by `.gitignore`.
+   - Value: either the complete raw JSON file contents or its Base64-encoded contents.
+5. Never paste the secret into chat or commit `google-services.json` to the repository.
 
-The Android config is a client configuration, not the Firebase service-account private key. GitHub Actions decodes it into `app/google-services.json` for the build, validates that it contains package `com.facevideo.app`, and deletes the temporary runner after the workflow.
+The signed-candidate and Android workflows validate that the config belongs to `com.facevideo.app` before building. The temporary JSON file is created only on the Actions runner.
 
-## 2. Add server-side Firebase credentials to Supabase
+## 2. Firebase server credentials in Supabase
 
 1. In Firebase Console → **Project settings → Service accounts**, generate a private key and download the service-account JSON.
-2. Open Supabase Dashboard → project `mitvjkhlsvxcnzhbiwye` → **Edge Functions → Secrets**.
-3. Add these two custom secrets:
+2. In Supabase Dashboard → project `mitvjkhlsvxcnzhbiwye` → **Edge Functions → Secrets**, confirm this secret exists:
+   - `FCM_SERVICE_ACCOUNT_JSON`: the full Firebase service-account JSON.
+3. Do not commit or share this JSON. The platform-provided `SUPABASE_SERVICE_ROLE_KEY` remains server-side and must never be placed in GitHub or the Android app.
 
-   | Name | Value |
-   |---|---|
-   | `FCM_SERVICE_ACCOUNT_JSON` | Entire contents of the downloaded service-account JSON |
-   | `ARTURCHAT_PUSH_WEBHOOK_SECRET` | A long random string you create |
+`ARTURCHAT_PUSH_WEBHOOK_SECRET` may remain configured as a legacy/manual-webhook fallback, but the automated database triggers use the separate random secret stored inside Supabase Vault. You do not need to copy or expose the Vault secret.
 
-4. Do not commit or share the service-account JSON or webhook secret. The hosted Supabase Edge Function already receives `SUPABASE_SERVICE_ROLE_KEY` from the platform; never place that key in GitHub or the Android app.
+## 3. Database event wiring
 
-## 3. Connect database events to the push function
+No manual Database Webhooks need to be created. The repository migrations install the triggers and the secure Vault-backed request authentication.
 
-The Edge Function validates the `x-arturchat-webhook-secret` header. Create two **Database Webhooks** in Supabase Dashboard → **Database → Webhooks**. Both use HTTP **POST**, schema `public`, event **INSERT**, and the endpoint:
-
-```text
-https://mitvjkhlsvxcnzhbiwye.supabase.co/functions/v1/send-arturchat-push
-```
-
-Add these headers to both webhooks:
-
-```text
-Content-Type: application/json
-x-arturchat-webhook-secret: <the same value stored as ARTURCHAT_PUSH_WEBHOOK_SECRET>
-```
-
-Create the two webhook subscriptions:
-
-| Webhook name | Table | Event |
+| Trigger | Table | Event |
 |---|---|---|
-| ArturChat new messages | `face_video_messages` | INSERT |
-| ArturChat incoming calls | `face_video_calls` | INSERT |
+| `arturchat_push_messages_insert` | `public.face_video_messages` | AFTER INSERT |
+| `arturchat_push_calls_insert` | `public.face_video_calls` | AFTER INSERT |
 
-Use the default Database Webhook JSON body. The function expects `type`, `schema`, `table`, and `record` fields.
+Do not add a webhook or trigger to `face_video_call_signals`.
 
-Do not create a webhook for `face_video_call_signals`: ICE/SDP candidates are frequent and must never produce user notifications.
+## 4. Signed app build and device registration
 
-## 4. Build and register both devices
+The Firebase-enabled candidate is **ArturChat 0.7.51** (`versionCode=7051`). The signed GitHub Actions workflow:
 
-1. After adding the GitHub secret, open **Actions → ArturChat signed candidate APK** and run it manually, or push a subsequent change to `main`. The signed candidate workflow now prepares Firebase config automatically and builds version **0.4.7**.
-2. Download the successful `arturchat-signed-candidate-apk` artifact and install it on both phones over the existing signed version.
-3. Open ArturChat on each phone and sign in. Grant Android notification permission when prompted.
-4. Verify only token counts in Supabase SQL Editor:
+1. Validates the Firebase Android configuration for `com.facevideo.app`.
+2. Runs unit tests.
+3. Builds the release APK with the existing signing key.
+4. Verifies the package name, version and APK signature.
+5. Uploads the APK and SHA-256 checksum as an Actions artifact. It does not publish a GitHub Release.
+
+After a successful workflow:
+
+1. Download the signed APK artifact from the workflow run.
+2. Install it over the existing signed app on both phones.
+3. Open ArturChat on each phone, sign in, and grant Android notification permission.
+4. Check only token counts in Supabase SQL Editor:
 
    ```sql
    select
@@ -83,25 +73,28 @@ Do not create a webhook for `face_video_call_signals`: ICE/SDP candidates are fr
    from public.face_video_push_tokens;
    ```
 
-   With two logged-in phones, expect at least two token rows. Do not expose the token values in screenshots or logs.
+   Two signed-in phones should register at least two device tokens. Do not expose token values in screenshots or logs.
 
-## 5. Test delivery
+Confirm device registration by checking token counts only; never expose token values in screenshots or logs.
+
+## 5. Device delivery test
 
 - Send a message from phone A to phone B while B is on the home screen.
 - Call B while B is in the background and its screen is locked.
-- On Android 12+, the incoming call should appear as a system CallStyle notification with **Accept** and **Decline** actions. On Android 8–11, the notification shows the same actions as buttons. Tapping either action opens ArturChat; Accept starts the existing authenticated call flow (requesting microphone permission if needed), while Decline updates the call status. Tapping the notification body opens the app and shows the existing incoming-call dialog.
 - Repeat with the roles reversed.
+- Test with the app backgrounded or swiped away from Recents. Android Force Stop from Settings deliberately blocks background execution and FCM delivery until the user manually opens the app again.
+- On POCO/Xiaomi devices, enable ArturChat Autostart and set battery/background restrictions to unrestricted where available.
 
-Test with the app backgrounded or screen locked. Android's **Force stop** action deliberately blocks app background execution and push delivery until the user opens the app again. Xiaomi/MIUI battery restrictions may also need the user to allow ArturChat autostart and unrestricted background activity.
+FCM carries notification metadata only. Audio/video media continues through the existing direct P2P WebRTC connection.
 
 ## Troubleshooting
 
-- **Token count remains 0:** check that `FIREBASE_GOOGLE_SERVICES_BASE64` exists in GitHub Actions, that the workflow log says Firebase config was prepared, and that both phones opened the new build at least once after signing in.
-- **Token rows exist but notifications do not arrive:** check both webhook configurations, confirm the header value exactly matches `ARTURCHAT_PUSH_WEBHOOK_SECRET`, and inspect Supabase Edge Function logs for `send-arturchat-push`.
-- **Function says push delivery is not configured:** verify `FCM_SERVICE_ACCOUNT_JSON` is valid service-account JSON with `project_id`, `client_email`, and `private_key`.
-- **Notification appears but tapping it does not show the call dialog:** keep the call in ringing state and check whether the app can load `face_video_calls` for the signed-in callee. The incoming-call query is protected by RLS.
-- **Notifications are silent or hidden:** check Android notification permission, the ArturChat Calls channel importance, Do Not Disturb, and the phone manufacturer's background/battery settings.
+- **Token count remains 0:** install the latest successful signed candidate, open the app after installation, sign in, and grant notifications.
+- **Firebase config step fails:** replace the GitHub Actions secret with the complete `google-services.json` text or its valid Base64 representation. Do not send it in chat.
+- **Tokens exist but notifications do not arrive:** inspect Supabase Edge Function logs for `send-arturchat-push`, confirm `FCM_SERVICE_ACCOUNT_JSON` is valid JSON with `project_id`, `client_email`, and `private_key`, and verify Android notification permission/channel settings.
+- **Function returns “Push delivery is not configured”:** confirm `FCM_SERVICE_ACCOUNT_JSON` exists in Edge Function secrets.
+- **Notification is hidden or silent:** check the ArturChat Messages/Calls notification channels, Do Not Disturb, and manufacturer battery/autostart settings.
 
 ## Provider boundary
 
-FCM is a Google service. It only carries notification metadata; voice audio still travels directly between ArturChat peers using WebRTC. If ArturChat must avoid all foreign services, do not add these Firebase credentials: a domestic push provider needs to be selected and separately validated for the target Android devices and countries.
+FCM is a Google service. It carries only notification metadata; voice and video continue to travel directly between ArturChat peers using WebRTC. If the app must avoid all foreign services, a different push provider would need to be selected and separately validated for the target Android devices and countries.

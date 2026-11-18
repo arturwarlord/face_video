@@ -10,7 +10,6 @@ import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.FaceVideoCallSignal
 import com.facevideo.app.data.SupabaseCallRepository
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -50,13 +49,15 @@ import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
+import org.webrtc.StatsObserver
+import org.webrtc.StatsReport
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * A one-to-one audio/video call using WebRTC and Supabase only for signaling.
- * Direct STUN/P2P remains preferred; authenticated TURN is used as a fallback
- * when VPN, NAT or firewall rules prevent a direct media path.
+ * A one-to-one audio/video call using direct WebRTC P2P media and Supabase
+ * only for signaling. STUN discovers public-facing addresses; media stays
+ * directly between the two peers.
  */
 class WebRtcAudioCallClient(
     context: Context,
@@ -73,11 +74,13 @@ class WebRtcAudioCallClient(
     // Video is strictly opt-in per call row. Audio calls retain the old media path.
     private val videoEnabled = call.mediaType == "video"
     private val closed = AtomicBoolean(false)
+    private val iceFailureStatsRequested = AtomicBoolean(false)
     @Volatile private var iceGatheringCompleted = CompletableDeferred<Unit>()
+    @Volatile private var lastLocalSdpCandidateCount = 0
+    @Volatile private var lastRemoteSdpCandidateCount = 0
     private val gatheredCandidateCount = AtomicInteger(0)
     private val localHostCandidates = AtomicInteger(0)
     private val localSrflxCandidates = AtomicInteger(0)
-    private val localRelayCandidates = AtomicInteger(0)
     private val localOtherCandidates = AtomicInteger(0)
     private val localIpv4Candidates = AtomicInteger(0)
     private val localIpv6Candidates = AtomicInteger(0)
@@ -93,8 +96,7 @@ class WebRtcAudioCallClient(
     private val remoteUdpCandidates = AtomicInteger(0)
     private val remoteTcpCandidates = AtomicInteger(0)
     @Volatile private var remoteNetworkType = "unknown"
-    @Volatile private var turnConfigurationSummary = "TURN ещё не запрашивался"
-    private val iceServerErrors = mutableListOf<String>()
+    @Volatile private var lastStunErrorSummary = "none"
     private val remoteCandidatesQueued = AtomicInteger(0)
     private val remoteCandidatesApplied = AtomicInteger(0)
     private val remoteCandidatesRejected = AtomicInteger(0)
@@ -104,9 +106,6 @@ class WebRtcAudioCallClient(
     private val remoteSdpCandidateKeys = mutableSetOf<String>()
     private val remoteCandidateKeys = mutableSetOf<String>()
     private var connectionTimeoutJob: Job? = null
-    private var recoveryJob: Job? = null
-    private val restartAttempted = AtomicBoolean(false)
-    private val restartRequestSent = AtomicBoolean(false)
     @Volatile private var lastIceConnectionState = PeerConnection.IceConnectionState.NEW
     @Volatile private var lastHandledSignal = "none"
     @Volatile private var lastReceiving = false
@@ -206,7 +205,6 @@ class WebRtcAudioCallClient(
         callScope.cancel()
         signalJob?.cancel()
         connectionTimeoutJob?.cancel()
-        recoveryJob?.cancel()
         runCatching { peerConnection?.close() }
         runCatching { peerConnection?.dispose() }
         runCatching { localAudioTrack?.dispose() }
@@ -246,76 +244,11 @@ class WebRtcAudioCallClient(
         }
     }
 
-    /**
-     * Keep the existing STUN/P2P route first and add TURN as a fallback.
-     * If Supabase or the relay credential service is unavailable, calls still
-     * use the exact direct-connection path that existed before this change.
-     */
-    private suspend fun loadIceServers(): List<PeerConnection.IceServer> {
-        val iceServers = mutableListOf(
-            PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
-        )
-
-        // Keep non-VPN calls on the exact legacy route: no Edge Function
-        // request and no additional ICE servers. A device using VPN receives
-        // TURN candidates so its peer can reach it even if the peer is not on VPN.
-        if (currentNetworkType() != "VPN") {
-            turnConfigurationSummary = "VPN не обнаружен; TURN не запрашивался"
-            Log.i(TAG, "No Android VPN transport detected; using the original STUN-only route")
-            return iceServers
-        }
-
-        var turnFetchStatus = "ok"
-        val turnConfiguration = try {
-            withTimeoutOrNull(TURN_CREDENTIAL_FETCH_TIMEOUT_MS) {
-                repository.fetchTurnIceServers()
-            }.also { if (it == null) turnFetchStatus = "timeout" }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            turnFetchStatus = "error:${error.javaClass.simpleName}"
-            Log.w(TAG, "TURN credentials unavailable; preserving direct STUN/P2P mode", error)
-            null
-        }
-
-        val returnedTurnUrlCount = turnConfiguration.orEmpty().sumOf { it.urls.size }
-        var addedTurnServers = 0
-        turnConfiguration.orEmpty().forEach { server ->
-            val username = server.username.trim()
-            val credential = server.credential.trim()
-            if (username.isEmpty() || credential.isEmpty()) return@forEach
-
-            server.urls.map { it.trim() }
-                .filter { url ->
-                    url.startsWith("turn:$OPEN_RELAY_HOST:") ||
-                        url.startsWith("turns:$OPEN_RELAY_HOST:")
-                }
-                .distinct()
-                .forEach { url ->
-                    runCatching {
-                        PeerConnection.IceServer.builder(url)
-                            .setUsername(username)
-                            .setPassword(credential)
-                            .createIceServer()
-                    }.onSuccess { iceServer ->
-                        iceServers += iceServer
-                        addedTurnServers++
-                    }.onFailure {
-                        Log.w(TAG, "Ignoring invalid TURN ICE URL: $url", it)
-                    }
-                }
-        }
-
-        turnConfigurationSummary =
-            "$turnFetchStatus; TURN URLs=$returnedTurnUrlCount; configured=$addedTurnServers"
-        if (addedTurnServers > 0) {
-            Log.i(TAG, "TURN fallback configured with $addedTurnServers transport endpoints; direct ICE remains enabled")
-        } else {
-            Log.w(TAG, "No TURN endpoints were configured ($turnConfigurationSummary); direct STUN/P2P mode remains enabled")
-        }
-        return iceServers
-    }
+    /** STUN is used only for address discovery; media stays peer-to-peer. */
+    private fun loadIceServers(): List<PeerConnection.IceServer> = listOf(
+        PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
+        PeerConnection.IceServer.builder("stun:stun.cloudflare.com:3478").createIceServer()
+    )
 
     private suspend fun prepareConnection() {
         check(!closed.get()) { "Звонок уже завершён." }
@@ -335,7 +268,17 @@ class WebRtcAudioCallClient(
         val iceServers = loadIceServers()
         val configuration = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
-            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
+            // Keep every available IP family in ICE. Make IPv6-on-Wi-Fi
+            // explicitly enabled so future edits cannot silently suppress it.
+            candidateNetworkPolicy = PeerConnection.CandidateNetworkPolicy.ALL
+            disableIPv6OnWifi = false
+            // The SDK defaults to five IPv6 interfaces. Enumerate every
+            // available IPv6 interface while gathering candidates.
+            maxIPv6Networks = Int.MAX_VALUE
+
+            // Preserve the proven direct-P2P candidate preparation strategy.
+            iceCandidatePoolSize = 2
+            continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
 
         peerConnection = factory.createPeerConnection(
@@ -352,32 +295,19 @@ class WebRtcAudioCallClient(
                         PeerConnection.IceConnectionState.CONNECTED,
                         PeerConnection.IceConnectionState.COMPLETED -> {
                             connectionTimeoutJob?.cancel()
-                            recoveryJob?.cancel()
-                            setStatus(
-                                if (restartAttempted.get()) {
-                                    "Соединение восстановлено"
-                                } else {
-                                    "Звонок активен"
-                                }
-                            )
+                            setStatus("Звонок активен")
                         }
                         PeerConnection.IceConnectionState.CHECKING -> {
                             setStatus("Проверяем прямое соединение…")
                             scheduleDirectConnectionTimeout()
                         }
                         PeerConnection.IceConnectionState.DISCONNECTED -> {
-                            setStatus("Соединение прервано. Запускаем восстановление…")
-                            scheduleIceRecovery("ICE DISCONNECTED", ICE_RECOVERY_GRACE_MS)
+                            setStatus("Соединение прервано. Проверяем прямой маршрут…")
                             scheduleDirectConnectionTimeout()
                         }
                         PeerConnection.IceConnectionState.FAILED -> {
                             connectionTimeoutJob?.cancel()
-                            if (restartAttempted.get()) {
-                                reportDirectConnectionFailure("ICE перешёл в FAILED после попытки восстановления")
-                            } else {
-                                setStatus("Связь потеряна. Перезапускаем сетевое согласование…")
-                                scheduleIceRecovery("ICE FAILED", 1_000L)
-                            }
+                            reportDirectConnectionFailure("ICE перешёл в FAILED")
                         }
                         PeerConnection.IceConnectionState.CLOSED -> connectionTimeoutJob?.cancel()
                         else -> Unit
@@ -413,7 +343,6 @@ class WebRtcAudioCallClient(
                     when (candidateType) {
                         "host" -> localHostCandidates.incrementAndGet()
                         "srflx" -> localSrflxCandidates.incrementAndGet()
-                        "relay" -> localRelayCandidates.incrementAndGet()
                         else -> localOtherCandidates.incrementAndGet()
                     }
                     recordCandidateMetadata(candidate.sdp, local = true)
@@ -442,15 +371,10 @@ class WebRtcAudioCallClient(
                 }
 
                 override fun onIceCandidateError(event: IceCandidateErrorEvent) {
-                    // Do not log the local address from this event. Preserve the full
-                    // STUN/TURN URL and transport so failures can be mapped to a port.
-                    val detail = "${event.url}: ${event.errorCode}; port=${event.port}; " +
-                        event.errorText.replace(Regex("\\s+"), " ").take(100)
-                    synchronized(iceServerErrors) {
-                        if (iceServerErrors.size >= 6) iceServerErrors.removeAt(0)
-                        iceServerErrors += detail
-                    }
-                    Log.w(TAG, "ICE server candidate gathering error: $detail")
+                    // Do not log the local address from this event.
+                    val server = event.url.substringAfter("://").substringBefore("/")
+                    lastStunErrorSummary = "$server:${event.errorCode}"
+                    Log.w(TAG, "STUN candidate gathering error: $lastStunErrorSummary; ${event.errorText}")
                 }
 
                 override fun onIceCandidatesRemoved(candidates: Array<IceCandidate>) = Unit
@@ -714,11 +638,6 @@ class WebRtcAudioCallClient(
             }
 
             "ice" -> {
-                val recoveryRequest = signal.payload["recoveryRequest"]?.jsonPrimitive?.contentOrNull
-                if (recoveryRequest == "ice-restart" && isCaller) {
-                    initiateIceRestart("Собеседник запросил восстановление ICE")
-                    return
-                }
                 signal.payload["networkType"]?.jsonPrimitive?.contentOrNull?.let {
                     remoteNetworkType = it
                 }
@@ -781,55 +700,31 @@ class WebRtcAudioCallClient(
         fallbackDescription: SessionDescription
     ) {
         callScope.launch {
-            setStatus(
-                if (restartAttempted.get()) {
-                    "Согласуем новый сетевой маршрут…"
-                } else {
-                    "Отправляем параметры прямого соединения…"
-                }
-            )
-            // Trickle ICE sends candidates independently through Supabase, so
-            // the offer/answer does not wait for gathering to finish.
+            setStatus("Собираем прямые сетевые маршруты…")
+            // Restore the previous working direct-P2P sequence: let the ICE
+            // agent embed host/srflx candidates in SDP for up to five seconds.
+            // Trickle ICE remains enabled as a fallback for later candidates.
             val gatheringFinished = withTimeoutOrNull(LOCAL_ICE_GATHER_WAIT_MS) {
                 iceGatheringCompleted.await()
                 true
             } ?: false
+            if (closed.get()) return@launch
+
             val localSdp = connection.localDescription?.description
                 ?.takeIf { it.isNotBlank() }
                 ?: fallbackDescription.description
             val candidatesInSdp = Regex("(?m)^a=candidate:").findAll(localSdp).count()
-            val localSdpLines = localSdp.lineSequence().toList()
-            val videoStart = localSdpLines.indexOfFirst { it.startsWith("m=video ") }
-            val videoEnd = if (videoStart >= 0) {
-                (videoStart + 1 until localSdpLines.size)
-                    .firstOrNull { localSdpLines[it].startsWith("m=") } ?: localSdpLines.size
-            } else {
-                videoStart
-            }
-            val localVideoSection = if (videoStart >= 0) {
-                localSdpLines.subList(videoStart, videoEnd)
-            } else {
-                emptyList()
-            }
-            val localVideoMLine = localVideoSection.firstOrNull()
-            val localVideoCodecs = localVideoSection
-                .filter { it.startsWith("a=rtpmap:") }
-                .joinToString(",") { it.removePrefix("a=rtpmap:") }
-            val localVideoDirection = localVideoSection.firstOrNull {
-                it == "a=sendrecv" || it == "a=sendonly" || it == "a=recvonly" || it == "a=inactive"
-            }
-            Log.i(TAG, "Local SDP video: mLine=$localVideoMLine; codecs=$localVideoCodecs; direction=$localVideoDirection")
+            lastLocalSdpCandidateCount = candidatesInSdp
             Log.i(
                 TAG,
-                "Local ICE gather finished=$gatheringFinished; SDP candidate count=$candidatesInSdp"
+                "Sending direct P2P $signalType SDP: gatheringFinished=$gatheringFinished; " +
+                    "embeddedCandidates=$candidatesInSdp; candidateCallbacks=${gatheredCandidateCount.get()}"
             )
-            Log.i(
-                TAG,
-                "Sending P2P $signalType SDP: candidatesInSdp=$candidatesInSdp, " +
-                    "candidateCallbacks=${gatheredCandidateCount.get()}; remaining candidates use trickle ICE"
-            )
-            if (candidatesInSdp == 0 && gatheredCandidateCount.get() == 0) {
-                Log.w(TAG, "No ICE candidates found in SDP or callbacks yet.")
+            if (!gatheringFinished) {
+                Log.w(TAG, "ICE gathering reached ${LOCAL_ICE_GATHER_WAIT_MS}ms; continue with gathered candidates and Trickle ICE")
+            }
+            if (candidatesInSdp == 0) {
+                Log.w(TAG, "No ICE candidates were embedded in SDP; Trickle ICE remains active")
             }
 
             runCatching {
@@ -844,7 +739,8 @@ class WebRtcAudioCallClient(
                     }
                 )
             }.onSuccess {
-                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp ICE candidates")
+                Log.i(TAG, "$signalType SDP sent with $candidatesInSdp embedded ICE candidates")
+                setStatus("Отправляем параметры прямого соединения…")
             }.onFailure {
                 reportError(it.message ?: "Не удалось отправить параметры соединения.")
             }
@@ -871,6 +767,7 @@ class WebRtcAudioCallClient(
                 }
             remoteSdpCandidateKeys.size
         }
+        lastRemoteSdpCandidateCount = embeddedCandidateCount
         Log.i(TAG, "Remote SDP ${type.canonicalForm()}: embedded candidates=$embeddedCandidateCount")
         connection.setRemoteDescription(object : SdpObserver {
             override fun onSetSuccess() {
@@ -945,30 +842,57 @@ class WebRtcAudioCallClient(
     private fun diagnosticSummary(): String {
         val pending = synchronized(candidateLock) { pendingRemoteCandidates.size }
         val networkPair = "${currentNetworkType()}↔$remoteNetworkType"
-        val iceErrors = synchronized(iceServerErrors) {
-            iceServerErrors.joinToString(" | ").ifBlank { "none" }
-        }
         val commonFamilies = buildList {
             if (localIpv4Candidates.get() > 0 && remoteIpv4Candidates.get() > 0) add("IPv4")
             if (localIpv6Candidates.get() > 0 && remoteIpv6Candidates.get() > 0) add("IPv6")
         }.joinToString("/").ifBlank { "нет" }
         return "Диагностика: ICE=$lastIceConnectionState; receiving=$lastReceiving; " +
             "remote SDP=${remoteDescriptionSet.get()}; signal=$lastHandledSignal; " +
-            "restartAttempted=${restartAttempted.get()}; selectedPair=$selectedPairSummary; " +
-            "сети=$networkPair; общие IP-семейства=$commonFamilies; " +
+            "selectedPair=$selectedPairSummary; localSDP=$lastLocalSdpCandidateCount; " +
+            "remoteSDP=$lastRemoteSdpCandidateCount; сети=$networkPair; общие IP-семейства=$commonFamilies; " +
+            activeNetworkFamilySummary() + "; " +
             "local v4/v6=${localIpv4Candidates.get()}/${localIpv6Candidates.get()} " +
             "udp/tcp=${localUdpCandidates.get()}/${localTcpCandidates.get()}; " +
             "remote v4/v6=${remoteIpv4Candidates.get()}/${remoteIpv6Candidates.get()} " +
             "udp/tcp=${remoteUdpCandidates.get()}/${remoteTcpCandidates.get()}; " +
-            "local host/srflx/relay/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/" +
-            "${localRelayCandidates.get()}/${localOtherCandidates.get()}; " +
+            "local host/srflx/other=${localHostCandidates.get()}/${localSrflxCandidates.get()}/${localOtherCandidates.get()}; " +
             "remote host/srflx/prflx/relay=${remoteHostCandidates.get()}/${remoteSrflxCandidates.get()}/" +
-            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; " +
-            "TURN config=$turnConfigurationSummary; ICE server errors=$iceErrors; " +
+            "${remotePrflxCandidates.get()}/${remoteRelayCandidates.get()}; STUN error=$lastStunErrorSummary; " +
             "remote received/queued/pending/accepted/rejected/alreadyInSdp=" +
             "${remoteCandidatesReceived.get()}/${remoteCandidatesQueued.get()}/${pending}/" +
             "${remoteCandidatesApplied.get()}/${remoteCandidatesRejected.get()}/" +
             "${remoteCandidatesAlreadyInSdp.get()}"
+    }
+
+    /**
+     * Shows whether Android assigned IPv4/IPv6 addresses and default routes
+     * to the active network, without exposing raw IP addresses.
+     */
+    private fun activeNetworkFamilySummary(): String {
+        val manager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return "Android link=connectivity-manager-missing"
+        val network = manager.activeNetwork ?: return "Android link=offline"
+        val properties = manager.getLinkProperties(network)
+            ?: return "Android link=link-properties-unavailable"
+
+        val addresses = properties.linkAddresses.map { it.address }
+        val ipv4Count = addresses.count {
+            it is java.net.Inet4Address && !it.isAnyLocalAddress && !it.isLoopbackAddress
+        }
+        val ipv6Addresses = addresses.filterIsInstance<java.net.Inet6Address>()
+            .filter { !it.isAnyLocalAddress && !it.isLoopbackAddress && !it.isMulticastAddress }
+        val ipv6UsableCount = ipv6Addresses.count { !it.isLinkLocalAddress }
+        val ipv6LinkLocalCount = ipv6Addresses.count { it.isLinkLocalAddress }
+        val hasIpv4DefaultRoute = properties.routes.any {
+            it.isDefaultRoute && it.destination.address is java.net.Inet4Address
+        }
+        val hasIpv6DefaultRoute = properties.routes.any {
+            it.isDefaultRoute && it.destination.address is java.net.Inet6Address
+        }
+
+        return "Android link v4/v6=$ipv4Count/$ipv6UsableCount; " +
+            "v6-link-local=$ipv6LinkLocalCount; " +
+            "default-route v4/v6=$hasIpv4DefaultRoute/$hasIpv6DefaultRoute"
     }
 
     private fun currentNetworkType(): String {
@@ -977,7 +901,6 @@ class WebRtcAudioCallClient(
         val network = manager.activeNetwork ?: return "offline"
         val capabilities = manager.getNetworkCapabilities(network) ?: return "unknown"
         return when {
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
@@ -1014,95 +937,107 @@ class WebRtcAudioCallClient(
 
     private fun reportDirectConnectionFailure(reason: String) {
         Log.w(TAG, "$reason. ${diagnosticSummary()}")
-        reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}")
-    }
+        if (!iceFailureStatsRequested.compareAndSet(false, true)) return
 
-    /**
-     * Only the original caller creates ICE restart offers. The callee asks for
-     * recovery using an ICE signal with a control payload, so both peers do not
-     * race to create offers on the same PeerConnection.
-     */
-    private fun scheduleIceRecovery(reason: String, delayMs: Long) {
-        recoveryJob?.cancel()
-        recoveryJob = callScope.launch {
-            delay(delayMs)
-            val state = lastIceConnectionState
-            if (state != PeerConnection.IceConnectionState.DISCONNECTED &&
-                state != PeerConnection.IceConnectionState.FAILED
-            ) {
-                return@launch
-            }
-            if (isCaller) {
-                initiateIceRestart(reason)
-            } else {
-                sendIceRestartRequest(reason)
-            }
-        }
-    }
-
-    private fun sendIceRestartRequest(reason: String) {
-        if (!restartRequestSent.compareAndSet(false, true)) return
-        restartAttempted.set(true)
-        // The peer is about to generate a fresh ICE generation. Stop applying
-        // trickled candidates to the previous remote SDP while the restart
-        // offer is in transit; receiveRemoteCandidate will queue them until
-        // setRemoteDescription() installs the new offer.
-        remoteDescriptionSet.set(false)
-        callScope.launch {
-            runCatching {
-                repository.sendSignal(
-                    callId = call.id,
-                    senderId = currentUserId,
-                    recipientId = peerUserId,
-                    signalType = "ice",
-                    payload = buildJsonObject {
-                        put("recoveryRequest", "ice-restart")
-                    }
-                )
-            }.onSuccess {
-                Log.i(TAG, "ICE restart requested from caller: $reason")
-                setStatus("Запросили у собеседника восстановление соединения…")
-            }.onFailure {
-                reportError("Не удалось запросить восстановление звонка: ${it.message}")
-            }
-        }
-    }
-
-    private fun initiateIceRestart(reason: String) {
-        if (!isCaller) return
-        if (!restartAttempted.compareAndSet(false, true)) {
-            if (lastIceConnectionState == PeerConnection.IceConnectionState.FAILED) {
-                reportDirectConnectionFailure("Повторная попытка ICE restart недоступна")
-            }
+        val connection = peerConnection
+        if (connection == null) {
+            reportError("$DIRECT_P2P_FAILED_MESSAGE\n$reason\n${diagnosticSummary()}\nICE pair stats=connection missing")
             return
         }
 
-        recoveryJob?.cancel()
-        connectionTimeoutJob?.cancel()
-        callScope.launch {
-            val connection = peerConnection
-            if (connection == null || closed.get()) {
-                reportDirectConnectionFailure("Нет активного PeerConnection для ICE restart")
-                return@launch
+        val requested = runCatching {
+            connection.getStats(object : StatsObserver {
+                override fun onComplete(reports: Array<StatsReport>) {
+                    val statsSummary = summarizeIcePairStats(reports)
+                    Log.w(TAG, "ICE failure stats: $statsSummary")
+                    reportError(
+                        "$DIRECT_P2P_FAILED_MESSAGE\n$reason\n" +
+                            "${diagnosticSummary()}\n$statsSummary"
+                    )
+                }
+            }, null)
+        }.getOrElse {
+            Log.w(TAG, "Could not request ICE pair statistics", it)
+            false
+        }
+
+        if (!requested) {
+            reportError(
+                "$DIRECT_P2P_FAILED_MESSAGE\n$reason\n" +
+                    "${diagnosticSummary()}\nICE pair stats=unavailable"
+            )
+        }
+    }
+
+    /**
+     * Collect the local WebRTC candidate-pair state without exposing raw IP
+     * addresses. Request/response counters distinguish failed NAT checks from
+     * candidates that never entered ICE connectivity checking.
+     */
+    private fun summarizeIcePairStats(reports: Array<StatsReport>): String {
+        val reportsById = reports.associateBy { it.id }
+
+        fun values(report: StatsReport?): Map<String, String> =
+            report?.values?.associate { it.name to it.value }.orEmpty()
+
+        fun endpoint(reportId: String?, local: Boolean): String {
+            val report = reportId?.let { reportsById[it] } ?: return "unknown"
+            val fields = values(report)
+            val type = fields["candidateType"]
+                ?: fields[if (local) "googLocalCandidateType" else "googRemoteCandidateType"]
+                ?: "?"
+            val protocol = fields["protocol"] ?: fields["googTransportType"] ?: "?"
+            val address = fields["address"] ?: fields["ip"] ?: ""
+            val family = when {
+                address.contains(":") -> "v6"
+                address.isNotBlank() -> "v4"
+                else -> "ip?"
+            }
+            val port = fields["port"] ?: "?"
+            return "$type/$protocol/$family:$port"
+        }
+
+        val pairReports = reports.filter {
+            it.type == "candidate-pair" || it.type == "googCandidatePair"
+        }
+        if (pairReports.isEmpty()) {
+            val availableTypes = reports.asSequence()
+                .map { it.type }
+                .filter { it.contains("candidate", ignoreCase = true) }
+                .distinct()
+                .take(5)
+                .joinToString(",")
+                .ifBlank { "none" }
+            return "ICE pair stats=0; candidateStats=$availableTypes"
+        }
+
+        val summaries = pairReports
+            .map { report -> report to values(report) }
+            .sortedByDescending { (_, fields) ->
+                fields["nominated"] == "true" ||
+                    fields["googActiveConnection"] == "true" ||
+                    fields["state"] == "succeeded"
+            }
+            .take(4)
+            .mapIndexed { index, (report, fields) ->
+                val localId = fields["localCandidateId"]
+                val remoteId = fields["remoteCandidateId"]
+                val local = endpoint(localId, local = true)
+                val remote = endpoint(remoteId, local = false)
+                val state = fields["state"]
+                    ?: "writable=${fields["googWritable"] ?: "?"},readable=${fields["googReadable"] ?: "?"}"
+                val sent = fields["requestsSent"] ?: "?"
+                val received = fields["responsesReceived"] ?: "?"
+                val inbound = fields["requestsReceived"] ?: "?"
+                val outbound = fields["responsesSent"] ?: "?"
+                val bytesSent = fields["bytesSent"] ?: "?"
+                val bytesReceived = fields["bytesReceived"] ?: "?"
+                "pair$index[$state;nominated=${fields["nominated"] ?: fields["googActiveConnection"] ?: "?"};" +
+                    "checks=$sent/$received;inbound=$inbound/$outbound;bytes=$bytesSent/$bytesReceived;" +
+                    "local=$local;remote=$remote;id=${report.id.takeLast(12)}]"
             }
 
-            try {
-                // A new completion signal is required for the restarted ICE
-                // generation; the first gathering cycle has already completed.
-                iceGatheringCompleted = CompletableDeferred()
-                // Do not add candidates from the remote restart generation to
-                // the old answer. They must remain queued until the new answer
-                // is installed below via setRemoteDescription().
-                remoteDescriptionSet.set(false)
-                Log.w(TAG, "Starting one ICE restart: $reason")
-                setStatus("Пробуем восстановить прямое соединение…")
-                connection.restartIce()
-                createOffer()
-                scheduleDirectConnectionTimeout()
-            } catch (error: Exception) {
-                reportDirectConnectionFailure("Не удалось запустить ICE restart: ${error.message}")
-            }
-        }
+        return "ICE pair stats: " + summaries.joinToString(" | ")
     }
 
     private fun describeCandidate(candidateSdp: String): String {
@@ -1160,10 +1095,7 @@ class WebRtcAudioCallClient(
     companion object {
         private const val TAG = "ArturChatWebRTC"
         private const val DIRECT_P2P_TIMEOUT_MS = 30_000L
-        private const val ICE_RECOVERY_GRACE_MS = 6_000L
         private const val LOCAL_ICE_GATHER_WAIT_MS = 5_000L
-        private const val TURN_CREDENTIAL_FETCH_TIMEOUT_MS = 3_500L
-        private const val OPEN_RELAY_HOST = "staticauth.openrelay.metered.ca"
         private const val SIGNAL_RECOVERY_POLL_MS = 900L
         private const val VIDEO_CAPTURE_WIDTH = 1280
         private const val VIDEO_CAPTURE_HEIGHT = 720
@@ -1171,8 +1103,8 @@ class WebRtcAudioCallClient(
         private const val VIDEO_MIN_BITRATE_BPS = 250_000
         private const val VIDEO_MAX_BITRATE_BPS = 2_500_000
         private const val DIRECT_P2P_FAILED_MESSAGE =
-            "Не удалось установить медиасоединение: прямой маршрут и TURN-реле недоступны. " +
-                "Попробуйте сменить VPN-сервер или протокол соединения."
+            "Не удалось установить прямое соединение между телефонами. " +
+                "Проверьте доступ к интернету на обоих устройствах и попробуйте ещё раз."
         // Keep the proven audio-only factory completely unchanged. Video
         // calls use a second factory with real encoder/decoder implementations;
         // otherwise SDP can advertise an empty/rejected m=video section.

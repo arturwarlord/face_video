@@ -16,6 +16,10 @@ type PushPayload = {
   body: string;
   entityId: string;
   chatId?: string;
+  mediaType?: "audio" | "video";
+  senderId?: string;
+  senderAvatarUrl?: string;
+  createdAt?: string;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -69,6 +73,10 @@ async function sendToDevice(
     entity_id: payload.entityId,
   };
   if (payload.chatId) data.chat_id = payload.chatId;
+  if (payload.mediaType) data.media_type = payload.mediaType;
+  if (payload.senderId) data.sender_id = payload.senderId;
+  if (payload.senderAvatarUrl) data.sender_avatar_url = payload.senderAvatarUrl;
+  if (payload.createdAt) data.created_at = payload.createdAt;
 
   const response = await fetch(
     "https://fcm.googleapis.com/v1/projects/" + projectId + "/messages:send",
@@ -83,16 +91,29 @@ async function sendToDevice(
           token: target.token,
           data,
           android: payload.type === "call"
-            ? { priority: "HIGH" }
-            : {
+            ? {
                 priority: "HIGH",
+                ttl: "45s",
                 notification: {
-                  channel_id: "arturchat_messages",
+                  channel_id: "arturchat_calls_v2",
                   sound: "default",
+                  visibility: "PUBLIC",
+                  notification_priority: "PRIORITY_MAX",
+                  default_vibrate_timings: true,
+                  tag: "arturchat-call-" + payload.entityId,
                 },
+              }
+            : {
+                // Data-only messages allow the Android client to render native
+                // MessagingStyle threads with each sender's actual avatar.
+                priority: "HIGH",
+                ttl: "86400s",
               },
-          ...(payload.type === "message"
-            ? { notification: { title: payload.title, body: payload.body } }
+          ...(payload.type === "call"
+            ? {
+                // Keep system-managed notification + data for background calls.
+                notification: { title: payload.title, body: payload.body },
+              }
             : {}),
         },
       }),
@@ -112,7 +133,23 @@ async function sendToDevice(
 
 Deno.serve(async (request: Request) => {
   if (request.method !== "POST") return jsonResponse(405, { error: "Method not allowed." });
-  if (!WEBHOOK_SECRET || request.headers.get("x-arturchat-webhook-secret") !== WEBHOOK_SECRET) {
+  const legacySecret = request.headers.get("x-arturchat-webhook-secret") ?? "";
+  const vaultSecret = request.headers.get("x-arturchat-push-secret") ?? "";
+  let webhookAuthorized = Boolean(WEBHOOK_SECRET) && legacySecret === WEBHOOK_SECRET;
+
+  if (!webhookAuthorized && vaultSecret) {
+    try {
+      const { data, error } = await getSupabaseAdmin().rpc("verify_arturchat_push_secret", {
+        p_supplied_secret: vaultSecret,
+      });
+      webhookAuthorized = !error && data === true;
+      if (error) console.error("Webhook secret verification failed", error.message);
+    } catch (error) {
+      console.error("Webhook secret verification unavailable", error);
+    }
+  }
+
+  if (!webhookAuthorized) {
     return jsonResponse(401, { error: "Invalid webhook secret." });
   }
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !SERVICE_ACCOUNT_JSON) {
@@ -152,13 +189,16 @@ Deno.serve(async (request: Request) => {
     recipients = (members ?? []).map((member) => String(member.user_id));
 
     const { data: sender } = await supabase.from("face_video_profiles")
-      .select("display_name, username").eq("id", senderId).maybeSingle();
+      .select("display_name, username, avatar_url").eq("id", senderId).maybeSingle();
     notification = {
       type: "message",
       title: sender?.display_name?.trim() || sender?.username || "Новое сообщение",
       body: String(row.body ?? "").slice(0, 1000),
       entityId: messageId,
       chatId,
+      senderId,
+      senderAvatarUrl: typeof sender?.avatar_url === "string" ? sender.avatar_url : undefined,
+      createdAt: typeof row.created_at === "string" ? row.created_at : undefined,
     };
   } else if (payload.table === "face_video_calls") {
     const row = payload.record;
@@ -174,8 +214,11 @@ Deno.serve(async (request: Request) => {
     notification = {
       type: "call",
       title: (caller?.display_name?.trim() || caller?.username || "Собеседник") + " звонит вам",
-      body: "Входящий аудиозвонок в ArturChat",
+      body: row.media_type === "video"
+        ? "Входящий видеозвонок в ArturChat"
+        : "Входящий аудиозвонок в ArturChat",
       entityId: callId,
+      mediaType: row.media_type === "video" ? "video" : "audio",
     };
   } else {
     return jsonResponse(202, { skipped: true });
