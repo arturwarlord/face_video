@@ -185,7 +185,6 @@ data class FaceVideoMessage(
     @SerialName("sender_id") val senderId: String,
     val body: String,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("edited_at") val editedAt: String? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
     @SerialName("attachment_path") val attachmentPath: String? = null,
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
@@ -196,7 +195,8 @@ data class FaceVideoMessage(
     @SerialName("deleted_at") val deletedAt: String? = null,
     @SerialName("deleted_by") val deletedBy: String? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
-    @SerialName("forwarded_from_name") val forwardedFromName: String? = null
+    @SerialName("forwarded_from_name") val forwardedFromName: String? = null,
+    @SerialName("edited_at") val editedAt: String? = null
 )
 
 @Serializable
