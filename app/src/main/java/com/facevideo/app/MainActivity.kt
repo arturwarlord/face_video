@@ -122,6 +122,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
@@ -147,6 +149,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -2702,10 +2705,23 @@ private fun LiveChatScreen(
         }
     }
     var locallySentMessages by remember(chat.id) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
-    LaunchedEffect(messages) {
+    var locallyEditedMessages by remember(chat.id) {
+        mutableStateOf<Map<String, com.facevideo.app.data.FaceVideoMessage>>(emptyMap())
+    }
+    LaunchedEffect(messages, locallySentMessages, locallyEditedMessages) {
         if (locallySentMessages.isNotEmpty()) {
             val serverIds = messages.mapTo(mutableSetOf()) { it.id }
             locallySentMessages = locallySentMessages.filterNot { it.id in serverIds }
+        }
+        if (locallyEditedMessages.isNotEmpty()) {
+            val confirmedIds = locallyEditedMessages.filter { (id, localMessage) ->
+                val serverMessage = messages.firstOrNull { it.id == id }
+                serverMessage?.body == localMessage.body &&
+                    serverMessage.editedAt == localMessage.editedAt
+            }.keys
+            if (confirmedIds.isNotEmpty()) {
+                locallyEditedMessages = locallyEditedMessages - confirmedIds
+            }
         }
     }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
@@ -2730,8 +2746,10 @@ private fun LiveChatScreen(
     var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
-    val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds) {
-        mergeChatMessageSnapshots(messages, locallySentMessages).filterNot { it.id in hiddenMessageIds }
+    val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds, locallyEditedMessages) {
+        mergeChatMessageSnapshots(messages, locallySentMessages)
+            .map { locallyEditedMessages[it.id] ?: it }
+            .filterNot { it.id in hiddenMessageIds }
     }
     LaunchedEffect(userId, chat.id, orderedMessages) {
         withContext(Dispatchers.IO) {
@@ -2739,8 +2757,11 @@ private fun LiveChatScreen(
         }
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val composerFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     var draft by remember { mutableStateOf("") }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    var editingMessage by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var showGroupManagement by remember(chat.id) { mutableStateOf(false) }
     var showDeleteSelection by remember { mutableStateOf(false) }
@@ -2789,6 +2810,37 @@ private fun LiveChatScreen(
     fun sendMessage() {
         val text = draft.trim()
         if (text.isBlank() || isSending) return
+
+        val messageBeingEdited = editingMessage
+        if (messageBeingEdited != null) {
+            if (text == messageBeingEdited.body.trim()) {
+                draft = ""
+                editingMessage = null
+                return
+            }
+            scope.launch {
+                isSending = true
+                errorMessage = null
+                try {
+                    val updatedMessage = repository.editMessage(
+                        messageId = messageBeingEdited.id,
+                        chatId = chat.id,
+                        text = text
+                    )
+                    locallyEditedMessages = locallyEditedMessages + (updatedMessage.id to updatedMessage)
+                    draft = ""
+                    editingMessage = null
+                    replyingTo = null
+                    Toast.makeText(context, "Сообщение изменено", Toast.LENGTH_SHORT).show()
+                } catch (error: Exception) {
+                    errorMessage = error.message ?: "Не удалось изменить сообщение."
+                } finally {
+                    isSending = false
+                }
+            }
+            return
+        }
+
         scope.launch {
             isSending = true
             errorMessage = null
@@ -3268,6 +3320,7 @@ private fun LiveChatScreen(
                             deliveryStatus = if (message.senderId == userId && message.deletedAt == null) resolveMessageDeliveryStatus(message.id, receipts) else null,
                             forwardedFromName = message.forwardedFromName,
                             isDeleted = message.deletedAt != null,
+                            isEdited = message.editedAt != null,
                             attachmentMimeType = if (message.deletedAt == null) message.attachmentMimeType else null,
                             attachmentDurationMs = if (message.deletedAt == null) message.attachmentDurationMs else null,
                             attachmentWaveform = if (message.deletedAt == null) message.attachmentWaveform else null
@@ -3275,7 +3328,7 @@ private fun LiveChatScreen(
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
                         onToggleSelection = if (message.deletedAt == null && selectedMessageIds.isNotEmpty()) ({ selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id }) else null,
-                        showTime = shouldShowChatMessageTime(orderedMessages, index),
+                        showTime = shouldShowChatMessageTime(orderedMessages, index) || message.editedAt != null,
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
@@ -3290,6 +3343,20 @@ private fun LiveChatScreen(
                                     errorMessage = it.message ?: "Не удалось поставить реакцию."
                                 }
                             }
+                        }) else null,
+                        onEdit = if (
+                            message.senderId == userId &&
+                            message.deletedAt == null &&
+                            message.attachmentPath == null &&
+                            selectedMessageIds.isEmpty() &&
+                            !isVoiceRecording
+                        ) ({
+                            editingMessage = message
+                            replyingTo = null
+                            selectedMessageIds = emptySet()
+                            draft = message.body
+                            composerFocusRequester.requestFocus()
+                            keyboardController?.show()
                         }) else null,
                         onReply = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({ replyingTo = message }) else null,
                         onCopy = {
@@ -3450,7 +3517,44 @@ private fun LiveChatScreen(
             )
         }
 
-        if (replyingTo != null) {
+        if (editingMessage != null) {
+            val selectedEditingMessage = editingMessage!!
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(PanelLight)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(AccentSlate))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Редактирование сообщения",
+                        color = AccentSlate,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        selectedEditingMessage.body,
+                        color = MainText,
+                        fontSize = 11.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    "×",
+                    color = Muted,
+                    fontSize = 22.sp,
+                    modifier = Modifier.clickable {
+                        editingMessage = null
+                        draft = ""
+                    }.padding(start = 10.dp)
+                )
+            }
+        }
+
+        if (replyingTo != null && editingMessage == null) {
             val selectedReply = replyingTo!!
             Row(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp)
@@ -3559,15 +3663,17 @@ private fun LiveChatScreen(
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ChatChromeActionButton(
-                        onClick = { if (!isSending) imagePicker.launch("image/*") },
-                        enabled = !isSending,
-                        filled = false,
-                        size = 40.dp
-                    ) {
-                        InboxCameraGlyph(tint = InboxAccentStrong, iconSize = 22.dp)
+                    if (editingMessage == null) {
+                        ChatChromeActionButton(
+                            onClick = { if (!isSending) imagePicker.launch("image/*") },
+                            enabled = !isSending,
+                            filled = false,
+                            size = 40.dp
+                        ) {
+                            InboxCameraGlyph(tint = InboxAccentStrong, iconSize = 22.dp)
+                        }
+                        Spacer(Modifier.width(8.dp))
                     }
-                    Spacer(Modifier.width(8.dp))
                     Surface(
                         modifier = Modifier.weight(1f),
                         color = Color.White.copy(alpha = 0.88f),
@@ -3589,47 +3695,56 @@ private fun LiveChatScreen(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             ),
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                                .focusRequester(composerFocusRequester)
+                                .padding(horizontal = 15.dp, vertical = 14.dp),
                             decorationBox = { inner ->
                                 Box(contentAlignment = Alignment.CenterStart) {
                                     if (draft.isEmpty()) {
-                                        Text("Сообщение…", color = InboxMuted, fontSize = 12.sp)
+                                        Text(
+                                            if (editingMessage != null) "Изменить сообщение…" else "Сообщение…",
+                                            color = InboxMuted,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                     inner()
                                 }
                             }
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    ChatChromeActionButton(
-                        onClick = {
-                            if (!isSending) {
-                                if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    startVoiceRecording()
-                                } else {
-                                    voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    if (editingMessage == null) {
+                        Spacer(Modifier.width(8.dp))
+                        ChatChromeActionButton(
+                            onClick = {
+                                if (!isSending) {
+                                    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                        startVoiceRecording()
+                                    } else {
+                                        voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
                                 }
-                            }
-                        },
-                        enabled = !isSending,
-                        filled = false,
-                        size = 38.dp
-                    ) {
-                        ChatMicrophoneGlyph(tint = InboxAccentStrong)
+                            },
+                            enabled = !isSending,
+                            filled = false,
+                            size = 38.dp
+                        ) {
+                            ChatMicrophoneGlyph(tint = InboxAccentStrong)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        ChatChromeActionButton(
+                            onClick = { openVideoNoteRecorder() },
+                            enabled = !isSending && !isVoiceRecording,
+                            filled = false,
+                            size = 38.dp
+                        ) {
+                            ChatVideoNoteGlyph(tint = InboxAccentStrong)
+                        }
+                        Spacer(Modifier.width(4.dp))
                     }
-                    Spacer(Modifier.width(4.dp))
-                    ChatChromeActionButton(
-                        onClick = { openVideoNoteRecorder() },
-                        enabled = !isSending && !isVoiceRecording,
-                        filled = false,
-                        size = 38.dp
-                    ) {
-                        ChatVideoNoteGlyph(tint = InboxAccentStrong)
-                    }
-                    Spacer(Modifier.width(4.dp))
                     ChatChromeActionButton(
                         onClick = { sendMessage() },
-                        enabled = !isSending && draft.isNotBlank(),
+                        enabled = !isSending && draft.isNotBlank() &&
+                            (editingMessage == null || draft.trim() != editingMessage?.body?.trim()),
                         filled = true
                     ) {
                         ChatSendGlyph()
@@ -5216,6 +5331,7 @@ private fun MessageBubble(
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null,
+    onEdit: (() -> Unit)? = null,
     reactions: List<MessageReactionCount> = emptyList(),
     onReaction: ((String) -> Unit)? = null,
     selected: Boolean = false,
@@ -5426,6 +5542,13 @@ private fun MessageBubble(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
+                            if (message.isEdited) {
+                                Text(
+                                    "изменено",
+                                    color = Muted,
+                                    fontSize = 8.sp
+                                )
+                            }
                             Text(
                                 message.time,
                                 color = Muted,
@@ -5528,6 +5651,15 @@ private fun MessageBubble(
                             }
                         }
                     }
+                }
+                if (onEdit != null) {
+                    DropdownMenuItem(
+                        text = { Text("Изменить", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onEdit()
+                        }
+                    )
                 }
                 if (onSelect != null) {
                     DropdownMenuItem(
