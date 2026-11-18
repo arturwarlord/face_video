@@ -19,6 +19,43 @@ import android.os.Vibrator
 import com.facevideo.app.MainActivity
 import com.facevideo.app.R
 
+/**
+ * Tracks the chat that is actually visible to the user. The foreground flag is
+ * maintained by MainActivity so a backgrounded Activity never suppresses FCM alerts.
+ */
+internal object ActiveChatNotificationState {
+    private const val PREFERENCES = "arturchat_notification_state"
+    private const val KEY_ACTIVE_CHAT = "active_chat_id"
+    private const val KEY_APP_FOREGROUND = "app_foreground"
+
+    fun setAppForeground(context: Context, foreground: Boolean) {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_APP_FOREGROUND, foreground)
+            .apply()
+    }
+
+    fun setActiveChat(context: Context, chatId: String) {
+        context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_ACTIVE_CHAT, chatId)
+            .apply()
+    }
+
+    fun clearActiveChat(context: Context, chatId: String) {
+        val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        if (preferences.getString(KEY_ACTIVE_CHAT, null) == chatId) {
+            preferences.edit().remove(KEY_ACTIVE_CHAT).apply()
+        }
+    }
+
+    fun isChatVisible(context: Context, chatId: String): Boolean {
+        val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        return preferences.getBoolean(KEY_APP_FOREGROUND, false) &&
+            preferences.getString(KEY_ACTIVE_CHAT, null) == chatId
+    }
+}
+
 internal object CallNotificationIntents {
     const val EXTRA_CALL_ID = "com.facevideo.app.EXTRA_NOTIFICATION_CALL_ID"
     const val EXTRA_CALL_ACTION = "com.facevideo.app.EXTRA_NOTIFICATION_CALL_ACTION"
@@ -69,7 +106,8 @@ class AppNotificationManager(context: Context) {
         notificationId: String,
         title: String,
         body: String,
-        type: String
+        type: String,
+        chatId: String? = null
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -125,11 +163,28 @@ class AppNotificationManager(context: Context) {
             }
         }
 
-        manager.notify(notificationId.hashCode(), builder.build())
+        val notification = builder.build()
+        if (!isCall && !chatId.isNullOrBlank()) {
+            manager.notify(messageNotificationTag(chatId), MESSAGE_NOTIFICATION_ID, notification)
+        } else {
+            manager.notify(notificationId.hashCode(), notification)
+        }
     }
 
     fun cancelNotification(notificationId: String) {
         manager.cancel(notificationId.hashCode())
+    }
+
+    /**
+     * Clears the chat-level FCM notification and older per-message notifications
+     * created by previous app versions.
+     */
+    fun cancelChatNotifications(chatId: String, messageIds: Collection<String> = emptyList()) {
+        if (chatId.isBlank()) return
+        manager.cancel(messageNotificationTag(chatId), MESSAGE_NOTIFICATION_ID)
+        messageIds.forEach { messageId ->
+            if (messageId.isNotBlank()) manager.cancel(messageId.hashCode())
+        }
     }
 
     /** Play the device ringtone and vibration while an incoming call is waiting. */
@@ -218,7 +273,12 @@ class AppNotificationManager(context: Context) {
         )
     }
 
-    fun showMessage(notificationId: String, title: String, body: String) {
+    fun showMessage(
+        notificationId: String,
+        title: String,
+        body: String,
+        chatId: String? = null
+    ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
             appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -248,11 +308,20 @@ class AppNotificationManager(context: Context) {
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
             .build()
 
-        manager.notify(notificationId.hashCode(), notification)
+        if (!chatId.isNullOrBlank()) {
+            manager.notify(messageNotificationTag(chatId), MESSAGE_NOTIFICATION_ID, notification)
+        } else {
+            manager.notify(notificationId.hashCode(), notification)
+        }
     }
+
+    private fun messageNotificationTag(chatId: String): String =
+        MESSAGE_NOTIFICATION_TAG_PREFIX + chatId
 
     private companion object {
         const val MESSAGE_CHANNEL_ID = "arturchat_messages"
+        const val MESSAGE_NOTIFICATION_TAG_PREFIX = "arturchat-chat-"
+        const val MESSAGE_NOTIFICATION_ID = 0
         const val CALL_CHANNEL_ID = "arturchat_calls_v2"
         const val TAG = "ArturChatCallAlert"
     }
