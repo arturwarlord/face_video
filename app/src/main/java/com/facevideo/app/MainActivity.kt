@@ -433,14 +433,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onStart() {
+        super.onStart()
         ActiveChatNotificationState.setAppForeground(this, true)
     }
 
-    override fun onPause() {
+    override fun onStop() {
         ActiveChatNotificationState.setAppForeground(this, false)
-        super.onPause()
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
