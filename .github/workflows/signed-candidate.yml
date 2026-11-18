@@ -58,8 +58,12 @@ jobs:
             echo "::warning::FIREBASE_GOOGLE_SERVICES_BASE64 is not configured; this APK will not register FCM tokens."
             exit 0
           fi
-          printf '%s' "$FIREBASE_GOOGLE_SERVICES_BASE64" | base64 --decode > app/google-services.json
-          python3 - <<'PY'
+          if ! printf '%s' "$FIREBASE_GOOGLE_SERVICES_BASE64" | base64 --decode > app/google-services.json 2>/dev/null; then
+            echo "::warning::FIREBASE_GOOGLE_SERVICES_BASE64 is invalid; building without Firebase push-token registration."
+            rm -f app/google-services.json
+            exit 0
+          fi
+          if ! python3 - <<'PY'
           import json
           from pathlib import Path
 
@@ -72,6 +76,11 @@ jobs:
           if "com.facevideo.app" not in package_names:
               raise SystemExit("Firebase config does not contain Android package com.facevideo.app")
           PY
+          then
+            echo "::warning::Firebase config is malformed or targets another package; building without Firebase push-token registration."
+            rm -f app/google-services.json
+            exit 0
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
