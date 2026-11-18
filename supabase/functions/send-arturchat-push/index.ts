@@ -102,6 +102,9 @@ async function sendToDevice(
                 notification: {
                   channel_id: "arturchat_messages",
                   sound: "default",
+                  // One replaceable tray notification per chat. When that chat is
+                  // opened, Android can cancel this exact FCM-managed notification.
+                  tag: "arturchat-chat-" + (payload.chatId ?? payload.entityId),
                 },
               },
           // Notification + data is intentional for calls: when ArturChat is
