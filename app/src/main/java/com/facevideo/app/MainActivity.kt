@@ -5330,6 +5330,8 @@ private fun MessageBubble(
     attachmentRepository: SupabaseChatRepository? = null,
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
+    onForward: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     reactions: List<MessageReactionCount> = emptyList(),
@@ -5404,8 +5406,17 @@ private fun MessageBubble(
                     }
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
-                        onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
-                        onLongClick = { showActions = true }
+                        onClick = {
+                            if (selected || onToggleSelection != null) {
+                                onToggleSelection?.invoke()
+                            } else {
+                                showActions = true
+                            }
+                        },
+                        onLongClick = {
+                            // Long press starts message selection; taps are reserved for the context menu.
+                            if (!selected) onSelect?.invoke()
+                        }
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
@@ -5632,47 +5643,39 @@ private fun MessageBubble(
                 containerColor = PanelLight
             ) {
                 if (onReaction != null && !message.isDeleted) {
-                    Row(
+                    Surface(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color(0xFFE8F3E5),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
+                        shadowElevation = 1.dp
                     ) {
-                        MESSAGE_REACTION_OPTIONS.forEach { emoji ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        showActions = false
-                                        onReaction.invoke(emoji)
-                                    }
-                                    .padding(horizontal = 3.dp, vertical = 5.dp)
-                            ) {
-                                Text(emoji, fontSize = 20.sp)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            MESSAGE_REACTION_OPTIONS.forEach { emoji ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            showActions = false
+                                            onReaction.invoke(emoji)
+                                        }
+                                        .padding(horizontal = 3.dp, vertical = 5.dp)
+                                ) {
+                                    Text(emoji, fontSize = 20.sp)
+                                }
                             }
+                            Text("⌄", color = Color(0xFF769173), fontSize = 16.sp)
                         }
                     }
-                }
-                if (onEdit != null) {
-                    DropdownMenuItem(
-                        text = { Text("Изменить", color = MainText) },
-                        onClick = {
-                            showActions = false
-                            onEdit()
-                        }
-                    )
-                }
-                if (onSelect != null) {
-                    DropdownMenuItem(
-                        text = { Text("Выбрать сообщение", color = MainText) },
-                        onClick = {
-                            showActions = false
-                            onSelect()
-                        }
-                    )
                 }
                 if (onReply != null) {
                     DropdownMenuItem(
                         text = { Text("Ответить", color = MainText) },
+                        leadingIcon = { Text("↩", color = MainText, fontSize = 18.sp) },
                         onClick = {
                             showActions = false
                             onReply()
@@ -5682,9 +5685,50 @@ private fun MessageBubble(
                 if (onCopy != null) {
                     DropdownMenuItem(
                         text = { Text("Копировать", color = MainText) },
+                        leadingIcon = { Text("▢", color = MainText, fontSize = 18.sp) },
                         onClick = {
                             showActions = false
                             onCopy()
+                        }
+                    )
+                }
+                if (onEdit != null) {
+                    DropdownMenuItem(
+                        text = { Text("Изменить", color = MainText) },
+                        leadingIcon = { Text("✎", color = MainText, fontSize = 17.sp) },
+                        onClick = {
+                            showActions = false
+                            onEdit()
+                        }
+                    )
+                }
+                if (onForward != null) {
+                    DropdownMenuItem(
+                        text = { Text("Переслать", color = MainText) },
+                        leadingIcon = { Text("➦", color = MainText, fontSize = 18.sp) },
+                        onClick = {
+                            showActions = false
+                            onForward()
+                        }
+                    )
+                }
+                if (onDelete != null) {
+                    DropdownMenuItem(
+                        text = { Text("Удалить", color = Color(0xFFB85E69)) },
+                        leadingIcon = { Text("▤", color = Color(0xFFB85E69), fontSize = 18.sp) },
+                        onClick = {
+                            showActions = false
+                            onDelete()
+                        }
+                    )
+                }
+                if (onSelect != null) {
+                    DropdownMenuItem(
+                        text = { Text("Выбрать", color = MainText) },
+                        leadingIcon = { Text("☑", color = MainText, fontSize = 17.sp) },
+                        onClick = {
+                            showActions = false
+                            onSelect()
                         }
                     )
                 }
