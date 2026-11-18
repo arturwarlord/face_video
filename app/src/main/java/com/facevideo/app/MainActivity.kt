@@ -3260,7 +3260,7 @@ private fun LiveChatScreen(
                         replyPreview = replyPreview,
                         attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
-                        onReply = if (message.deletedAt == null) ({ replyingTo = message }) else null,
+                        onReply = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({ replyingTo = message }) else null,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
@@ -5233,6 +5233,26 @@ private fun MessageBubble(
                             else -> Modifier.widthIn(max = 310.dp)
                         }
                     )
+                    // Telegram-style reply gesture: swipe the message from right to left.
+                    .pointerInput(message.id, onReply) {
+                        if (onReply != null) {
+                            var horizontalDragDistance = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { horizontalDragDistance = 0f },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    horizontalDragDistance += dragAmount
+                                    if (horizontalDragDistance < 0f) change.consume()
+                                },
+                                onDragEnd = {
+                                    if (horizontalDragDistance <= -56.dp.toPx()) {
+                                        onReply.invoke()
+                                    }
+                                    horizontalDragDistance = 0f
+                                },
+                                onDragCancel = { horizontalDragDistance = 0f }
+                            )
+                        }
+                    }
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
