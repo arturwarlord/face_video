@@ -415,14 +415,7 @@ private data class RespondFriendRequestArguments(
 private data class DeletedMessage(
     @SerialName("deleted_at") val deletedAt: String,
     @SerialName("deleted_by") val deletedBy: String,
-    val body: String,
-    @SerialName("attachment_path") val attachmentPath: String? = null,
-    @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
-    @SerialName("attachment_file_name") val attachmentFileName: String? = null,
-    @SerialName("attachment_size") val attachmentSize: Long? = null,
-    @SerialName("attachment_duration_ms") val attachmentDurationMs: Long? = null,
-    @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
-    @SerialName("reply_to_message_id") val replyToMessageId: String? = null
+    val body: String
 )
 
 @Serializable
