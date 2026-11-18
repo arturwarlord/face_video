@@ -1,4 +1,4 @@
-name: ArturChat 0.7.42 signed installable APK
+name: ArturChat 0.7.43 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
