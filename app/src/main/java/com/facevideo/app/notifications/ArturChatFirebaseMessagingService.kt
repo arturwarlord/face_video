@@ -39,6 +39,26 @@ class ArturChatFirebaseMessagingService : FirebaseMessagingService() {
             ?: data["body"]
             ?: if (type == "call") "Тебе звонят в ArturChat" else "Открой ArturChat, чтобы прочитать сообщение"
 
+        if (type == "message") {
+            if (chatId.isNullOrBlank()) {
+                Log.w(TAG, "Ignoring message push without chat_id.")
+                return
+            }
+            val timestampMillis = data["created_at"]?.let { raw ->
+                runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrNull()
+            } ?: System.currentTimeMillis()
+            AppNotificationManager(this).showMessage(
+                notificationId = notificationId,
+                title = title,
+                body = body,
+                chatId = chatId,
+                senderId = data["sender_id"].orEmpty(),
+                senderAvatarUrl = data["sender_avatar_url"],
+                timestampMillis = timestampMillis
+            )
+            return
+        }
+
         AppNotificationManager(this).showRemoteNotification(
             notificationId = notificationId,
             title = title,
