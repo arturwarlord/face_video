@@ -151,6 +151,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
@@ -5362,6 +5363,8 @@ private fun MessageBubble(
     // Bounded swipe animation: the message follows the finger, then springs back.
     val replyDragOffset = remember(message.id) { Animatable(0f) }
     val replyAnimationScope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val maxReplyDragOffsetPx = with(density) { 72.dp.toPx() }
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
@@ -5395,7 +5398,7 @@ private fun MessageBubble(
     ) {
         Box {
             if (replyDragOffset.value < -8f) {
-                val replyHintProgress = (-replyDragOffset.value / 72.dp.toPx()).coerceIn(0f, 1f)
+                val replyHintProgress = (-replyDragOffset.value / maxReplyDragOffsetPx).coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier.align(Alignment.CenterEnd)
                         .padding(end = 5.dp)
