@@ -363,6 +363,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Do not let a stale chat ID from a killed process suppress new message alerts.
+        ActiveChatNotificationState.clearAnyActiveChat(this)
 
         // Android 15+ enforces edge-to-edge for targetSdk 35+. Enable it
         // consistently on older Android versions and let Compose apply safe insets.
