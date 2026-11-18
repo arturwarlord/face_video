@@ -142,6 +142,24 @@ private data class SetFaceVideoStoryReactionArguments(
 )
 
 @Serializable
+data class FaceVideoMessageReaction(
+    val id: String,
+    @SerialName("message_id") val messageId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("user_id") val userId: String,
+    val reaction: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String
+)
+
+@Serializable
+private data class SetFaceVideoMessageReactionArguments(
+    @SerialName("p_message_id") val messageId: String,
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_reaction") val reaction: String?
+)
+
+@Serializable
 private data class NewFaceVideoStory(
     val id: String,
     @SerialName("user_id") val userId: String,
@@ -1534,6 +1552,28 @@ class SupabaseChatRepository(
         client.from("face_video_message_receipts").selectAsFlow(FaceVideoMessageReceipt::id) {
             eq("chat_id", chatId)
         }
+
+    /** Live reaction rows for messages in the current chat. */
+    @OptIn(SupabaseExperimental::class)
+    fun observeMessageReactions(chatId: String): Flow<List<FaceVideoMessageReaction>> =
+        client.from("face_video_message_reactions").selectAsFlow(FaceVideoMessageReaction::id) {
+            eq("chat_id", chatId)
+        }
+
+    /** Sets, changes or removes the signed-in user's reaction for one chat message. */
+    suspend fun setMessageReaction(messageId: String, chatId: String, reaction: String?) {
+        require(reaction == null || reaction in MESSAGE_REACTION_OPTIONS) {
+            "Неподдерживаемая реакция на сообщение."
+        }
+        client.postgrest.rpc(
+            "face_video_set_message_reaction",
+            SetFaceVideoMessageReactionArguments(
+                messageId = messageId,
+                chatId = chatId,
+                reaction = reaction
+            )
+        ).decodeAs<Boolean>()
+    }
 
     /**
      * Realtime feed for all messages visible to the signed-in user.
