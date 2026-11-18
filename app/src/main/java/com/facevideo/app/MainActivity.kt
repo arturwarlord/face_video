@@ -190,6 +190,10 @@ import com.facevideo.app.model.formatVoiceDuration
 import com.facevideo.app.model.buildVoiceWaveform
 import com.facevideo.app.model.VOICE_WAVEFORM_BAR_COUNT
 import com.facevideo.app.model.STORY_REACTION_OPTIONS
+import com.facevideo.app.model.MESSAGE_REACTION_OPTIONS
+import com.facevideo.app.model.MessageReactionCount
+import com.facevideo.app.model.MessageReactionEntry
+import com.facevideo.app.model.summarizeMessageReactions
 import com.facevideo.app.model.StoryReactionSummary
 import com.facevideo.app.model.nextStoryReaction
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
@@ -2706,6 +2710,23 @@ private fun LiveChatScreen(
     }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
     val receipts by receiptsFlow.collectAsState(initial = emptyList())
+
+    val messageReactionsFlow = remember(repository, chat.id) {
+        repository.observeMessageReactions(chat.id)
+    }
+    val messageReactionRows by messageReactionsFlow.collectAsState(initial = emptyList())
+    val reactionSummaries = remember(messageReactionRows, userId) {
+        summarizeMessageReactions(
+            messageReactionRows.map { row ->
+                MessageReactionEntry(
+                    messageId = row.messageId,
+                    userId = row.userId,
+                    reaction = row.reaction
+                )
+            },
+            currentUserId = userId
+        )
+    }
     var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     // Realtime rows can arrive in primary-key order rather than message time order.
     // Always render the timeline chronologically so every new message stays at the bottom.
@@ -3260,6 +3281,16 @@ private fun LiveChatScreen(
                         replyPreview = replyPreview,
                         attachmentPath = if (message.deletedAt == null) message.attachmentPath else null,
                         attachmentRepository = repository,
+                        reactions = reactionSummaries[message.id].orEmpty(),
+                        onReaction = if (message.deletedAt == null) ({ reaction ->
+                            scope.launch {
+                                runCatching {
+                                    repository.setMessageReaction(message.id, chat.id, reaction)
+                                }.onFailure {
+                                    errorMessage = it.message ?: "Не удалось поставить реакцию."
+                                }
+                            }
+                        }) else null,
                         onReply = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({ replyingTo = message }) else null,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -5185,6 +5216,8 @@ private fun MessageBubble(
     onReply: (() -> Unit)? = null,
     onCopy: (() -> Unit)? = null,
     onReplyPreviewClick: (() -> Unit)? = null,
+    reactions: List<MessageReactionCount> = emptyList(),
+    onReaction: ((String) -> Unit)? = null,
     selected: Boolean = false,
     onSelect: (() -> Unit)? = null,
     onToggleSelection: (() -> Unit)? = null
@@ -5256,7 +5289,7 @@ private fun MessageBubble(
                     .combinedClickable(
                         enabled = onSelect != null || onToggleSelection != null || onReply != null || onCopy != null,
                         onClick = { if (selected || onToggleSelection != null) onToggleSelection?.invoke() },
-                        onLongClick = { if (onSelect != null) onSelect() else showActions = true }
+                        onLongClick = { showActions = true }
                     ),
                 color = when {
                     selected -> Color(0xFF879BCB)
@@ -5430,6 +5463,44 @@ private fun MessageBubble(
                             }
                         }
                     }
+                    if (reactions.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            reactions.forEach { reaction ->
+                                Surface(
+                                    modifier = Modifier.padding(end = 4.dp).clickable(
+                                        enabled = onReaction != null
+                                    ) {
+                                        onReaction?.invoke(reaction.reaction)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (reaction.selectedByMe) Color(0xFFDCE4FF) else Color(0xFFF2F4FA),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (reaction.selectedByMe) Color(0xFF8EA2E8) else Color(0xFFE2E7F1)
+                                    ),
+                                    shadowElevation = 0.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(reaction.reaction, fontSize = 13.sp)
+                                        Text(
+                                            reaction.count.toString(),
+                                            color = if (reaction.selectedByMe) AccentSlate else Muted,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             DropdownMenu(
@@ -5437,6 +5508,36 @@ private fun MessageBubble(
                 onDismissRequest = { showActions = false },
                 containerColor = PanelLight
             ) {
+                if (onReaction != null && !message.isDeleted) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MESSAGE_REACTION_OPTIONS.forEach { emoji ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        showActions = false
+                                        onReaction.invoke(emoji)
+                                    }
+                                    .padding(horizontal = 3.dp, vertical = 5.dp)
+                            ) {
+                                Text(emoji, fontSize = 20.sp)
+                            }
+                        }
+                    }
+                }
+                if (onSelect != null) {
+                    DropdownMenuItem(
+                        text = { Text("Выбрать сообщение", color = MainText) },
+                        onClick = {
+                            showActions = false
+                            onSelect()
+                        }
+                    )
+                }
                 if (onReply != null) {
                     DropdownMenuItem(
                         text = { Text("Ответить", color = MainText) },
