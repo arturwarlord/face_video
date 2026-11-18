@@ -3364,6 +3364,21 @@ private fun LiveChatScreen(
                             clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
                             Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
                         },
+                        onForward = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({
+                            selectedMessageIds = setOf(message.id)
+                            scope.launch {
+                                actionBusy = true
+                                forwardTargets = runCatching {
+                                    repository.listMyChats(userId).filter { it.id != chat.id }
+                                }.getOrDefault(emptyList())
+                                actionBusy = false
+                                showForwardPicker = true
+                            }
+                        }) else null,
+                        onDelete = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({
+                            selectedMessageIds = setOf(message.id)
+                            showDeleteSelection = true
+                        }) else null,
                         onReplyPreviewClick = repliedMessage?.let { original ->
                             {
                                 val targetIndex = orderedMessages.indexOfFirst { it.id == original.id }
