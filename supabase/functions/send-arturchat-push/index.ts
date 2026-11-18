@@ -17,6 +17,9 @@ type PushPayload = {
   entityId: string;
   chatId?: string;
   mediaType?: "audio" | "video";
+  senderId?: string;
+  senderAvatarUrl?: string;
+  createdAt?: string;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -71,6 +74,9 @@ async function sendToDevice(
   };
   if (payload.chatId) data.chat_id = payload.chatId;
   if (payload.mediaType) data.media_type = payload.mediaType;
+  if (payload.senderId) data.sender_id = payload.senderId;
+  if (payload.senderAvatarUrl) data.sender_avatar_url = payload.senderAvatarUrl;
+  if (payload.createdAt) data.created_at = payload.createdAt;
 
   const response = await fetch(
     "https://fcm.googleapis.com/v1/projects/" + projectId + "/messages:send",
@@ -98,21 +104,17 @@ async function sendToDevice(
                 },
               }
             : {
+                // Data-only messages allow the Android client to render native
+                // MessagingStyle threads with each sender's actual avatar.
                 priority: "HIGH",
-                notification: {
-                  channel_id: "arturchat_messages",
-                  sound: "default",
-                  // One replaceable tray notification per chat. When that chat is
-                  // opened, Android can cancel this exact FCM-managed notification.
-                  tag: "arturchat-chat-" + (payload.chatId ?? payload.entityId),
-                },
+                ttl: "86400s",
               },
-          // Notification + data is intentional for calls: when ArturChat is
-          // backgrounded or its process was removed, Android posts the call
-          // alert itself and places the data (including entity_id) in the
-          // launcher Activity intent when the user taps it. Foreground calls
-          // still reach onMessageReceived and use the native CallStyle UI.
-          notification: { title: payload.title, body: payload.body },
+          ...(payload.type === "call"
+            ? {
+                // Keep system-managed notification + data for background calls.
+                notification: { title: payload.title, body: payload.body },
+              }
+            : {}),
         },
       }),
     },
@@ -187,13 +189,16 @@ Deno.serve(async (request: Request) => {
     recipients = (members ?? []).map((member) => String(member.user_id));
 
     const { data: sender } = await supabase.from("face_video_profiles")
-      .select("display_name, username").eq("id", senderId).maybeSingle();
+      .select("display_name, username, avatar_url").eq("id", senderId).maybeSingle();
     notification = {
       type: "message",
       title: sender?.display_name?.trim() || sender?.username || "Новое сообщение",
       body: String(row.body ?? "").slice(0, 1000),
       entityId: messageId,
       chatId,
+      senderId,
+      senderAvatarUrl: typeof sender?.avatar_url === "string" ? sender.avatar_url : undefined,
+      createdAt: typeof row.created_at === "string" ? row.created_at : undefined,
     };
   } else if (payload.table === "face_video_calls") {
     const row = payload.record;
