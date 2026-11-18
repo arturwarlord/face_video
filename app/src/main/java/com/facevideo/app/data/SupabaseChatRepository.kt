@@ -17,6 +17,7 @@ import com.facevideo.app.model.STORY_REACTION_OPTIONS
 import com.facevideo.app.model.StoryReactionEntry
 import com.facevideo.app.model.StoryReactionSummary
 import com.facevideo.app.model.summarizeStoryReactions
+import com.facevideo.app.model.MESSAGE_REACTION_OPTIONS
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -136,8 +137,26 @@ data class FaceVideoStoryReaction(
 )
 
 @Serializable
+data class FaceVideoMessageReaction(
+    val id: String,
+    @SerialName("message_id") val messageId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("user_id") val userId: String,
+    val reaction: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String
+)
+
+@Serializable
 private data class SetFaceVideoStoryReactionArguments(
     @SerialName("p_story_id") val storyId: String,
+    @SerialName("p_reaction") val reaction: String?
+)
+
+@Serializable
+private data class SetFaceVideoMessageReactionArguments(
+    @SerialName("p_message_id") val messageId: String,
+    @SerialName("p_chat_id") val chatId: String,
     @SerialName("p_reaction") val reaction: String?
 )
 
@@ -571,6 +590,28 @@ class SupabaseChatRepository(
             )
         ).decodeAs<Boolean>()
         return getStoryReactionSummary(storyId, currentUserId)
+    }
+
+    /**
+     * Adds, changes, or removes the signed-in user's reaction on one message.
+     * The database RPC enforces chat membership and one reaction per user/message.
+     */
+    suspend fun setMessageReaction(
+        messageId: String,
+        chatId: String,
+        reaction: String?
+    ): Boolean {
+        require(reaction == null || reaction in MESSAGE_REACTION_OPTIONS) {
+            "Неподдерживаемая реакция на сообщение."
+        }
+        return client.postgrest.rpc(
+            "face_video_set_message_reaction",
+            SetFaceVideoMessageReactionArguments(
+                messageId = messageId,
+                chatId = chatId,
+                reaction = reaction
+            )
+        ).decodeAs<Boolean>()
     }
 
     /** Signed URLs are short-lived; only create them when a story image is about to load. */
@@ -1525,6 +1566,13 @@ class SupabaseChatRepository(
     @OptIn(SupabaseExperimental::class)
     fun observeMessages(chatId: String): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {
+            eq("chat_id", chatId)
+        }
+
+    /** Realtime reaction rows for the active chat. RLS restricts them to chat members. */
+    @OptIn(SupabaseExperimental::class)
+    fun observeMessageReactions(chatId: String): Flow<List<FaceVideoMessageReaction>> =
+        client.from("face_video_message_reactions").selectAsFlow(FaceVideoMessageReaction::id) {
             eq("chat_id", chatId)
         }
 
