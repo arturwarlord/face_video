@@ -629,7 +629,7 @@ private fun FaceVideoApp(
     LaunchedEffect(liveRepository, userId) {
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
-        val chatTitles = localCache.readChats(currentUserId).associate { it.id to it.title }
+        val cachedChats = localCache.readChats(currentUserId).associateBy { it.id }
 
         suspend fun markIncomingMessagesDelivered(messages: List<com.facevideo.app.data.FaceVideoMessage>) {
             val incomingIds = messages
@@ -664,11 +664,25 @@ private fun FaceVideoApp(
             newMessages
                 .filter { it.senderId != currentUserId && it.chatId != currentOpenedLiveChatId }
                 .forEach { message ->
+                    val cachedChat = cachedChats[message.chatId]
+                    val cachedSender = localCache.readProfile(currentUserId, message.senderId)
+                    val senderName = cachedSender?.displayName?.ifBlank { cachedSender.username }
+                        ?: cachedChat?.takeIf { !it.isGroup && it.peerUserId == message.senderId }?.title
+                        ?: cachedChat?.title
+                        ?: "Новое сообщение"
+                    val senderAvatarUrl = cachedSender?.avatarUrl
+                        ?: cachedChat?.takeIf { !it.isGroup && it.peerUserId == message.senderId }?.peerAvatarUrl
+                    val timestampMillis = runCatching {
+                        java.time.Instant.parse(message.createdAt).toEpochMilli()
+                    }.getOrDefault(System.currentTimeMillis())
                     appNotifications.showMessage(
                         notificationId = message.id,
-                        title = chatTitles[message.chatId] ?: "Новое сообщение",
+                        title = senderName,
                         body = message.body,
-                        chatId = message.chatId
+                        chatId = message.chatId,
+                        senderId = message.senderId,
+                        senderAvatarUrl = senderAvatarUrl,
+                        timestampMillis = timestampMillis
                     )
                 }
 
