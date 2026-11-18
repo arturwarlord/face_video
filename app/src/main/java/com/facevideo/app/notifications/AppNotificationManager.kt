@@ -32,7 +32,6 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-@Serializable
 private object NotificationAvatarCache {
     private val cache = android.util.LruCache<String, Bitmap>(12)
     fun get(url: String): Bitmap? = cache.get(url)
