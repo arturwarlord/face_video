@@ -5361,6 +5361,7 @@ private fun MessageBubble(
     var showActions by remember(message.id) { mutableStateOf(false) }
     // Bounded swipe animation: the message follows the finger, then springs back.
     val replyDragOffset = remember(message.id) { Animatable(0f) }
+    val replyAnimationScope = rememberCoroutineScope()
     val deliveryTicks = if (message.isMine && showTime) {
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
@@ -5393,6 +5394,25 @@ private fun MessageBubble(
         verticalAlignment = Alignment.Bottom
     ) {
         Box {
+            if (replyDragOffset.value < -8f) {
+                val replyHintProgress = (-replyDragOffset.value / 72.dp.toPx()).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                        .padding(end = 5.dp)
+                        .size(28.dp)
+                        .graphicsLayer {
+                            alpha = replyHintProgress
+                            val hintScale = 0.82f + replyHintProgress * 0.18f
+                            scaleX = hintScale
+                            scaleY = hintScale
+                        }
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.96f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("↩", color = AccentSlate, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
             Surface(
                 // Delivery ticks are inline with the final text line, so they cannot create a separate row.
                 modifier = Modifier
@@ -5417,7 +5437,7 @@ private fun MessageBubble(
                                 onDragStart = {
                                     horizontalDragDistance = 0f
                                     currentDragOffset = 0f
-                                    launch { replyDragOffset.snapTo(0f) }
+                                    replyAnimationScope.launch { replyDragOffset.snapTo(0f) }
                                 },
                                 onHorizontalDrag = { change, dragAmount ->
                                     horizontalDragDistance += dragAmount
@@ -5425,7 +5445,7 @@ private fun MessageBubble(
                                         change.consume()
                                         currentDragOffset = (currentDragOffset + dragAmount)
                                             .coerceIn(-maxDragOffset, 0f)
-                                        launch { replyDragOffset.snapTo(currentDragOffset) }
+                                        replyAnimationScope.launch { replyDragOffset.snapTo(currentDragOffset) }
                                     }
                                 },
                                 onDragEnd = {
@@ -5433,7 +5453,7 @@ private fun MessageBubble(
                                     if (shouldReply) onReply.invoke()
                                     horizontalDragDistance = 0f
                                     currentDragOffset = 0f
-                                    launch {
+                                    replyAnimationScope.launch {
                                         replyDragOffset.animateTo(
                                             targetValue = 0f,
                                             animationSpec = spring(
@@ -5446,7 +5466,7 @@ private fun MessageBubble(
                                 onDragCancel = {
                                     horizontalDragDistance = 0f
                                     currentDragOffset = 0f
-                                    launch {
+                                    replyAnimationScope.launch {
                                         replyDragOffset.animateTo(
                                             targetValue = 0f,
                                             animationSpec = spring(
