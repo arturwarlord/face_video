@@ -186,6 +186,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.facevideo.app.notifications.AppNotificationManager
+import com.facevideo.app.notifications.ActiveChatNotificationState
 import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
@@ -430,6 +431,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        ActiveChatNotificationState.setAppForeground(this, true)
+    }
+
+    override fun onPause() {
+        ActiveChatNotificationState.setAppForeground(this, false)
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -654,7 +665,8 @@ private fun FaceVideoApp(
                     appNotifications.showMessage(
                         notificationId = message.id,
                         title = chatTitles[message.chatId] ?: "Новое сообщение",
-                        body = message.body
+                        body = message.body,
+                        chatId = message.chatId
                     )
                 }
 
@@ -2791,6 +2803,12 @@ private fun LiveChatScreen(
     onGroupUpdated: (String) -> Unit,
     onGroupClosed: () -> Unit
 ) {
+    val chatContext = LocalContext.current
+    DisposableEffect(chatContext, chat.id) {
+        ActiveChatNotificationState.setActiveChat(chatContext, chat.id)
+        onDispose { ActiveChatNotificationState.clearActiveChat(chatContext, chat.id) }
+    }
+
     val cachedMessages = remember(cache, userId, chat.id) {
         cache.readMessages(userId, chat.id)
     }
@@ -2874,7 +2892,15 @@ private fun LiveChatScreen(
 
     LaunchedEffect(chat.id, orderedMessages.lastOrNull()?.id) {
         runCatching { repository.markChatRead(chat.id) }
-            .onSuccess { onMarkedRead() }
+            .onSuccess {
+                AppNotificationManager(context).cancelChatNotifications(
+                    chatId = chat.id,
+                    messageIds = orderedMessages
+                        .filter { it.senderId != userId }
+                        .map { it.id }
+                )
+                onMarkedRead()
+            }
             .onFailure {
                 android.util.Log.w("ArturChatUnread", "Could not mark chat as read", it)
             }
