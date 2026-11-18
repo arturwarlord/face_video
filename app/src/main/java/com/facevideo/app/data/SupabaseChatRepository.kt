@@ -161,6 +161,13 @@ private data class SetFaceVideoMessageReactionArguments(
 )
 
 @Serializable
+private data class EditFaceVideoMessageArguments(
+    @SerialName("p_message_id") val messageId: String,
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_body") val body: String
+)
+
+@Serializable
 private data class NewFaceVideoStory(
     val id: String,
     @SerialName("user_id") val userId: String,
@@ -178,6 +185,7 @@ data class FaceVideoMessage(
     @SerialName("sender_id") val senderId: String,
     val body: String,
     @SerialName("created_at") val createdAt: String,
+    @SerialName("edited_at") val editedAt: String? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
     @SerialName("attachment_path") val attachmentPath: String? = null,
     @SerialName("attachment_mime_type") val attachmentMimeType: String? = null,
@@ -1396,6 +1404,36 @@ class SupabaseChatRepository(
                 select()
             }
             .decodeSingle<FaceVideoMessage>()
+    }
+
+    /**
+     * Edits an existing text-only message authored by the current user.
+     * Supabase RLS and the invoker RPC re-check ownership and chat membership.
+     */
+    suspend fun editMessage(
+        messageId: String,
+        chatId: String,
+        text: String
+    ): FaceVideoMessage {
+        val cleanText = text.trim()
+        require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
+            "Сообщение должно содержать от 1 до 4000 символов."
+        }
+        client.postgrest.rpc(
+            "face_video_edit_message",
+            EditFaceVideoMessageArguments(
+                messageId = messageId,
+                chatId = chatId,
+                body = cleanText
+            )
+        ).decodeAs<Boolean>()
+
+        return client.from("face_video_messages").select {
+            filter {
+                eq("id", messageId)
+                eq("chat_id", chatId)
+            }
+        }.decodeSingle<FaceVideoMessage>()
     }
 
     /**
