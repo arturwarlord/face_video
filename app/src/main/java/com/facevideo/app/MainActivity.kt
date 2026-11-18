@@ -5440,7 +5440,7 @@ private fun MessageBubble(
                                 onHorizontalDrag = { change, dragAmount ->
                                     if (dragAmount > 0f) {
                                         draggedRight = (draggedRight + dragAmount)
-                                            .coerceAtMost(size.width * 0.22f)
+                                            .coerceAtMost(maxOf(72.dp.toPx(), size.width * 0.28f))
                                         replySwipeOffset = draggedRight
                                         change.consume()
                                     }
@@ -5733,7 +5733,6 @@ private fun MessageBubble(
                         }
                     )
                 }
-            }
             }
         }
     }
