@@ -28,10 +28,10 @@ data class ChatMessage(
     val deliveryStatus: MessageDeliveryStatus? = null,
     val forwardedFromName: String? = null,
     val isDeleted: Boolean = false,
-    val isEdited: Boolean = false,
     val attachmentMimeType: String? = null,
     val attachmentDurationMs: Long? = null,
-    val attachmentWaveform: List<Int>? = null
+    val attachmentWaveform: List<Int>? = null,
+    val isEdited: Boolean = false
 )
 
 fun filterChats(chats: List<ChatSummary>, query: String): List<ChatSummary> {
