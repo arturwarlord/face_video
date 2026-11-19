@@ -169,6 +169,7 @@ Deno.serve(async (request: Request) => {
   }
 
   let recipients: string[] = [];
+  let mutedRecipientCount = 0;
   let notification: PushPayload;
 
   if (payload.table === "face_video_messages") {
@@ -190,7 +191,6 @@ Deno.serve(async (request: Request) => {
 
     // Suppress message notifications only for recipients who muted this chat.
     // Incoming-call notifications use the separate call branch and remain unaffected.
-    let mutedRecipientCount = 0;
     if (recipients.length > 0) {
       const { data: mutedRows, error: muteError } = await supabase
         .from("face_video_chat_notification_settings")
