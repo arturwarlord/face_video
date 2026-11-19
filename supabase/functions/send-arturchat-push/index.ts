@@ -196,6 +196,7 @@ Deno.serve(async (request: Request) => {
         .from("face_video_chat_notification_settings")
         .select("user_id")
         .eq("chat_id", chatId)
+        .eq("is_muted", true)
         .in("user_id", recipients);
       if (muteError) {
         console.error("Could not load chat notification settings", muteError);
