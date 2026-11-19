@@ -110,6 +110,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -168,6 +169,7 @@ import com.facevideo.app.data.SupabaseClientProvider
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.ArturChatImageCache
 import com.facevideo.app.data.ArturChatLocalCache
+import com.facevideo.app.data.ArturChatNavigationState
 import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.FaceVideoStoryCard
@@ -479,13 +481,77 @@ private fun FaceVideoApp(
 ) {
     val callNotificationAction by callNotificationActionFlow.collectAsState()
 
-    var selectedTab by remember { mutableStateOf(MainTab.CHATS) }
-    var openedChat by remember { mutableStateOf<ChatSummary?>(null) }
-    var openedLiveChat by remember { mutableStateOf<FaceVideoChatSummary?>(null) }
-    var openedProfileUserId by remember { mutableStateOf<String?>(null) }
-    var openedStoriesUserId by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val localCache = remember(context) { ArturChatLocalCache(context) }
+    // Restore the last destination from disk as well as from the Activity state.
+    // This survives Android reclaiming the process while ArturChat is backgrounded.
+    val initialNavigationState = remember(userId, localCache) {
+        userId?.let(localCache::readNavigationState) ?: ArturChatNavigationState()
+    }
+    var selectedTab by remember(userId, initialNavigationState) {
+        mutableStateOf(
+            runCatching { MainTab.valueOf(initialNavigationState.selectedTab) }
+                .getOrDefault(MainTab.CHATS)
+        )
+    }
+    var openedDemoChatId by remember(userId, initialNavigationState) {
+        mutableStateOf(initialNavigationState.demoChatId)
+    }
+    var openedChat by remember(userId, initialNavigationState) {
+        mutableStateOf(
+            initialNavigationState.demoChatId?.let { id -> DemoData.chats.firstOrNull { it.id == id } }
+        )
+    }
+    var openedLiveChatId by remember(userId, initialNavigationState) {
+        mutableStateOf(initialNavigationState.liveChatId)
+    }
+    var openedLiveChat by remember(userId, initialNavigationState, localCache) {
+        mutableStateOf(
+            initialNavigationState.liveChatId?.let { id ->
+                userId?.let(localCache::readChats)?.firstOrNull { it.id == id }
+            }
+        )
+    }
+    var openedProfileUserId by remember(userId, initialNavigationState) {
+        mutableStateOf(initialNavigationState.profileUserId)
+    }
+    var openedStoriesUserId by remember(userId, initialNavigationState) {
+        mutableStateOf(initialNavigationState.storiesUserId)
+    }
+
+    fun setOpenedLiveChat(chat: FaceVideoChatSummary?) {
+        openedLiveChat = chat
+        openedLiveChatId = chat?.id
+        if (chat != null) {
+            openedChat = null
+            openedDemoChatId = null
+        }
+    }
+
+    fun setOpenedDemoChat(chat: ChatSummary?) {
+        openedChat = chat
+        openedDemoChatId = chat?.id
+        if (chat != null) setOpenedLiveChat(null)
+    }
+
+    var lastSavedNavigationState by remember(userId, initialNavigationState) {
+        mutableStateOf(initialNavigationState)
+    }
+    SideEffect {
+        if (userId != null) {
+            val currentNavigationState = ArturChatNavigationState(
+                selectedTab = selectedTab.name,
+                liveChatId = openedLiveChatId,
+                profileUserId = openedProfileUserId,
+                storiesUserId = openedStoriesUserId,
+                demoChatId = openedDemoChatId
+            )
+            if (currentNavigationState != lastSavedNavigationState) {
+                localCache.saveNavigationState(userId, currentNavigationState)
+                lastSavedNavigationState = currentNavigationState
+            }
+        }
+    }
     var unreadSummaries by remember(userId, localCache) {
         mutableStateOf(userId?.let(localCache::readUnreadSummaries) ?: emptyMap())
     }
@@ -600,7 +666,35 @@ private fun FaceVideoApp(
         }
     }
 
-    val currentOpenedLiveChatId by rememberUpdatedState(openedLiveChat?.id)
+    val currentOpenedLiveChatId by rememberUpdatedState(openedLiveChatId)
+
+    // If the Activity was recreated and the chat was not in the first-paint cache,
+    // resolve it from Supabase before rendering the conversation.
+    LaunchedEffect(userId, openedLiveChatId, liveRepository) {
+        val currentUserId = userId ?: return@LaunchedEffect
+        val chatId = openedLiveChatId ?: return@LaunchedEffect
+        if (openedLiveChat?.id == chatId) return@LaunchedEffect
+
+        val cachedChat = localCache.readChats(currentUserId).firstOrNull { it.id == chatId }
+        if (cachedChat != null) {
+            openedLiveChat = cachedChat
+            return@LaunchedEffect
+        }
+
+        val repository = liveRepository ?: return@LaunchedEffect
+        val refreshedChats = runCatching { repository.listMyChats(currentUserId) }
+            .getOrNull() ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            localCache.saveChats(currentUserId, refreshedChats)
+        }
+        val restoredChat = refreshedChats.firstOrNull { it.id == chatId }
+        if (restoredChat != null) {
+            openedLiveChat = restoredChat
+        } else {
+            // The saved chat may have been deleted or the user may have been removed.
+            openedLiveChatId = null
+        }
+    }
 
     // Unread summaries refresh independently from the long-lived realtime subscription.
     LaunchedEffect(liveRepository, userId, unreadRefreshKey) {
@@ -897,15 +991,15 @@ private fun FaceVideoApp(
         enabled = activeCall != null ||
             openedProfileUserId != null ||
             openedStoriesUserId != null ||
-            openedLiveChat != null ||
+            openedLiveChatId != null ||
             openedChat != null
     ) {
         when {
             activeCall != null -> finishCall()
             openedProfileUserId != null -> openedProfileUserId = null
             openedStoriesUserId != null -> openedStoriesUserId = null
-            openedLiveChat != null -> openedLiveChat = null
-            openedChat != null -> openedChat = null
+            openedLiveChatId != null -> setOpenedLiveChat(null)
+            openedChat != null -> setOpenedDemoChat(null)
         }
     }
 
@@ -1075,9 +1169,13 @@ private fun FaceVideoApp(
                 onBack = { openedProfileUserId = null },
                 onOpenChat = { chat ->
                     openedProfileUserId = null
-                    openedLiveChat = chat
+                    setOpenedLiveChat(chat)
                 }
             )
+        } else if (openedLiveChatId != null && openedLiveChat == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = AccentSlate)
+            }
         } else if (openedLiveChat != null && liveRepository != null && userId != null) {
             val currentChat = openedLiveChat!!
             LiveChatScreen(
@@ -1087,7 +1185,7 @@ private fun FaceVideoApp(
                 userId = userId,
                 onlineUserIds = onlineUserIds,
                 presenceAvailable = presenceAvailable,
-                onBack = { openedLiveChat = null },
+                onBack = { setOpenedLiveChat(null) },
                 onMarkedRead = { unreadRefreshKey += 1 },
                 onOpenProfile = { profileUserId -> openedProfileUserId = profileUserId },
                 onCall = { isVideo ->
@@ -1099,12 +1197,12 @@ private fun FaceVideoApp(
                     )
                 },
                 onGroupUpdated = { newTitle ->
-                    openedLiveChat = openedLiveChat?.copy(title = newTitle)
+                    setOpenedLiveChat(openedLiveChat?.copy(title = newTitle))
                     scope.launch {
                         runCatching {
                             val latestChats = liveRepository.listMyChats(userId)
                             latestChats.firstOrNull { it.id == currentChat.id }?.let { refreshed ->
-                                openedLiveChat = refreshed
+                                setOpenedLiveChat(refreshed)
                             }
                             withContext(Dispatchers.IO) { localCache.saveChats(userId, latestChats) }
                         }.onFailure {
@@ -1113,7 +1211,7 @@ private fun FaceVideoApp(
                     }
                 },
                 onGroupClosed = {
-                    openedLiveChat = null
+                    setOpenedLiveChat(null)
                     unreadRefreshKey += 1
                 }
             )
@@ -1122,7 +1220,7 @@ private fun FaceVideoApp(
             ChatScreen(
                 chat = chat,
                 messages = messagesByChat[chat.id] ?: mutableStateListOf(),
-                onBack = { openedChat = null },
+                onBack = { setOpenedDemoChat(null) },
                 onCall = { showCallInfo = true }
             )
         } else {
@@ -1208,11 +1306,11 @@ private fun FaceVideoApp(
                                     cache = localCache,
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
-                                    onOpenChat = { openedLiveChat = it },
+                                    onOpenChat = { setOpenedLiveChat(it) },
                                     onOpenStories = { openedStoriesUserId = it }
                                 )
                             } else {
-                                ChatListScreen(onOpenChat = { openedChat = it })
+                                ChatListScreen(onOpenChat = { setOpenedDemoChat(it) })
                             }
                         }
                         MainTab.GROUPS -> {
@@ -1220,7 +1318,7 @@ private fun FaceVideoApp(
                                 GroupsScreen(
                                     repository = liveRepository,
                                     userId = userId,
-                                    onOpenGroup = { openedLiveChat = it }
+                                    onOpenGroup = { setOpenedLiveChat(it) }
                                 )
                             } else {
                                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1245,11 +1343,11 @@ private fun FaceVideoApp(
                                     repository = liveRepository,
                                     userId = userId,
                                     onlineUserIds = onlineUserIds,
-                                    onOpenChat = { openedLiveChat = it },
+                                    onOpenChat = { setOpenedLiveChat(it) },
                                     onOpenProfile = { openedProfileUserId = it }
                                 )
                             } else {
-                                ContactsScreen(onOpenChat = { openedChat = it })
+                                ContactsScreen(onOpenChat = { setOpenedDemoChat(it) })
                             }
                         }
                         MainTab.PROFILE -> ProfileScreen(
