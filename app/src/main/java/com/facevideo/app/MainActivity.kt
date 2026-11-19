@@ -556,6 +556,7 @@ private fun FaceVideoApp(
         mutableStateOf(userId?.let(localCache::readUnreadSummaries) ?: emptyMap())
     }
     var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
+    var mutedChatIds by remember(userId) { mutableStateOf<Set<String>>(emptySet()) }
     var showCallInfo by remember { mutableStateOf(false) }
     val callInfoMessage = "Открой личную переписку и нажми значок трубки для аудиозвонка или камеры для видеозвонка."
 
@@ -667,6 +668,17 @@ private fun FaceVideoApp(
     }
 
     val currentOpenedLiveChatId by rememberUpdatedState(openedLiveChatId)
+    val currentMutedChatIds by rememberUpdatedState(mutedChatIds)
+
+    LaunchedEffect(liveRepository, userId) {
+        val repository = liveRepository ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+        mutedChatIds = runCatching { repository.listMutedChatIds(currentUserId) }
+            .onFailure {
+                android.util.Log.w("ArturChatNotifications", "Could not load muted chats", it)
+            }
+            .getOrDefault(emptySet())
+    }
 
     // If the Activity was recreated and the chat was not in the first-paint cache,
     // resolve it from Supabase before rendering the conversation.
@@ -750,7 +762,11 @@ private fun FaceVideoApp(
 
             val newMessages = messages.filter { knownMessageIds.add(it.id) }
             newMessages
-                .filter { it.senderId != currentUserId && it.chatId != currentOpenedLiveChatId }
+                .filter {
+                    it.senderId != currentUserId &&
+                        it.chatId != currentOpenedLiveChatId &&
+                        it.chatId !in currentMutedChatIds
+                }
                 .forEach { message ->
                     appNotifications.showMessage(
                         notificationId = message.id,
@@ -1195,6 +1211,11 @@ private fun FaceVideoApp(
                             if (isVideo) "video" else "audio"
                         )
                     )
+                },
+                notificationsMuted = currentChat.id in mutedChatIds,
+                onNotificationMuteChanged = { muted ->
+                    mutedChatIds = if (muted) mutedChatIds + currentChat.id
+                    else mutedChatIds - currentChat.id
                 },
                 onGroupUpdated = { newTitle ->
                     setOpenedLiveChat(openedLiveChat?.copy(title = newTitle))
@@ -2801,6 +2822,8 @@ private fun LiveChatScreen(
     onMarkedRead: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onCall: (Boolean) -> Unit,
+    notificationsMuted: Boolean,
+    onNotificationMuteChanged: (Boolean) -> Unit,
     onGroupUpdated: (String) -> Unit,
     onGroupClosed: () -> Unit
 ) {
@@ -2916,6 +2939,7 @@ private fun LiveChatScreen(
     var actionBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSending by remember { mutableStateOf(false) }
+    var notificationMuteBusy by remember(chat.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
@@ -2940,6 +2964,29 @@ private fun LiveChatScreen(
     LaunchedEffect(orderedMessages.lastOrNull()?.id, orderedMessages.size) {
         if (orderedMessages.isNotEmpty()) {
             listState.animateScrollToItem(orderedMessages.lastIndex)
+        }
+    }
+
+    fun toggleChatNotifications() {
+        if (notificationMuteBusy) return
+        val nextMuted = !notificationsMuted
+        scope.launch {
+            notificationMuteBusy = true
+            runCatching {
+                repository.setChatNotificationsMuted(chat.id, nextMuted)
+            }.onSuccess {
+                onNotificationMuteChanged(nextMuted)
+                Toast.makeText(
+                    context,
+                    if (nextMuted) "Уведомления отключены" else "Уведомления включены",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure { error ->
+                errorMessage = error.message ?: "Не удалось изменить настройки уведомлений."
+                Toast.makeText(context, "Не удалось изменить уведомления", Toast.LENGTH_SHORT).show()
+                android.util.Log.w("ArturChatNotifications", "Could not update chat mute setting", error)
+            }
+            notificationMuteBusy = false
         }
     }
 
@@ -3381,7 +3428,20 @@ private fun LiveChatScreen(
                         }
                     }
                     Spacer(Modifier.width(7.dp))
+                    ChatChromeActionButton(
+                        onClick = { toggleChatNotifications() },
+                        filled = false,
+                        transparent = true,
+                        size = 40.dp
+                    ) {
+                        Text(
+                            if (notificationsMuted) "🔕" else "🔔",
+                            fontSize = 18.sp,
+                            color = InboxAccentStrong
+                        )
+                    }
                     if (chat.isGroup) {
+                        Spacer(Modifier.width(4.dp))
                         ChatChromeActionButton(
                             onClick = { showGroupManagement = true },
                             filled = false,
@@ -3391,10 +3451,11 @@ private fun LiveChatScreen(
                             Text("⋯", color = InboxAccentStrong, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                         }
                     } else {
+                        Spacer(Modifier.width(4.dp))
                         ChatChromeActionButton(onClick = { onCall(false) }, filled = false, transparent = true, size = 40.dp) {
                             ChatCallGlyph(video = false, tint = InboxAccentStrong)
                         }
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         ChatChromeActionButton(onClick = { onCall(true) }, filled = false, transparent = true, size = 40.dp) {
                             ChatCallGlyph(video = true, tint = InboxAccentStrong)
                         }
