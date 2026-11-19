@@ -1645,6 +1645,13 @@ class SupabaseChatRepository(
             }
             .map { rows -> rows.mapTo(mutableSetOf()) { it.chatId } }
 
+    /** One-shot fallback if the Realtime subscription cannot be established. */
+    suspend fun listMutedChatIds(userId: String): Set<String> =
+        client.from("face_video_chat_notification_settings").select {
+            filter { eq("user_id", userId) }
+        }.decodeList<FaceVideoChatNotificationMute>()
+            .mapTo(mutableSetOf()) { it.chatId }
+
     /** Toggles notifications for one conversation; database RLS checks membership and ownership. */
     suspend fun setChatNotificationsMuted(chatId: String, muted: Boolean): Boolean =
         client.postgrest.rpc(
