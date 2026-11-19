@@ -148,6 +148,13 @@ data class FaceVideoMessageReaction(
 )
 
 @Serializable
+data class FaceVideoChatNotificationMute(
+    @SerialName("user_id") val userId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("muted_at") val mutedAt: String
+)
+
+@Serializable
 private data class SetFaceVideoStoryReactionArguments(
     @SerialName("p_story_id") val storyId: String,
     @SerialName("p_reaction") val reaction: String?
@@ -158,6 +165,12 @@ private data class SetFaceVideoMessageReactionArguments(
     @SerialName("p_message_id") val messageId: String,
     @SerialName("p_chat_id") val chatId: String,
     @SerialName("p_reaction") val reaction: String?
+)
+
+@Serializable
+private data class SetFaceVideoChatNotificationMuteArguments(
+    @SerialName("p_chat_id") val chatId: String,
+    @SerialName("p_muted") val muted: Boolean
 )
 
 @Serializable
@@ -1621,6 +1634,23 @@ class SupabaseChatRepository(
     @OptIn(SupabaseExperimental::class)
     fun observeMyMessages(): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {}
+
+    /** Returns chat IDs whose notifications this account has muted. */
+    suspend fun listMutedChatIds(userId: String): Set<String> =
+        client.from("face_video_chat_notification_settings").select {
+            filter { eq("user_id", userId) }
+        }.decodeList<FaceVideoChatNotificationMute>()
+            .mapTo(mutableSetOf()) { it.chatId }
+
+    /** Toggles notifications for one conversation; database RLS checks membership and ownership. */
+    suspend fun setChatNotificationsMuted(chatId: String, muted: Boolean): Boolean =
+        client.postgrest.rpc(
+            "face_video_set_chat_notification_mute",
+            SetFaceVideoChatNotificationMuteArguments(
+                chatId = chatId,
+                muted = muted
+            )
+        ).decodeAs<Boolean>()
 
     suspend fun registerPushToken(userId: String, token: String) {
         require(token.length in 20..4096) { "Недопустимый FCM-токен." }
