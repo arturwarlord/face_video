@@ -10,6 +10,7 @@ import io.github.jan.supabase.realtime.selectAsFlow
 import io.github.jan.supabase.storage.storage
 import io.ktor.http.ContentType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.serialization.SerialName
@@ -1635,12 +1636,14 @@ class SupabaseChatRepository(
     fun observeMyMessages(): Flow<List<FaceVideoMessage>> =
         client.from("face_video_messages").selectAsFlow(FaceVideoMessage::id) {}
 
-    /** Returns chat IDs whose notifications this account has muted. */
-    suspend fun listMutedChatIds(userId: String): Set<String> =
-        client.from("face_video_chat_notification_settings").select {
-            filter { eq("user_id", userId) }
-        }.decodeList<FaceVideoChatNotificationMute>()
-            .mapTo(mutableSetOf()) { it.chatId }
+    /** Live mute state for this account; RLS limits rows to the signed-in user's chats. */
+    @OptIn(SupabaseExperimental::class)
+    fun observeMutedChatIds(userId: String): Flow<Set<String>> =
+        client.from("face_video_chat_notification_settings")
+            .selectAsFlow(FaceVideoChatNotificationMute::chatId) {
+                eq("user_id", userId)
+            }
+            .map { rows -> rows.mapTo(mutableSetOf()) { it.chatId } }
 
     /** Toggles notifications for one conversation; database RLS checks membership and ownership. */
     suspend fun setChatNotificationsMuted(chatId: String, muted: Boolean): Boolean =
