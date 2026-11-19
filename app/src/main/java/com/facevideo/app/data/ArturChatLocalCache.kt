@@ -12,6 +12,14 @@ import kotlinx.serialization.json.Json
  * Chats/unread state and each chat timeline are stored in separate private
  * SharedPreferences files so one large conversation cannot inflate one XML file.
  */
+data class ArturChatNavigationState(
+    val selectedTab: String = "CHATS",
+    val liveChatId: String? = null,
+    val profileUserId: String? = null,
+    val storiesUserId: String? = null,
+    val demoChatId: String? = null
+)
+
 class ArturChatLocalCache(context: Context) {
     private val appContext = context.applicationContext
     private val json = Json {
@@ -26,6 +34,44 @@ class ArturChatLocalCache(context: Context) {
         userPreferences(userId).edit()
             .putString(KEY_CHATS, json.encodeToString(chats))
             .apply()
+    }
+
+    /**
+     * Persist the last visible destination independently of the Activity process.
+     * Supabase remains the source of truth; IDs are resolved against the local
+     * chat cache first and refreshed from the server when the app resumes.
+     */
+    fun readNavigationState(userId: String): ArturChatNavigationState {
+        val preferences = userPreferences(userId)
+        return ArturChatNavigationState(
+            selectedTab = preferences.getString(KEY_NAV_TAB, "CHATS") ?: "CHATS",
+            liveChatId = preferences.getString(KEY_NAV_LIVE_CHAT, null),
+            profileUserId = preferences.getString(KEY_NAV_PROFILE, null),
+            storiesUserId = preferences.getString(KEY_NAV_STORIES, null),
+            demoChatId = preferences.getString(KEY_NAV_DEMO_CHAT, null)
+        )
+    }
+
+    fun saveNavigationState(userId: String, state: ArturChatNavigationState) {
+        userPreferences(userId).edit()
+            .putString(KEY_NAV_TAB, state.selectedTab)
+            .putNullableString(KEY_NAV_LIVE_CHAT, state.liveChatId)
+            .putNullableString(KEY_NAV_PROFILE, state.profileUserId)
+            .putNullableString(KEY_NAV_STORIES, state.storiesUserId)
+            .putNullableString(KEY_NAV_DEMO_CHAT, state.demoChatId)
+            .apply()
+    }
+
+    /** Unsaved text is stored per account and per conversation. */
+    fun readDraft(userId: String, chatId: String): String =
+        chatPreferences(userId, chatId).getString(KEY_DRAFT, "") ?: ""
+
+    fun saveDraft(userId: String, chatId: String, draft: String) {
+        val preferences = chatPreferences(userId, chatId)
+        preferences.edit().apply {
+            if (draft.isBlank()) remove(KEY_DRAFT)
+            else putString(KEY_DRAFT, draft)
+        }.apply()
     }
 
     /** Cached profile data is user-scoped and is only used for the first paint. */
@@ -122,6 +168,12 @@ class ArturChatLocalCache(context: Context) {
             Context.MODE_PRIVATE
         )
 
+    private fun android.content.SharedPreferences.Editor.putNullableString(
+        key: String,
+        value: String?
+    ): android.content.SharedPreferences.Editor =
+        if (value == null) remove(key) else putString(key, value)
+
     private fun safeKey(value: String): String =
         value.replace(Regex("[^A-Za-z0-9_-]"), "_")
 
@@ -131,6 +183,12 @@ class ArturChatLocalCache(context: Context) {
         const val KEY_MESSAGES = "messages_v1"
         const val KEY_STORIES = "visible_stories_v1"
         const val KEY_PROFILE_PREFIX = "profile_v1_"
+        const val KEY_NAV_TAB = "navigation_tab_v1"
+        const val KEY_NAV_LIVE_CHAT = "navigation_live_chat_v1"
+        const val KEY_NAV_PROFILE = "navigation_profile_v1"
+        const val KEY_NAV_STORIES = "navigation_stories_v1"
+        const val KEY_NAV_DEMO_CHAT = "navigation_demo_chat_v1"
+        const val KEY_DRAFT = "unsent_draft_v1"
         const val MAX_CACHED_MESSAGES = 80
         const val MAX_CACHED_STORIES = 200
     }
