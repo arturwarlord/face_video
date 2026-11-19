@@ -152,7 +152,8 @@ data class FaceVideoMessageReaction(
 data class FaceVideoChatNotificationMute(
     @SerialName("user_id") val userId: String,
     @SerialName("chat_id") val chatId: String,
-    @SerialName("muted_at") val mutedAt: String
+    @SerialName("muted_at") val mutedAt: String,
+    @SerialName("is_muted") val isMuted: Boolean = true
 )
 
 @Serializable
@@ -1643,12 +1644,15 @@ class SupabaseChatRepository(
             .selectAsFlow(FaceVideoChatNotificationMute::chatId) {
                 eq("user_id", userId)
             }
-            .map { rows -> rows.mapTo(mutableSetOf()) { it.chatId } }
+            .map { rows -> rows.filter { it.isMuted }.mapTo(mutableSetOf()) { it.chatId } }
 
     /** One-shot fallback if the Realtime subscription cannot be established. */
     suspend fun listMutedChatIds(userId: String): Set<String> =
         client.from("face_video_chat_notification_settings").select {
-            filter { eq("user_id", userId) }
+            filter {
+                eq("user_id", userId)
+                eq("is_muted", true)
+            }
         }.decodeList<FaceVideoChatNotificationMute>()
             .mapTo(mutableSetOf()) { it.chatId }
 
