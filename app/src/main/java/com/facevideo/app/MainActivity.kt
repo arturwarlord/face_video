@@ -188,6 +188,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import com.facevideo.app.notifications.AppNotificationManager
+import com.facevideo.app.notifications.CallForegroundService
 import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
@@ -693,6 +694,9 @@ private fun FaceVideoApp(
                 val call = repository.startDirectCall(action.chat.id, currentUser, action.mediaType)
                 activeCall = call
                 activeCallTitle = action.chat.title
+                // Start while the call screen is visible so Android grants the
+                // microphone/camera foreground-service access before minimization.
+                CallForegroundService.start(context, activeCallTitle, call.mediaType)
                 activeCallIsOutgoing = true
                 callCameraEnabled = true
                 callSpeakerEnabled = true
@@ -731,6 +735,8 @@ private fun FaceVideoApp(
                 val profile = repository.getProfile(action.call.callerId)
                 activeCall = action.call.copy(status = "accepted")
                 activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
+                // The answer action is handled while MainActivity is visible.
+                CallForegroundService.start(context, activeCallTitle, action.call.mediaType)
                 activeCallIsOutgoing = false
                 callCameraEnabled = true
                 callSpeakerEnabled = true
@@ -838,6 +844,7 @@ private fun FaceVideoApp(
 
     fun finishCall() {
         outgoingCallRingback.stop()
+        CallForegroundService.stop(context)
         val call = activeCall ?: return
         val shouldCancel = activeCallIsOutgoing && call.status == "ringing"
         val clientToClose = callClient
@@ -935,6 +942,7 @@ private fun FaceVideoApp(
                         callClient?.end()
                         callClient = null
                         activeCall = null
+                        CallForegroundService.stop(context)
                     }
                 }
                 "cancelled" -> {
@@ -945,6 +953,7 @@ private fun FaceVideoApp(
                         callClient?.end()
                         callClient = null
                         activeCall = null
+                        CallForegroundService.stop(context)
                     }
                 }
                 "ended" -> {
@@ -955,6 +964,7 @@ private fun FaceVideoApp(
                         callClient?.end()
                         callClient = null
                         activeCall = null
+                        CallForegroundService.stop(context)
                     }
                 }
             }
@@ -974,6 +984,7 @@ private fun FaceVideoApp(
                     callClient?.end()
                     callClient = null
                     activeCall = null
+                    CallForegroundService.stop(context)
                 }
             }
         }
