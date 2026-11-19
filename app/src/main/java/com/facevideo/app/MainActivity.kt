@@ -673,11 +673,24 @@ private fun FaceVideoApp(
     LaunchedEffect(liveRepository, userId) {
         val repository = liveRepository ?: return@LaunchedEffect
         val currentUserId = userId ?: return@LaunchedEffect
-        mutedChatIds = runCatching { repository.listMutedChatIds(currentUserId) }
-            .onFailure {
-                android.util.Log.w("ArturChatNotifications", "Could not load muted chats", it)
+        try {
+            repository.observeMutedChatIds(currentUserId).collect { updatedMutedChatIds ->
+                mutedChatIds = updatedMutedChatIds
             }
-            .getOrDefault(emptySet())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w(
+                "ArturChatNotifications",
+                "Could not observe muted chat settings",
+                error
+            )
+            mutedChatIds = runCatching { repository.listMutedChatIds(currentUserId) }
+                .onFailure {
+                    android.util.Log.w("ArturChatNotifications", "Could not load muted chats", it)
+                }
+                .getOrDefault(mutedChatIds)
+        }
     }
 
     // If the Activity was recreated and the chat was not in the first-paint cache,
