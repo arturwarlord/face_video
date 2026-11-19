@@ -691,12 +691,17 @@ private fun FaceVideoApp(
         when (action) {
             is PendingCallAction.Outgoing -> {
                 callError = null
-                val call = repository.startDirectCall(action.chat.id, currentUser, action.mediaType)
+                // Start before the signaling request so the user can minimize
+                // immediately without missing Android's while-in-use FGS window.
+                CallForegroundService.start(context, action.chat.title, action.mediaType)
+                val call = try {
+                    repository.startDirectCall(action.chat.id, currentUser, action.mediaType)
+                } catch (error: Exception) {
+                    CallForegroundService.stop(context)
+                    throw error
+                }
                 activeCall = call
                 activeCallTitle = action.chat.title
-                // Start while the call screen is visible so Android grants the
-                // microphone/camera foreground-service access before minimization.
-                CallForegroundService.start(context, activeCallTitle, call.mediaType)
                 activeCallIsOutgoing = true
                 callCameraEnabled = true
                 callSpeakerEnabled = true
@@ -731,11 +736,20 @@ private fun FaceVideoApp(
             is PendingCallAction.Incoming -> {
                 callError = null
                 appNotifications.cancelNotification(action.call.id)
-                repository.answerCall(action.call.id)
-                val profile = repository.getProfile(action.call.callerId)
+                // Start from the visible accept flow before awaiting Supabase.
+                CallForegroundService.start(context, "Собеседник", action.call.mediaType)
+                try {
+                    repository.answerCall(action.call.id)
+                } catch (error: Exception) {
+                    CallForegroundService.stop(context)
+                    throw error
+                }
+                val profile = runCatching {
+                    repository.getProfile(action.call.callerId)
+                }.getOrNull()
                 activeCall = action.call.copy(status = "accepted")
                 activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
-                // The answer action is handled while MainActivity is visible.
+                // Refresh the persistent notification with the resolved caller name.
                 CallForegroundService.start(context, activeCallTitle, action.call.mediaType)
                 activeCallIsOutgoing = false
                 callCameraEnabled = true
