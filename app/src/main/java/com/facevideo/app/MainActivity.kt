@@ -2886,9 +2886,18 @@ private fun LiveChatScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    var draft by remember { mutableStateOf("") }
+    var draft by remember(chat.id, userId, cache) {
+        mutableStateOf(cache.readDraft(userId, chat.id))
+    }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var editingMessage by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    // Write every ordinary draft to private local storage. It is available even
+    // when Android recreates the Activity after reclaiming the background process.
+    SideEffect {
+        if (editingMessage == null) {
+            cache.saveDraft(userId, chat.id, draft)
+        }
+    }
     var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
     var showGroupManagement by remember(chat.id) { mutableStateOf(false) }
     var showDeleteSelection by remember { mutableStateOf(false) }
