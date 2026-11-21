@@ -42,6 +42,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewTreeLifecycleOwner
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -2927,8 +2930,31 @@ private fun LiveChatScreen(
     }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var editingMessage by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
-    // Write every ordinary draft to private local storage. It is available even
-    // when Android recreates the Activity after reclaiming the background process.
+
+    // Keep the latest composer values available to the lifecycle callback without
+    // re-registering it for every character typed.
+    val latestDraft by rememberUpdatedState(draft)
+    val latestEditingMessage by rememberUpdatedState(editingMessage)
+    val composerView = LocalView.current
+    val composerLifecycleOwner = remember(composerView) {
+        ViewTreeLifecycleOwner.get(composerView)
+    }
+    DisposableEffect(composerLifecycleOwner, userId, chat.id, cache) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && latestEditingMessage == null) {
+                cache.flushDraft(userId, chat.id, latestDraft)
+            }
+        }
+        composerLifecycleOwner?.lifecycle?.addObserver(observer)
+        onDispose {
+            composerLifecycleOwner?.lifecycle?.removeObserver(observer)
+            if (latestEditingMessage == null) {
+                cache.flushDraft(userId, chat.id, latestDraft)
+            }
+        }
+    }
+
+    // Backstop for programmatic changes (for example, clearing after a successful send).
     SideEffect {
         if (editingMessage == null) {
             cache.saveDraft(userId, chat.id, draft)
@@ -3906,7 +3932,14 @@ private fun LiveChatScreen(
                     ) {
                         BasicTextField(
                             value = draft,
-                            onValueChange = { draft = it },
+                            onValueChange = { value ->
+                                draft = value
+                                // Save immediately in the input callback; do not wait
+                                // for the next Compose SideEffect/recomposition.
+                                if (editingMessage == null) {
+                                    cache.saveDraft(userId, chat.id, value)
+                                }
+                            },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Text,
