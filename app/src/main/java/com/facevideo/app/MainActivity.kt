@@ -3447,10 +3447,9 @@ private fun LiveChatScreen(
                         transparent = true,
                         size = 40.dp
                     ) {
-                        Text(
-                            if (notificationsMuted) "🔕" else "🔔",
-                            fontSize = 18.sp,
-                            color = InboxAccentStrong
+                        ChatNotificationGlyph(
+                            muted = notificationsMuted,
+                            tint = InboxAccentStrong
                         )
                     }
                     if (chat.isGroup) {
@@ -8714,6 +8713,57 @@ private fun ChatPlaybackGlyph(isPlaying: Boolean) {
                 close()
             }
             drawPath(play, Color.White)
+        }
+    }
+}
+
+@Composable
+private fun ChatNotificationGlyph(
+    muted: Boolean,
+    tint: Color = InboxAccentStrong
+) {
+    Canvas(Modifier.size(21.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+        val bell = Path().apply {
+            moveTo(w * 0.50f, h * 0.12f)
+            cubicTo(w * 0.33f, h * 0.12f, w * 0.27f, h * 0.27f, w * 0.27f, h * 0.45f)
+            lineTo(w * 0.27f, h * 0.63f)
+            cubicTo(w * 0.27f, h * 0.72f, w * 0.22f, h * 0.77f, w * 0.17f, h * 0.80f)
+            lineTo(w * 0.83f, h * 0.80f)
+            cubicTo(w * 0.78f, h * 0.77f, w * 0.73f, h * 0.72f, w * 0.73f, h * 0.63f)
+            lineTo(w * 0.73f, h * 0.45f)
+            cubicTo(w * 0.73f, h * 0.27f, w * 0.67f, h * 0.12f, w * 0.50f, h * 0.12f)
+            close()
+        }
+        drawPath(bell, tint, style = stroke)
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.40f, h * 0.87f),
+            end = Offset(w * 0.60f, h * 0.87f),
+            strokeWidth = stroke.width,
+            cap = StrokeCap.Round
+        )
+        drawArc(
+            color = tint,
+            startAngle = 205f,
+            sweepAngle = 130f,
+            useCenter = false,
+            topLeft = Offset(w * 0.42f, h * 0.02f),
+            size = androidx.compose.ui.geometry.Size(w * 0.16f, h * 0.13f),
+            style = stroke
+        )
+
+        if (muted) {
+            drawLine(
+                color = tint,
+                start = Offset(w * 0.16f, h * 0.18f),
+                end = Offset(w * 0.84f, h * 0.82f),
+                strokeWidth = 2.0.dp.toPx(),
+                cap = StrokeCap.Round
+            )
         }
     }
 }
