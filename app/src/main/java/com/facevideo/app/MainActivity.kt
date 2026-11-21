@@ -8725,7 +8725,7 @@ private fun ChatNotificationGlyph(
     Canvas(Modifier.size(21.dp)) {
         val w = size.width
         val h = size.height
-        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
 
         val bell = Path().apply {
             moveTo(w * 0.50f, h * 0.12f)
