@@ -44,7 +44,6 @@ import androidx.media3.ui.PlayerView
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ViewTreeLifecycleOwner
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -2935,9 +2934,13 @@ private fun LiveChatScreen(
     // re-registering it for every character typed.
     val latestDraft by rememberUpdatedState(draft)
     val latestEditingMessage by rememberUpdatedState(editingMessage)
-    val composerView = LocalView.current
-    val composerLifecycleOwner = remember(composerView) {
-        ViewTreeLifecycleOwner.get(composerView)
+    val composerContext = LocalContext.current
+    // Resolve the host Activity directly; this avoids relying on an unavailable
+    // ViewTreeLifecycleOwner API in the app's current AndroidX dependency set.
+    val composerLifecycleOwner = remember(composerContext) {
+        generateSequence(composerContext as Context) { current ->
+            (current as? ContextWrapper)?.baseContext
+        }.filterIsInstance<ComponentActivity>().firstOrNull()
     }
     DisposableEffect(composerLifecycleOwner, userId, chat.id, cache) {
         val observer = LifecycleEventObserver { _, event ->
