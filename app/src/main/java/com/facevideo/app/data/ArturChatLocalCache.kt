@@ -74,6 +74,19 @@ class ArturChatLocalCache(context: Context) {
         }.apply()
     }
 
+    /**
+     * Synchronously flush the current composer value before the app is backgrounded
+     * or the chat screen is removed. Normal keystrokes still use saveDraft() so
+     * the UI never waits for disk I/O on every character.
+     */
+    fun flushDraft(userId: String, chatId: String, draft: String) {
+        val editor = chatPreferences(userId, chatId).edit()
+        if (draft.isBlank()) editor.remove(KEY_DRAFT) else editor.putString(KEY_DRAFT, draft)
+        if (!editor.commit()) {
+            android.util.Log.w("ArturChatDraft", "Could not flush draft for chat $chatId")
+        }
+    }
+
     /** Cached profile data is user-scoped and is only used for the first paint. */
     fun readProfile(viewerUserId: String, profileId: String): FaceVideoProfile? {
         val raw = userPreferences(viewerUserId).getString(profileKey(profileId), null)
