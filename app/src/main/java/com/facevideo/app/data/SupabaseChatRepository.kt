@@ -215,6 +215,20 @@ data class FaceVideoMessage(
 )
 
 @Serializable
+data class FaceVideoScheduledMessage(
+    val id: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("sender_id") val senderId: String,
+    val body: String,
+    @SerialName("scheduled_for") val scheduledFor: String,
+    val status: String,
+    @SerialName("sent_message_id") val sentMessageId: String? = null,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("sent_at") val sentAt: String? = null,
+    @SerialName("failure_code") val failureCode: String? = null
+)
+
+@Serializable
 data class FaceVideoGroup(
     val id: String,
     val title: String?,
@@ -446,6 +460,19 @@ private data class NewMessage(
     @SerialName("attachment_waveform") val attachmentWaveform: List<Int>? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
     @SerialName("forwarded_from_name") val forwardedFromName: String? = null
+)
+
+@Serializable
+private data class NewScheduledMessage(
+    @SerialName("chat_id") val chatId: String,
+    val body: String,
+    @SerialName("scheduled_for") val scheduledFor: String
+)
+
+@Serializable
+private data class UpdateScheduledMessage(
+    val body: String,
+    @SerialName("scheduled_for") val scheduledFor: String
 )
 
 @Serializable
@@ -1297,6 +1324,71 @@ class SupabaseChatRepository(
                 order("created_at", Order.ASCENDING)
             }
             .decodeList<FaceVideoMessage>()
+
+    /** Returns this user's pending or failed scheduled text messages in one chat. */
+    suspend fun listScheduledMessages(chatId: String): List<FaceVideoScheduledMessage> =
+        client.from("face_video_scheduled_messages")
+            .select {
+                filter {
+                    eq("chat_id", chatId)
+                    isIn("status", listOf("pending", "failed"))
+                }
+                order("scheduled_for", Order.ASCENDING)
+            }
+            .decodeList<FaceVideoScheduledMessage>()
+
+    /** Schedules plain text; server-side RLS validates account ownership and chat membership. */
+    suspend fun createScheduledMessage(
+        chatId: String,
+        text: String,
+        scheduledFor: String
+    ): FaceVideoScheduledMessage {
+        val cleanText = text.trim()
+        require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
+            "Сообщение должно содержать от 1 до 4000 символов."
+        }
+        require(java.time.Instant.parse(scheduledFor).isAfter(java.time.Instant.now().plusSeconds(60))) {
+            "Выбери время отправки минимум через одну минуту."
+        }
+        return client.from("face_video_scheduled_messages")
+            .insert(NewScheduledMessage(chatId = chatId, body = cleanText, scheduledFor = scheduledFor)) {
+                select()
+            }
+            .decodeSingle<FaceVideoScheduledMessage>()
+    }
+
+    /** Changes text/time of an existing pending schedule without changing its owner or chat. */
+    suspend fun updateScheduledMessage(
+        id: String,
+        text: String,
+        scheduledFor: String
+    ): FaceVideoScheduledMessage {
+        val cleanText = text.trim()
+        require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
+            "Сообщение должно содержать от 1 до 4000 символов."
+        }
+        require(java.time.Instant.parse(scheduledFor).isAfter(java.time.Instant.now().plusSeconds(60))) {
+            "Выбери время отправки минимум через одну минуту."
+        }
+        val updated = client.from("face_video_scheduled_messages")
+            .update(UpdateScheduledMessage(body = cleanText, scheduledFor = scheduledFor)) {
+                filter {
+                    eq("id", id)
+                    eq("status", "pending")
+                }
+                select()
+            }
+            .decodeList<FaceVideoScheduledMessage>()
+        return updated.firstOrNull()
+            ?: throw IllegalStateException("Отложенное сообщение уже отправлено или недоступно.")
+    }
+
+    /** Deletes only a not-yet-sent schedule owned by the current user (enforced by RLS). */
+    suspend fun cancelScheduledMessage(id: String) {
+        client.from("face_video_scheduled_messages").delete {
+            filter { eq("id", id) }
+        }
+    }
 
     suspend fun hideMessagesForMe(messageIds: List<String>, userId: String) {
         messageIds.distinct().forEach { id ->
