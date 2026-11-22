@@ -3043,7 +3043,9 @@ private fun LiveChatScreen(
     }
 
     BackHandler(
-        enabled = chat.isGroup && (showGroupManagement || showGroupTopics || activeTopic != null)
+        enabled = chat.isGroup &&
+            selectedMessageIds.isEmpty() &&
+            (showGroupManagement || showGroupTopics || activeTopic != null)
     ) {
         when {
             showGroupManagement -> showGroupManagement = false
@@ -3741,6 +3743,15 @@ private fun LiveChatScreen(
                         )
                     }
                     if (chat.isGroup) {
+                        Spacer(Modifier.width(4.dp))
+                        ChatChromeActionButton(
+                            onClick = { showGroupTopics = true },
+                            filled = false,
+                            transparent = true,
+                            size = 40.dp
+                        ) {
+                            Text("☷", color = InboxAccentStrong, fontSize = 21.sp)
+                        }
                         Spacer(Modifier.width(4.dp))
                         ChatChromeActionButton(
                             onClick = { showGroupManagement = true },
