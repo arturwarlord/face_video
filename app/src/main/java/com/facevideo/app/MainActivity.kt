@@ -3099,8 +3099,9 @@ private fun LiveChatScreen(
                     scheduledFor = item.scheduledFor
                 )
             }.onSuccess {
-                draft = ""
-                cache.saveDraft(userId, chat.id, "")
+                // Scheduled-message editing is separate from the unsent composer draft.
+                // Restore the user's previous ordinary draft instead of clearing it.
+                draft = cache.readDraft(userId, chat.id)
                 editingScheduledMessage = null
                 reloadScheduledMessages()
                 Toast.makeText(context, "Отложенное сообщение изменено", Toast.LENGTH_SHORT).show()
@@ -4102,8 +4103,7 @@ private fun LiveChatScreen(
                     fontSize = 22.sp,
                     modifier = Modifier.clickable {
                         editingScheduledMessage = null
-                        draft = ""
-                        cache.saveDraft(userId, chat.id, "")
+                        draft = cache.readDraft(userId, chat.id)
                     }.padding(start = 10.dp)
                 )
             }
