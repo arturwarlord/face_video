@@ -49,7 +49,7 @@ jobs:
       - name: Validate and prepare required Firebase Android configuration
         run: python3 .github/scripts/prepare_firebase_config.py
 
-      - name: Validate launcher icon resources
+      - name: Validate launcher icon source and adaptive resources
         shell: bash
         run: |
           set -euo pipefail
@@ -62,8 +62,20 @@ jobs:
               exit 1
             fi
           done
-          test -s app/src/main/res/mipmap-nodpi/ic_launcher_artwork.webp
-          test -s app/src/main/res/mipmap-nodpi/ic_launcher.webp
+          test -f app/src/main/launcher-icon/01.b64
+          test -f app/src/main/launcher-icon/02.b64
+          test -f app/src/main/launcher-icon/03.b64
+          test -f app/src/main/launcher-icon/04.b64
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          parts = sorted(Path("app/src/main/launcher-icon").glob("*.b64"))
+          image = base64.b64decode("".join("".join(p.read_text().split()) for p in parts), validate=True)
+          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid ArturChat launcher image"
+          assert int.from_bytes(image[4:8], "little") + 8 == len(image), "Truncated WebP image"
+          assert image[12:16] in (b"VP8 ", b"VP8L", b"VP8X"), "Unsupported WebP image chunk"
+          print(f"Validated ArturChat icon: {len(image)} bytes")
+          PY
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4

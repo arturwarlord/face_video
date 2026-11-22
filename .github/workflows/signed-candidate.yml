@@ -1,4 +1,4 @@
-name: ArturChat 0.8.2 signed installable APK
+name: ArturChat 0.8.3 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
@@ -55,7 +55,7 @@ jobs:
       - name: Validate and prepare required Firebase Android configuration
         run: python3 .github/scripts/prepare_firebase_config.py
 
-      - name: Validate launcher icon resources
+      - name: Validate launcher icon source and adaptive resources
         shell: bash
         run: |
           set -euo pipefail
@@ -68,8 +68,20 @@ jobs:
               exit 1
             fi
           done
-          test -s app/src/main/res/mipmap-nodpi/ic_launcher_artwork.webp
-          test -s app/src/main/res/mipmap-nodpi/ic_launcher.webp
+          test -f app/src/main/launcher-icon/01.b64
+          test -f app/src/main/launcher-icon/02.b64
+          test -f app/src/main/launcher-icon/03.b64
+          test -f app/src/main/launcher-icon/04.b64
+          python3 - <<'PY'
+          import base64
+          from pathlib import Path
+          parts = sorted(Path("app/src/main/launcher-icon").glob("*.b64"))
+          image = base64.b64decode("".join("".join(p.read_text().split()) for p in parts), validate=True)
+          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid ArturChat launcher image"
+          assert int.from_bytes(image[4:8], "little") + 8 == len(image), "Truncated WebP image"
+          assert image[12:16] in (b"VP8 ", b"VP8L", b"VP8X"), "Unsupported WebP image chunk"
+          print(f"Validated ArturChat icon: {len(image)} bytes")
+          PY
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -95,16 +107,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.2"
-          -PAPP_VERSION_CODE="8002"
+          -PAPP_VERSION_NAME="0.8.3"
+          -PAPP_VERSION_CODE="8003"
 
       - name: Build signed installable APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.2"
-          -PAPP_VERSION_CODE="8002"
+          -PAPP_VERSION_NAME="0.8.3"
+          -PAPP_VERSION_CODE="8003"
 
       - name: Verify package, version and APK signature
         shell: bash
@@ -114,23 +126,23 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='8002' versionName='0.8.2'"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='8003' versionName='0.8.3'"
 
       - name: Prepare APK and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p installable
-          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.8.2.apk
+          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.8.3.apk
           cd installable
-          sha256sum ArturChat-0.8.2.apk > ArturChat-0.8.2.apk.sha256
+          sha256sum ArturChat-0.8.3.apk > ArturChat-0.8.3.apk.sha256
 
       - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: arturchat-0.8.2-installable
+          name: arturchat-0.8.3-installable
           path: |
-            installable/ArturChat-0.8.2.apk
-            installable/ArturChat-0.8.2.apk.sha256
+            installable/ArturChat-0.8.3.apk
+            installable/ArturChat-0.8.3.apk.sha256
           if-no-files-found: error
           retention-days: 14

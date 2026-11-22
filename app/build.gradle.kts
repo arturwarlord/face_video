@@ -8,8 +8,8 @@ plugins {
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
 val firebaseConfigExists = file("google-services.json").exists()
-val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.8.2").get()
-val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("8002" ).get().toInt()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.8.3").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("8003" ).get().toInt()
 
 fun String.asBuildConfigString(): String =
     "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -71,6 +71,41 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+
+ // The artwork is stored as UTF-8 base64 source and decoded before Android resource merging.
+ // This keeps the exact same checked WebP pixels for the adaptive and standard launcher icons.
+val launcherIconParts = fileTree("src/main/launcher-icon") {
+    include("*.b64")
+}
+val generatedLauncherIconResources = layout.buildDirectory.dir("generated/launcherIconResources")
+val generateLauncherIconResources = tasks.register("generateLauncherIconResources") {
+    inputs.files(launcherIconParts)
+    outputs.dir(generatedLauncherIconResources)
+    doLast {
+        val encoded = launcherIconParts.files
+            .sortedBy { it.name }
+            .joinToString("") { part -> part.readText().filterNot { it.isWhitespace() } }
+        val imageBytes = java.util.Base64.getDecoder().decode(encoded)
+        check(
+            imageBytes.size > 1024 &&
+                String(imageBytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
+                String(imageBytes, 8, 4, Charsets.US_ASCII) == "WEBP" &&
+                String(imageBytes, 12, 4, Charsets.US_ASCII) in setOf("VP8 ", "VP8L", "VP8X") &&
+                imageBytes.size == (java.nio.ByteBuffer.wrap(imageBytes, 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int + 8)
+        ) { "ArturChat launcher artwork is not a complete WebP image." }
+
+        val mipmapDirectory = generatedLauncherIconResources.get().dir("mipmap-nodpi").asFile
+        mipmapDirectory.mkdirs()
+        listOf("ic_launcher.webp", "ic_launcher_artwork.webp").forEach { fileName ->
+            mipmapDirectory.resolve(fileName).writeBytes(imageBytes)
+        }
+    }
+}
+android.sourceSets.getByName("main").res.srcDir(generatedLauncherIconResources)
+tasks.named("preBuild").configure {
+    dependsOn(generateLauncherIconResources)
 }
 
 kotlin {
