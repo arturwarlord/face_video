@@ -78,6 +78,8 @@ class AppNotificationManager(context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        if (!isCall) incrementUnreadMessageCount(notificationId)
+
         val builder = Notification.Builder(appContext, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -89,6 +91,11 @@ class AppNotificationManager(context: Context) {
             .setCategory(if (isCall) Notification.CATEGORY_CALL else Notification.CATEGORY_MESSAGE)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
+
+        if (!isCall) {
+            builder.setGroup(MESSAGE_NOTIFICATION_GROUP)
+                .setNumber(1)
+        }
 
         if (isCall && notificationId.isNotBlank()) {
             val answerIntent = callActionPendingIntent(notificationId, CallNotificationIntents.ACTION_ANSWER)
@@ -227,6 +234,7 @@ class AppNotificationManager(context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        incrementUnreadMessageCount(notificationId)
         val notification = Notification.Builder(appContext, MESSAGE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -234,6 +242,8 @@ class AppNotificationManager(context: Context) {
             .setStyle(Notification.BigTextStyle().bigText(body.take(1000)))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setGroup(MESSAGE_NOTIFICATION_GROUP)
+            .setNumber(1)
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
@@ -242,9 +252,119 @@ class AppNotificationManager(context: Context) {
         manager.notify(notificationId.hashCode(), notification)
     }
 
+    /**
+     * Syncs the launcher badge with the unread total supplied by Supabase.
+     * Android launchers that support numeric badges display the count; others
+     * continue to show their standard notification dot.
+     */
+    fun updateUnreadMessageCount(count: Int) {
+        val safeCount = count.coerceIn(0, 999)
+        synchronized(BADGE_LOCK) {
+            badgePreferences().edit().putInt(KEY_UNREAD_MESSAGE_COUNT, safeCount).apply()
+            if (safeCount == 0) {
+                badgePreferences().edit().remove(KEY_COUNTED_MESSAGE_IDS).apply()
+            }
+        }
+
+        if (safeCount == 0) {
+            manager.cancel(UNREAD_BADGE_NOTIFICATION_ID)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                manager.activeNotifications
+                    .filter {
+                        it.id != UNREAD_BADGE_NOTIFICATION_ID &&
+                            it.notification.group == MESSAGE_NOTIFICATION_GROUP
+                    }
+                    .forEach { manager.cancel(it.tag, it.id) }
+            }
+            return
+        }
+        if (!canPostNotifications()) return
+
+        val openIntent = Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            appContext,
+            UNREAD_BADGE_NOTIFICATION_ID,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val badgeNotification = Notification.Builder(appContext, MESSAGE_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("ArturChat")
+            .setContentText(formatUnreadCount(safeCount))
+            .setContentIntent(pendingIntent)
+            .setNumber(safeCount)
+            .setBadgeIconType(Notification.BADGE_ICON_SMALL)
+            .setGroup(MESSAGE_NOTIFICATION_GROUP)
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setSilent(true)
+            .setShowWhen(false)
+            .setLocalOnly(true)
+            .build()
+        manager.notify(UNREAD_BADGE_NOTIFICATION_ID, badgeNotification)
+    }
+
+    private fun incrementUnreadMessageCount(notificationId: String): Int {
+        val nextCount = synchronized(BADGE_LOCK) {
+            val preferences = badgePreferences()
+            val countedIds = preferences.getStringSet(KEY_COUNTED_MESSAGE_IDS, emptySet())
+                .orEmpty().toMutableSet()
+            if (notificationId.isNotBlank() && notificationId in countedIds) {
+                preferences.getInt(KEY_UNREAD_MESSAGE_COUNT, 0).coerceIn(0, 999)
+            } else {
+                if (notificationId.isNotBlank()) {
+                    if (countedIds.size >= MAX_COUNTED_MESSAGE_IDS) countedIds.clear()
+                    countedIds.add(notificationId)
+                }
+                val next = (preferences.getInt(KEY_UNREAD_MESSAGE_COUNT, 0) + 1).coerceAtMost(999)
+                preferences.edit()
+                    .putInt(KEY_UNREAD_MESSAGE_COUNT, next)
+                    .putStringSet(KEY_COUNTED_MESSAGE_IDS, countedIds)
+                    .apply()
+                next
+            }
+        }
+        updateUnreadMessageCount(nextCount)
+        return nextCount
+    }
+
+    private fun badgePreferences() = appContext.getSharedPreferences(
+        BADGE_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
+
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < 33 ||
+            appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    private fun formatUnreadCount(count: Int): String {
+        val lastTwo = count % 100
+        val lastOne = count % 10
+        return when {
+            lastTwo in 11..14 -> "$count непрочитанных сообщений"
+            lastOne == 1 -> "$count непрочитанное сообщение"
+            lastOne in 2..4 -> "$count непрочитанных сообщения"
+            else -> "$count непрочитанных сообщений"
+        }
+    }
+
     private companion object {
         const val MESSAGE_CHANNEL_ID = "arturchat_messages"
         const val CALL_CHANNEL_ID = "arturchat_calls"
+        const val MESSAGE_NOTIFICATION_GROUP = "com.facevideo.app.MESSAGE_NOTIFICATIONS"
+        const val UNREAD_BADGE_NOTIFICATION_ID = 0x0A7C0
+        const val BADGE_PREFERENCES = "arturchat_notification_badge"
+        const val KEY_UNREAD_MESSAGE_COUNT = "unread_message_count"
+        const val KEY_COUNTED_MESSAGE_IDS = "counted_message_ids"
+        const val MAX_COUNTED_MESSAGE_IDS = 128
+        val BADGE_LOCK = Any()
         const val TAG = "ArturChatCallAlert"
     }
 }
