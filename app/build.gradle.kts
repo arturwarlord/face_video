@@ -1,3 +1,7 @@
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -87,13 +91,13 @@ val generateLauncherIconResources = tasks.register("generateLauncherIconResource
         val encoded = launcherIconParts.files
             .sortedBy { it.name }
             .joinToString("") { part -> part.readText().filterNot { it.isWhitespace() } }
-        val imageBytes = java.util.Base64.getDecoder().decode(encoded)
+        val imageBytes = Base64.getDecoder().decode(encoded)
         check(
             imageBytes.size > 1024 &&
                 String(imageBytes, 0, 4, Charsets.US_ASCII) == "RIFF" &&
                 String(imageBytes, 8, 4, Charsets.US_ASCII) == "WEBP" &&
                 String(imageBytes, 12, 4, Charsets.US_ASCII) in setOf("VP8 ", "VP8L", "VP8X") &&
-                imageBytes.size == (java.nio.ByteBuffer.wrap(imageBytes, 4, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int + 8)
+                imageBytes.size == (ByteBuffer.wrap(imageBytes, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int + 8)
         ) { "ArturChat launcher artwork is not a complete WebP image." }
 
         val mipmapDirectory = generatedLauncherIconResources.get().dir("mipmap-nodpi").asFile
