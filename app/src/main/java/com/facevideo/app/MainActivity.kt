@@ -383,6 +383,78 @@ data class CallNotificationAction(
     val nonce: Long
 )
 
+private fun Modifier.arturChatGradientBackground(): Modifier = this
+    .background(
+        Brush.verticalGradient(
+            listOf(
+                Color(0xFFE2DCFF),
+                Color(0xFFE2E9FF),
+                Color(0xFFE8F0FF),
+                Color(0xFFF2F5FF),
+                Color(0xFFE8E9FF)
+            )
+        )
+    )
+    .drawBehind {
+        val w = size.width
+        val h = size.height
+        val glowTopLeft = Offset(-w * 0.10f, h * 0.10f)
+        val glowTopRight = Offset(w * 1.02f, h * 0.22f)
+        val glowCenter = Offset(w * 0.46f, h * 0.56f)
+        val glowBottomLeft = Offset(-w * 0.08f, h * 0.94f)
+
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFB49BFF).copy(alpha = 0.58f),
+                    Color(0xFFC9BFFF).copy(alpha = 0.22f),
+                    Color.Transparent
+                ),
+                center = glowTopLeft,
+                radius = w * 0.90f
+            ),
+            radius = w * 0.90f,
+            center = glowTopLeft
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFF9BCBFF).copy(alpha = 0.56f),
+                    Color(0xFFB8D9FF).copy(alpha = 0.18f),
+                    Color.Transparent
+                ),
+                center = glowTopRight,
+                radius = w * 0.82f
+            ),
+            radius = w * 0.82f,
+            center = glowTopRight
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFD0B8FF).copy(alpha = 0.30f),
+                    Color.Transparent
+                ),
+                center = glowCenter,
+                radius = w * 0.78f
+            ),
+            radius = w * 0.78f,
+            center = glowCenter
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFB8D8FF).copy(alpha = 0.30f),
+                    Color.Transparent
+                ),
+                center = glowBottomLeft,
+                radius = w * 0.70f
+            ),
+            radius = w * 0.70f,
+            center = glowBottomLeft
+        )
+    }
+
 class MainActivity : ComponentActivity() {
     private val pendingCallNotificationAction = MutableStateFlow<CallNotificationAction?>(null)
 
@@ -1346,77 +1418,7 @@ private fun FaceVideoApp(
             )
         } else {
             Column(
-                Modifier.fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0xFFE2DCFF),
-                                Color(0xFFE2E9FF),
-                                Color(0xFFE8F0FF),
-                                Color(0xFFF2F5FF),
-                                Color(0xFFE8E9FF)
-                            )
-                        )
-                    )
-                    .drawBehind {
-                        val w = size.width
-                        val h = size.height
-                        val glowTopLeft = Offset(-w * 0.10f, h * 0.10f)
-                        val glowTopRight = Offset(w * 1.02f, h * 0.22f)
-                        val glowCenter = Offset(w * 0.46f, h * 0.56f)
-                        val glowBottomLeft = Offset(-w * 0.08f, h * 0.94f)
-
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFB49BFF).copy(alpha = 0.58f),
-                                    Color(0xFFC9BFFF).copy(alpha = 0.22f),
-                                    Color.Transparent
-                                ),
-                                center = glowTopLeft,
-                                radius = w * 0.90f
-                            ),
-                            radius = w * 0.90f,
-                            center = glowTopLeft
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF9BCBFF).copy(alpha = 0.56f),
-                                    Color(0xFFB8D9FF).copy(alpha = 0.18f),
-                                    Color.Transparent
-                                ),
-                                center = glowTopRight,
-                                radius = w * 0.82f
-                            ),
-                            radius = w * 0.82f,
-                            center = glowTopRight
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFD0B8FF).copy(alpha = 0.30f),
-                                    Color.Transparent
-                                ),
-                                center = glowCenter,
-                                radius = w * 0.78f
-                            ),
-                            radius = w * 0.78f,
-                            center = glowCenter
-                        )
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFB8D8FF).copy(alpha = 0.30f),
-                                    Color.Transparent
-                                ),
-                                center = glowBottomLeft,
-                                radius = w * 0.70f
-                            ),
-                            radius = w * 0.70f,
-                            center = glowBottomLeft
-                        )
-                    }
+                Modifier.fillMaxSize().arturChatGradientBackground()
             ) {
                 Box(Modifier.weight(1f)) {
                     when (selectedTab) {
@@ -1775,7 +1777,7 @@ private fun LiveChatListScreen(
                         }
                         LazyColumn(
                             Modifier.weight(1f),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 82.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             items(visibleChats, key = { it.id }) { chat ->
@@ -1821,31 +1823,31 @@ private fun LiveChatListScreen(
                 }
             }
 
-            Surface(
-                color = Color.Transparent,
-                shape = RoundedCornerShape(28.dp),
-                shadowElevation = 6.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 12.dp)
-                    .height(54.dp)
-                    .clickable { showNewChat = true }
-            ) {
-                Row(
-                    Modifier
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
-                            )
+        }
+        Surface(
+            color = Color.Transparent,
+            shape = RoundedCornerShape(28.dp),
+            shadowElevation = 6.dp,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(vertical = 8.dp)
+                .height(50.dp)
+                .clickable { showNewChat = true }
+        ) {
+            Row(
+                Modifier
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
                         )
-                        .padding(horizontal = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    NewChatGlyph()
-                    Spacer(Modifier.width(10.dp))
-                    Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+                    )
+                    .padding(horizontal = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                NewChatGlyph()
+                Spacer(Modifier.width(10.dp))
+                Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -2767,23 +2769,25 @@ private fun LiveChatRow(
         modifier = Modifier.fillMaxWidth().height(80.dp)
             .clip(RoundedCornerShape(22.dp))
     ) {
-        Column(
-            modifier = Modifier.align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .width(deleteActionWidth)
-                .padding(vertical = 5.dp)
-                .clip(RoundedCornerShape(17.dp))
-                .background(Color(0xFFE66F80))
-                .clickable {
-                    onHideDelete()
-                    confirmDelete = true
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("⌫", color = Color.White, fontSize = 21.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(2.dp))
-            Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        if (isDeleteRevealed || (isDragging && dragOffset < 0f)) {
+            Column(
+                modifier = Modifier.align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(deleteActionWidth)
+                    .padding(vertical = 5.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(Color(0xFFE66F80))
+                    .clickable {
+                        onHideDelete()
+                        confirmDelete = true
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                InboxDeleteGlyph()
+                Spacer(Modifier.height(3.dp))
+                Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
         Surface(
             modifier = Modifier.fillMaxSize()
@@ -9532,7 +9536,7 @@ private fun UserProfileScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().arturChatGradientBackground().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text("‹ Назад", color = AccentSlate, fontSize = 16.sp, modifier = Modifier.clickable(onClick = onBack).padding(vertical = 8.dp))
         if (isLoading && profile == null) {
             Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
@@ -10188,6 +10192,21 @@ private fun NewChatGlyph() {
 }
 
 @Composable
+private fun InboxDeleteGlyph() {
+    Canvas(Modifier.size(19.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = 1.75.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.17f, h * 0.27f), Offset(w * 0.83f, h * 0.27f), stroke.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.38f, h * 0.15f), Offset(w * 0.62f, h * 0.15f), stroke.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.27f, h * 0.32f), Offset(w * 0.32f, h * 0.84f), stroke.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.73f, h * 0.32f), Offset(w * 0.68f, h * 0.84f), stroke.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.32f, h * 0.84f), Offset(w * 0.68f, h * 0.84f), stroke.width, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.44f, h * 0.43f), Offset(w * 0.45f, h * 0.72f), stroke.width * 0.8f, cap = StrokeCap.Round)
+        drawLine(Color.White, Offset(w * 0.56f, h * 0.43f), Offset(w * 0.55f, h * 0.72f), stroke.width * 0.8f, cap = StrokeCap.Round)
+    }
+}
+
 private fun InboxMoreGlyph() {
     Canvas(Modifier.size(18.dp)) {
         val dotRadius = 1.55.dp.toPx()
