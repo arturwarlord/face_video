@@ -29,7 +29,7 @@ data class FaceVideoChatSummary(
     @SerialName("last_message_preview") val lastMessagePreview: String = "",
     @SerialName("last_message_at") val lastMessageAt: String? = null,
     @SerialName("created_at") val createdAt: String,
-    // Enriched on the client from chat members + profiles; not columns in the SQL view.
+    // Enriched on the client from chat members, profiles, and online presence; not SQL-view columns.
     @SerialName("peer_user_id") val peerUserId: String? = null,
     @SerialName("peer_avatar_url") val peerAvatarUrl: String? = null,
     @SerialName("peer_last_seen_at") val peerLastSeenAt: String? = null,
