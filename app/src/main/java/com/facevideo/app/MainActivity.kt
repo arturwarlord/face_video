@@ -175,6 +175,7 @@ import com.facevideo.app.data.ArturChatImageCache
 import com.facevideo.app.data.ArturChatLocalCache
 import com.facevideo.app.data.ArturChatNavigationState
 import com.facevideo.app.data.FaceVideoChatSummary
+import com.facevideo.app.data.GroupTopicDestination
 import com.facevideo.app.data.FaceVideoScheduledMessage
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.FaceVideoStoryCard
@@ -2891,6 +2892,11 @@ private fun LiveChatScreen(
     onGroupUpdated: (String) -> Unit,
     onGroupClosed: () -> Unit
 ) {
+    var activeTopic by remember(chat.id) { mutableStateOf<GroupTopicDestination?>(null) }
+    val activeTopicId = activeTopic?.id
+    val draftCacheKey = remember(chat.id, activeTopicId) {
+        if (activeTopicId == null) chat.id else "${chat.id}:topic:$activeTopicId"
+    }
     val cachedMessages = remember(cache, userId, chat.id) {
         cache.readMessages(userId, chat.id)
     }
@@ -2918,8 +2924,8 @@ private fun LiveChatScreen(
             }
         }
     }
-    var locallySentMessages by remember(chat.id) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
-    var locallyEditedMessages by remember(chat.id) {
+    var locallySentMessages by remember(chat.id, activeTopicId) { mutableStateOf<List<com.facevideo.app.data.FaceVideoMessage>>(emptyList()) }
+    var locallyEditedMessages by remember(chat.id, activeTopicId) {
         mutableStateOf<Map<String, com.facevideo.app.data.FaceVideoMessage>>(emptyMap())
     }
     LaunchedEffect(messages, locallySentMessages, locallyEditedMessages) {
@@ -2957,28 +2963,32 @@ private fun LiveChatScreen(
             currentUserId = userId
         )
     }
-    var hiddenMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
-    // Realtime rows can arrive in primary-key order rather than message time order.
-    // Always render the timeline chronologically so every new message stays at the bottom.
-    val orderedMessages = remember(messages, locallySentMessages, hiddenMessageIds, locallyEditedMessages) {
+    var hiddenMessageIds by remember(chat.id, activeTopicId) { mutableStateOf<Set<String>>(emptySet()) }
+    // Keep the entire group's message cache intact while rendering only the selected topic.
+    val allChatMessages = remember(messages, locallySentMessages, locallyEditedMessages) {
         mergeChatMessageSnapshots(messages, locallySentMessages)
             .map { locallyEditedMessages[it.id] ?: it }
+    }
+    // Realtime rows can arrive in primary-key order rather than message time order.
+    val orderedMessages = remember(allChatMessages, activeTopicId, hiddenMessageIds) {
+        allChatMessages
+            .filter { it.topicId == activeTopicId }
             .filterNot { it.id in hiddenMessageIds }
     }
-    LaunchedEffect(userId, chat.id, orderedMessages) {
+    LaunchedEffect(userId, chat.id, allChatMessages) {
         withContext(Dispatchers.IO) {
-            cache.saveMessages(userId, chat.id, orderedMessages)
+            cache.saveMessages(userId, chat.id, allChatMessages)
         }
     }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    var draft by remember(chat.id, userId, cache) {
-        mutableStateOf(cache.readDraft(userId, chat.id))
+    var draft by remember(chat.id, activeTopicId, userId, cache) {
+        mutableStateOf(cache.readDraft(userId, draftCacheKey))
     }
-    var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
-    var editingMessage by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
-    var editingScheduledMessage by remember(chat.id) {
+    var replyingTo by remember(chat.id, activeTopicId) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    var editingMessage by remember(chat.id, activeTopicId) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    var editingScheduledMessage by remember(chat.id, activeTopicId) {
         mutableStateOf<FaceVideoScheduledMessage?>(null)
     }
 
@@ -3002,14 +3012,14 @@ private fun LiveChatScreen(
                 latestEditingMessage == null &&
                 latestEditingScheduledMessage == null
             ) {
-                cache.flushDraft(userId, chat.id, latestDraft)
+                cache.flushDraft(userId, draftCacheKey, latestDraft)
             }
         }
         composerLifecycleOwner?.lifecycle?.addObserver(observer)
         onDispose {
             composerLifecycleOwner?.lifecycle?.removeObserver(observer)
             if (latestEditingMessage == null && latestEditingScheduledMessage == null) {
-                cache.flushDraft(userId, chat.id, latestDraft)
+                cache.flushDraft(userId, draftCacheKey, latestDraft)
             }
         }
     }
@@ -3017,11 +3027,12 @@ private fun LiveChatScreen(
     // Backstop for programmatic changes (for example, clearing after a successful send).
     SideEffect {
         if (editingMessage == null && editingScheduledMessage == null) {
-            cache.saveDraft(userId, chat.id, draft)
+            cache.saveDraft(userId, draftCacheKey, draft)
         }
     }
-    var selectedMessageIds by remember(chat.id) { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedMessageIds by remember(chat.id, activeTopicId) { mutableStateOf<Set<String>>(emptySet()) }
     var showGroupManagement by remember(chat.id) { mutableStateOf(false) }
+    var showGroupTopics by remember(chat.id) { mutableStateOf(false) }
     var showDeleteSelection by remember { mutableStateOf(false) }
     var showForwardPicker by remember { mutableStateOf(false) }
     // Exit message-selection mode before the parent screen handles system Back.
@@ -3031,8 +3042,17 @@ private fun LiveChatScreen(
         selectedMessageIds = emptySet()
     }
 
-    BackHandler(enabled = chat.isGroup && showGroupManagement) {
-        showGroupManagement = false
+    BackHandler(
+        enabled = chat.isGroup && (showGroupManagement || showGroupTopics || activeTopic != null)
+    ) {
+        when {
+            showGroupManagement -> showGroupManagement = false
+            showGroupTopics -> showGroupTopics = false
+            activeTopic != null -> {
+                activeTopic = null
+                showGroupTopics = true
+            }
+        }
     }
     var forwardTargets by remember { mutableStateOf<List<com.facevideo.app.data.FaceVideoChatSummary>>(emptyList()) }
     var actionBusy by remember { mutableStateOf(false) }
@@ -3051,6 +3071,10 @@ private fun LiveChatScreen(
     }
 
     fun openScheduledMessages() {
+        if (activeTopicId != null) {
+            Toast.makeText(context, "Отложенные сообщения пока доступны в «Общих».", Toast.LENGTH_SHORT).show()
+            return
+        }
         scope.launch {
             runCatching { repository.listScheduledMessages(chat.id) }
                 .onSuccess {
@@ -3085,7 +3109,7 @@ private fun LiveChatScreen(
                     )
                 }.onSuccess {
                     draft = ""
-                    cache.saveDraft(userId, chat.id, "")
+                    cache.saveDraft(userId, draftCacheKey, "")
                     reloadScheduledMessages()
                     Toast.makeText(context, "Сообщение запланировано", Toast.LENGTH_SHORT).show()
                 }.onFailure { error ->
@@ -3142,7 +3166,7 @@ private fun LiveChatScreen(
             }.onSuccess {
                 // Scheduled-message editing is separate from the unsent composer draft.
                 // Restore the user's previous ordinary draft instead of clearing it.
-                draft = cache.readDraft(userId, chat.id)
+                draft = cache.readDraft(userId, draftCacheKey)
                 editingScheduledMessage = null
                 reloadScheduledMessages()
                 Toast.makeText(context, "Отложенное сообщение изменено", Toast.LENGTH_SHORT).show()
@@ -3275,7 +3299,8 @@ private fun LiveChatScreen(
                 val persistedMessage = repository.sendText(
                     chatId = chat.id,
                     text = text,
-                    replyToMessageId = replyingTo?.id
+                    replyToMessageId = replyingTo?.id,
+                    topicId = activeTopicId
                 )
                 locallySentMessages = mergeChatMessageSnapshots(
                     locallySentMessages,
@@ -3313,7 +3338,8 @@ private fun LiveChatScreen(
                     imagePath = path,
                     fileName = prepared.fileName,
                     fileSize = prepared.bytes.size.toLong(),
-                    replyToMessageId = replyingTo?.id
+                    replyToMessageId = replyingTo?.id,
+                    topicId = activeTopicId
                 )
                 locallySentMessages = mergeChatMessageSnapshots(
                     locallySentMessages,
@@ -3424,7 +3450,8 @@ private fun LiveChatScreen(
                     fileSize = audioBytes.size.toLong(),
                     durationMs = durationMs,
                     waveform = waveform,
-                    replyToMessageId = replyingTo?.id
+                    replyToMessageId = replyingTo?.id,
+                    topicId = activeTopicId
                 )
                 locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
                 replyingTo = null
@@ -3468,7 +3495,8 @@ private fun LiveChatScreen(
                     videoPath = path,
                     fileSize = videoBytes.size.toLong(),
                     durationMs = durationMs,
-                    replyToMessageId = replyingTo?.id
+                    replyToMessageId = replyingTo?.id,
+                    topicId = activeTopicId
                 )
                 locallySentMessages = mergeChatMessageSnapshots(locallySentMessages, listOf(persistedMessage))
                 replyingTo = null
@@ -3508,6 +3536,22 @@ private fun LiveChatScreen(
             onDismiss = { showGroupManagement = false },
             onGroupUpdated = onGroupUpdated,
             onGroupClosed = onGroupClosed
+        )
+    } else if (chat.isGroup && showGroupTopics) {
+        GroupTopicsScreen(
+            repository = repository,
+            userId = userId,
+            chatId = chat.id,
+            groupTitle = chat.title,
+            onDismiss = { showGroupTopics = false },
+            onOpenTopic = { destination ->
+                activeTopic = destination
+                showGroupTopics = false
+                selectedMessageIds = emptySet()
+                replyingTo = null
+                editingMessage = null
+                editingScheduledMessage = null
+            }
         )
     } else {
         Column(
@@ -3588,7 +3632,19 @@ private fun LiveChatScreen(
                         Text("Сообщения отмечены", color = InboxMuted, fontSize = 9.sp)
                     }
                 } else {
-                    ChatChromeActionButton(onClick = onBack, filled = false, transparent = true, size = 40.dp) {
+                    ChatChromeActionButton(
+                        onClick = {
+                            if (activeTopic != null) {
+                                activeTopic = null
+                                showGroupTopics = true
+                            } else {
+                                onBack()
+                            }
+                        },
+                        filled = false,
+                        transparent = true,
+                        size = 40.dp
+                    ) {
                         InboxBackGlyph()
                     }
                     Spacer(Modifier.width(9.dp))
@@ -3633,12 +3689,12 @@ private fun LiveChatScreen(
                     Spacer(Modifier.width(10.dp))
                     Column(
                         Modifier.weight(1f).clickable(enabled = chat.isGroup || peerUserId != null) {
-                            if (chat.isGroup) showGroupManagement = true
+                            if (chat.isGroup) showGroupTopics = true
                             else peerUserId?.let(onOpenProfile)
                         }
                     ) {
                         Text(
-                            chat.title,
+                            activeTopic?.title ?: chat.title,
                             color = InboxPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
@@ -3659,7 +3715,8 @@ private fun LiveChatScreen(
                             Spacer(Modifier.width(5.dp))
                             Text(
                                 when {
-                                    chat.isGroup -> "Нажмите, чтобы открыть информацию"
+                                    chat.isGroup && activeTopic != null -> "Тема · ${chat.title}"
+                                chat.isGroup -> "Нажмите, чтобы открыть темы"
                                     peerUserId == null -> "Проверяем статус…"
                                     peerIsOnline -> "В сети"
                                     !presenceAvailable -> "Статус обновляется…"
@@ -4176,7 +4233,7 @@ private fun LiveChatScreen(
                     fontSize = 22.sp,
                     modifier = Modifier.clickable {
                         editingScheduledMessage = null
-                        draft = cache.readDraft(userId, chat.id)
+                        draft = cache.readDraft(userId, draftCacheKey)
                     }.padding(start = 10.dp)
                 )
             }
