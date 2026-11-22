@@ -3694,7 +3694,7 @@ private fun LiveChatScreen(
                             )
                         }
                     },
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
@@ -6057,7 +6057,8 @@ private fun MessageBubble(
                         }
                     )
                 }
-            },
+            }
+                .padding(horizontal = 16.dp),
             contentAlignment = if (message.isMine) Alignment.BottomEnd else Alignment.BottomStart
         ) {
             if (replyDragOffset.value < -8f) {
