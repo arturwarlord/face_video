@@ -3086,7 +3086,9 @@ private fun LiveChatScreen(
     val listState = androidx.compose.runtime.key(chat.id, activeTopicId) {
         androidx.compose.foundation.lazy.rememberLazyListState()
     }
-    val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    // Track the actual message viewport size: the keyboard resizes this area on devices
+    // where the current Compose version does not expose a direct IME visibility property.
+    var messageViewportHeight by remember(chat.id, activeTopicId) { mutableStateOf(0) }
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var draft by remember(chat.id, activeTopicId, userId, cache) {
@@ -3337,18 +3339,19 @@ private fun LiveChatScreen(
             }
     }
 
-    // The LazyColumn renders timelineMessages (chronologically sorted and including call events),
-    // not orderedMessages. Always target the rendered list's final item; repeat when the IME
-    // opens so resizing the viewport cannot leave the composer covering the newest message.
+    // Pin directly to the final item of the list that is actually rendered.
+    // scrollToItem is immediate (no animation), so opening the chat, receiving/sending
+    // a message, or resizing the viewport for the keyboard never causes a visible glide.
+    // Draft text changes are deliberately not a trigger: typing cannot move the timeline.
     LaunchedEffect(
         chat.id,
         activeTopicId,
         timelineMessages.lastOrNull()?.id,
         timelineMessages.size,
-        isImeVisible
+        messageViewportHeight
     ) {
-        if (timelineMessages.isNotEmpty()) {
-            listState.animateScrollToItem(timelineMessages.lastIndex)
+        if (timelineMessages.isNotEmpty() && messageViewportHeight > 0) {
+            listState.scrollToItem(timelineMessages.lastIndex)
         }
     }
 
@@ -3921,6 +3924,11 @@ private fun LiveChatScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth()
+                    .onSizeChanged { size ->
+                        if (messageViewportHeight != size.height) {
+                            messageViewportHeight = size.height
+                        }
+                    }
                     .pointerInput(selectedMessageIds.isNotEmpty()) {
                         if (selectedMessageIds.isNotEmpty()) {
                             var horizontalDragDistance = 0f
