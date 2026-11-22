@@ -1505,6 +1505,27 @@ private fun LiveChatListScreen(
     var showNewChat by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    val latestChats by rememberUpdatedState(chats)
+
+    LaunchedEffect(repository, userId) {
+        while (currentCoroutineContext().isActive) {
+            delay(15_000L)
+            val snapshot = latestChats
+            if (snapshot.isEmpty()) continue
+            runCatching { repository.refreshChatPeerActivity(snapshot) }
+                .onSuccess { refreshed ->
+                    if (refreshed != snapshot) {
+                        chats = refreshed
+                        withContext(Dispatchers.IO) {
+                            cache.saveChats(userId, refreshed)
+                        }
+                    }
+                }
+                .onFailure {
+                    android.util.Log.w("ArturChatPresence", "Inbox activity refresh failed", it)
+                }
+        }
+    }
 
     LaunchedEffect(repository, reloadKey, userId) {
         if (chats.isEmpty()) isLoading = true
@@ -1533,10 +1554,13 @@ private fun LiveChatListScreen(
     // Group conversations are loaded independently in the Groups tab.
     val visibleChats = remember(chats, query, unreadSummaries) {
         val directChats = chats.filterNot { it.isGroup }
-        if (query.isBlank()) directChats else directChats.filter { chat ->
+        val filteredChats = if (query.isBlank()) directChats else directChats.filter { chat ->
             chat.title.contains(query.trim(), ignoreCase = true) ||
                 chat.lastMessagePreview.contains(query.trim(), ignoreCase = true) ||
                 unreadSummaries[chat.id]?.lastUnreadBody.orEmpty().contains(query.trim(), ignoreCase = true)
+        }
+        filteredChats.sortedByDescending { chat ->
+            latestChatActivityInstant(chat) ?: java.time.Instant.MIN
         }
     }
 
@@ -2596,6 +2620,22 @@ private fun StoryViewerScreen(
     }
 }
 
+private fun latestChatActivityInstant(chat: FaceVideoChatSummary): java.time.Instant? {
+    val lastMessage = parseCallInstant(chat.lastMessageAt)
+    val peerLastSeen = parseCallInstant(chat.peerLastSeenAt)
+    return listOfNotNull(lastMessage, peerLastSeen).maxOrNull()
+}
+
+private fun latestChatActivityLabelTime(chat: FaceVideoChatSummary): String? {
+    val lastMessage = parseCallInstant(chat.lastMessageAt)
+    val peerLastSeen = parseCallInstant(chat.peerLastSeenAt)
+    return if (peerLastSeen != null && (lastMessage == null || peerLastSeen.isAfter(lastMessage))) {
+        chat.peerLastSeenAt
+    } else {
+        chat.lastMessageAt
+    }
+}
+
 private fun storyTimeLabel(value: String): String = runCatching {
     val created = java.time.Instant.parse(value)
     val minutes = java.time.Duration.between(created, java.time.Instant.now()).toMinutes().coerceAtLeast(0)
@@ -2620,6 +2660,7 @@ private fun LiveChatRow(
     var showGroupAvatarPreview by remember(chat.id) { mutableStateOf(false) }
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
+    val activityTimestamp = latestChatActivityLabelTime(chat) ?: preview.timestamp
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Surface(
         modifier = Modifier.fillMaxWidth().height(80.dp)
@@ -2671,7 +2712,7 @@ private fun LiveChatRow(
         Spacer(Modifier.width(8.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                preview.timestamp?.let { formatChatMessageTime(it) }.orEmpty(),
+                activityTimestamp?.let { formatChatMessageTime(it) }.orEmpty(),
                 color = if (unreadCount > 0) InboxAccent else InboxMuted,
                 fontSize = 10.sp
             )
