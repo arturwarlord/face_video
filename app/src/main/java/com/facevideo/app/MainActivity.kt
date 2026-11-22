@@ -2937,6 +2937,9 @@ private fun LiveChatScreen(
     }
     var replyingTo by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
     var editingMessage by remember(chat.id) { mutableStateOf<com.facevideo.app.data.FaceVideoMessage?>(null) }
+    var editingScheduledMessage by remember(chat.id) {
+        mutableStateOf<FaceVideoScheduledMessage?>(null)
+    }
 
     // Keep the latest composer values available to the lifecycle callback without
     // re-registering it for every character typed.
@@ -3001,9 +3004,6 @@ private fun LiveChatScreen(
         mutableStateOf<List<FaceVideoScheduledMessage>>(emptyList())
     }
     var showScheduledMessages by remember(chat.id) { mutableStateOf(false) }
-    var editingScheduledMessage by remember(chat.id) {
-        mutableStateOf<FaceVideoScheduledMessage?>(null)
-    }
 
     suspend fun reloadScheduledMessages() {
         scheduledMessages = repository.listScheduledMessages(chat.id)
