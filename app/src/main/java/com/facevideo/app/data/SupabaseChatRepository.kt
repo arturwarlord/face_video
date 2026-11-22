@@ -198,6 +198,7 @@ private data class NewFaceVideoStory(
 data class FaceVideoMessage(
     val id: String,
     @SerialName("chat_id") val chatId: String,
+    @SerialName("topic_id") val topicId: String? = null,
     @SerialName("sender_id") val senderId: String,
     val body: String,
     @SerialName("created_at") val createdAt: String,
@@ -238,6 +239,39 @@ data class FaceVideoGroup(
     @SerialName("created_by") val createdBy: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("avatar_url") val avatarUrl: String? = null
+)
+
+@Serializable
+data class FaceVideoGroupTopic(
+    val id: String,
+    @SerialName("chat_id") val chatId: String,
+    val title: String,
+    val icon: String = "💬",
+    @SerialName("sort_order") val sortOrder: Int = 0,
+    @SerialName("created_by") val createdBy: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String
+)
+
+data class GroupTopicDestination(
+    val id: String?,
+    val title: String,
+    val icon: String,
+    val isGeneral: Boolean = false
+)
+
+@Serializable
+private data class NewFaceVideoGroupTopic(
+    @SerialName("chat_id") val chatId: String,
+    val title: String,
+    val icon: String
+)
+
+@Serializable
+private data class UpdateFaceVideoGroupTopic(
+    val title: String,
+    val icon: String,
+    @SerialName("updated_at") val updatedAt: String
 )
 
 @Serializable
@@ -451,6 +485,7 @@ private data class DeletedMessage(
 @Serializable
 private data class NewMessage(
     @SerialName("chat_id") val chatId: String,
+    @SerialName("topic_id") val topicId: String? = null,
     val body: String,
     @SerialName("reply_to_message_id") val replyToMessageId: String? = null,
     @SerialName("attachment_path") val attachmentPath: String? = null,
@@ -1171,6 +1206,71 @@ class SupabaseChatRepository(
             filter { eq("id", chatId) }
         }.decodeList<FaceVideoGroup>().firstOrNull { it.isGroup }
 
+    suspend fun listGroupTopics(chatId: String): List<FaceVideoGroupTopic> =
+        client.from("face_video_group_topics").select {
+            filter { eq("chat_id", chatId) }
+            order("sort_order", Order.ASCENDING)
+            order("created_at", Order.ASCENDING)
+        }.decodeList<FaceVideoGroupTopic>()
+
+    suspend fun createGroupTopic(
+        chatId: String,
+        title: String,
+        icon: String = "💬"
+    ): FaceVideoGroupTopic {
+        val cleanTitle = title.trim()
+        val cleanIcon = icon.trim().take(8).ifBlank { "💬" }
+        require(cleanTitle.length in 2..48) {
+            "Название темы должно содержать от 2 до 48 символов."
+        }
+        return client.from("face_video_group_topics")
+            .insert(NewFaceVideoGroupTopic(chatId, cleanTitle, cleanIcon)) {
+                select()
+            }
+            .decodeSingle<FaceVideoGroupTopic>()
+    }
+
+    suspend fun updateGroupTopic(
+        chatId: String,
+        topicId: String,
+        title: String,
+        icon: String
+    ): FaceVideoGroupTopic {
+        val cleanTitle = title.trim()
+        val cleanIcon = icon.trim().take(8).ifBlank { "💬" }
+        require(cleanTitle.length in 2..48) {
+            "Название темы должно содержать от 2 до 48 символов."
+        }
+        return client.from("face_video_group_topics").update(
+            UpdateFaceVideoGroupTopic(
+                title = cleanTitle,
+                icon = cleanIcon,
+                updatedAt = java.time.Instant.now().toString()
+            )
+        ) {
+            filter {
+                eq("id", topicId)
+                eq("chat_id", chatId)
+            }
+            select()
+        }.decodeSingle<FaceVideoGroupTopic>()
+    }
+
+    suspend fun deleteGroupTopic(chatId: String, topicId: String) {
+        client.from("face_video_group_topics").delete {
+            filter {
+                eq("id", topicId)
+                eq("chat_id", chatId)
+            }
+        }
+    }
+
+    @OptIn(SupabaseExperimental::class)
+    fun observeGroupTopics(chatId: String): Flow<List<FaceVideoGroupTopic>> =
+        client.from("face_video_group_topics").selectAsFlow(FaceVideoGroupTopic::id) {
+            eq("chat_id", chatId)
+        }
+
     suspend fun listGroupMembers(chatId: String): List<FaceVideoGroupMemberProfile> {
         val members = client.from("face_video_chat_members").select {
             filter { eq("chat_id", chatId) }
@@ -1522,7 +1622,8 @@ class SupabaseChatRepository(
     suspend fun sendText(
         chatId: String,
         text: String,
-        replyToMessageId: String? = null
+        replyToMessageId: String? = null,
+        topicId: String? = null
     ): FaceVideoMessage {
         val cleanText = text.trim()
         require(cleanText.isNotEmpty() && cleanText.length <= 4000) {
@@ -1532,6 +1633,7 @@ class SupabaseChatRepository(
             .insert(
                 NewMessage(
                     chatId = chatId,
+                    topicId = topicId,
                     body = cleanText,
                     replyToMessageId = replyToMessageId
                 )
@@ -1627,7 +1729,8 @@ class SupabaseChatRepository(
         imagePath: String,
         fileName: String,
         fileSize: Long,
-        replyToMessageId: String? = null
+        replyToMessageId: String? = null,
+        topicId: String? = null
     ): FaceVideoMessage {
         require(imagePath.startsWith("$chatId/")) {
             "Вложение не относится к этой переписке."
@@ -1640,6 +1743,7 @@ class SupabaseChatRepository(
             .insert(
                 NewMessage(
                     chatId = chatId,
+                    topicId = topicId,
                     body = "[Фото]",
                     replyToMessageId = replyToMessageId,
                     attachmentPath = imagePath,
@@ -1661,7 +1765,8 @@ class SupabaseChatRepository(
         fileSize: Long,
         durationMs: Long,
         waveform: List<Int>,
-        replyToMessageId: String? = null
+        replyToMessageId: String? = null,
+        topicId: String? = null
     ): FaceVideoMessage {
         require(audioPath.startsWith(chatId + "/")) {
             "Голосовое сообщение не относится к этой переписке."
@@ -1680,6 +1785,7 @@ class SupabaseChatRepository(
             .insert(
                 NewMessage(
                     chatId = chatId,
+                    topicId = topicId,
                     body = "Голосовое сообщение",
                     replyToMessageId = replyToMessageId,
                     attachmentPath = audioPath,
@@ -1701,7 +1807,8 @@ class SupabaseChatRepository(
         videoPath: String,
         fileSize: Long,
         durationMs: Long,
-        replyToMessageId: String? = null
+        replyToMessageId: String? = null,
+        topicId: String? = null
     ): FaceVideoMessage {
         require(videoPath.startsWith(chatId + "/")) {
             "Видеосообщение не относится к этой переписке."
@@ -1716,6 +1823,7 @@ class SupabaseChatRepository(
             .insert(
                 NewMessage(
                     chatId = chatId,
+                    topicId = topicId,
                     body = "Видеосообщение",
                     replyToMessageId = replyToMessageId,
                     attachmentPath = videoPath,
