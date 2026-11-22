@@ -5991,13 +5991,71 @@ private fun MessageBubble(
     )
 
     Row(
-        Modifier.fillMaxWidth().padding(
-            top = when {
-                separateFromPrevious -> 8.dp
-                sameSenderPrevious -> 3.dp
-                else -> 0.dp
+        Modifier.fillMaxWidth()
+            // Listen on the entire message row, not only on the visible bubble.
+            // This lets the user start the reply swipe from the empty space beside it.
+            .pointerInput(message.id, onReply) {
+                if (onReply != null) {
+                    var horizontalDragDistance = 0f
+                    var currentDragOffset = 0f
+                    val maxDragOffset = 72.dp.toPx()
+                    val replyThreshold = 56.dp.toPx()
+
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            horizontalDragDistance = 0f
+                            currentDragOffset = 0f
+                            replyAnimationScope.launch { replyDragOffset.snapTo(0f) }
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            horizontalDragDistance += dragAmount
+                            if (horizontalDragDistance < 0f) {
+                                change.consume()
+                                currentDragOffset = (currentDragOffset + dragAmount)
+                                    .coerceIn(-maxDragOffset, 0f)
+                                replyAnimationScope.launch {
+                                    replyDragOffset.snapTo(currentDragOffset)
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            val shouldReply = horizontalDragDistance <= -replyThreshold
+                            if (shouldReply) onReply.invoke()
+                            horizontalDragDistance = 0f
+                            currentDragOffset = 0f
+                            replyAnimationScope.launch {
+                                replyDragOffset.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        },
+                        onDragCancel = {
+                            horizontalDragDistance = 0f
+                            currentDragOffset = 0f
+                            replyAnimationScope.launch {
+                                replyDragOffset.animateTo(
+                                    targetValue = 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                )
+                            }
+                        }
+                    )
+                }
             }
-        ),
+            .padding(
+                top = when {
+                    separateFromPrevious -> 8.dp
+                    sameSenderPrevious -> 3.dp
+                    else -> 0.dp
+                }
+            ),
         horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom
     ) {
@@ -6032,61 +6090,7 @@ private fun MessageBubble(
                             else -> Modifier.widthIn(max = 310.dp)
                         }
                     )
-                    // Telegram-style reply swipe: move the cloud gently with the finger,
-                    // then spring it back after replying or cancelling the gesture.
-                    .pointerInput(message.id, onReply) {
-                        if (onReply != null) {
-                            var horizontalDragDistance = 0f
-                            var currentDragOffset = 0f
-                            val maxDragOffset = 72.dp.toPx()
-                            val replyThreshold = 56.dp.toPx()
-
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    horizontalDragDistance = 0f
-                                    currentDragOffset = 0f
-                                    replyAnimationScope.launch { replyDragOffset.snapTo(0f) }
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    horizontalDragDistance += dragAmount
-                                    if (horizontalDragDistance < 0f) {
-                                        change.consume()
-                                        currentDragOffset = (currentDragOffset + dragAmount)
-                                            .coerceIn(-maxDragOffset, 0f)
-                                        replyAnimationScope.launch { replyDragOffset.snapTo(currentDragOffset) }
-                                    }
-                                },
-                                onDragEnd = {
-                                    val shouldReply = horizontalDragDistance <= -replyThreshold
-                                    if (shouldReply) onReply.invoke()
-                                    horizontalDragDistance = 0f
-                                    currentDragOffset = 0f
-                                    replyAnimationScope.launch {
-                                        replyDragOffset.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMedium
-                                            )
-                                        )
-                                    }
-                                },
-                                onDragCancel = {
-                                    horizontalDragDistance = 0f
-                                    currentDragOffset = 0f
-                                    replyAnimationScope.launch {
-                                        replyDragOffset.animateTo(
-                                            targetValue = 0f,
-                                            animationSpec = spring(
-                                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                                stiffness = Spring.StiffnessMedium
-                                            )
-                                        )
-                                    }
-                                }
-                            )
-                        }
-                    }
+                    // The swipe listener lives on the full message row above.
                     .graphicsLayer {
                         translationX = replyDragOffset.value
                         val dragProgress = (-replyDragOffset.value / 72.dp.toPx()).coerceIn(0f, 1f)
