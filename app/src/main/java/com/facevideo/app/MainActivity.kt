@@ -3095,6 +3095,10 @@ private fun LiveChatScreen(
     }
 
     fun scheduleCurrentDraft() {
+        if (activeTopicId != null) {
+            Toast.makeText(context, "Отложенные сообщения пока доступны в «Общих».", Toast.LENGTH_SHORT).show()
+            return
+        }
         val textToSchedule = draft.trim()
         if (textToSchedule.isBlank() || isSending) return
         showScheduledMessages = false
@@ -3719,7 +3723,7 @@ private fun LiveChatScreen(
                             Text(
                                 when {
                                     chat.isGroup && activeTopic != null -> "Тема · ${chat.title}"
-                                chat.isGroup -> "Нажмите, чтобы открыть темы"
+                                    chat.isGroup -> "Нажмите, чтобы открыть темы"
                                     peerUserId == null -> "Проверяем статус…"
                                     peerIsOnline -> "В сети"
                                     !presenceAvailable -> "Статус обновляется…"
