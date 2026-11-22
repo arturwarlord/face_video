@@ -3667,6 +3667,23 @@ private fun LiveChatScreen(
         }
         Spacer(Modifier.height(3.dp))
 
+        // Date separators follow the device's local calendar day and roll over at midnight.
+        val chatTimeZone = remember { java.time.ZoneId.systemDefault() }
+        var chatToday by remember(chatTimeZone) {
+            mutableStateOf(java.time.LocalDate.now(chatTimeZone))
+        }
+        LaunchedEffect(chatTimeZone) {
+            while (true) {
+                val now = java.time.ZonedDateTime.now(chatTimeZone)
+                val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(chatTimeZone)
+                val millisUntilMidnight = java.time.Duration.between(now, nextMidnight)
+                    .toMillis()
+                    .coerceAtLeast(1L)
+                delay(millisUntilMidnight)
+                chatToday = java.time.LocalDate.now(chatTimeZone)
+            }
+        }
+
         if (orderedMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text("Это начало вашей переписки. Напиши первое сообщение.", color = Muted, fontSize = 12.sp)
@@ -3698,7 +3715,21 @@ private fun LiveChatScreen(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
-                    val startsNewSenderGroup = index > 0 &&
+                    val messageDate = parseCallInstant(message.createdAt)
+                        ?.atZone(chatTimeZone)
+                        ?.toLocalDate()
+                    val previousMessageDate = if (index > 0) {
+                        parseCallInstant(orderedMessages[index - 1].createdAt)
+                            ?.atZone(chatTimeZone)
+                            ?.toLocalDate()
+                    } else null
+
+                    Column(Modifier.fillMaxWidth()) {
+                        if (messageDate != null && (index == 0 || messageDate != previousMessageDate)) {
+                            ChatDateDivider(formatChatDateDivider(messageDate, chatToday))
+                        }
+
+                        val startsNewSenderGroup = index > 0 &&
                         orderedMessages[index - 1].senderId != message.senderId
                     val followsSameSender = index > 0 && !startsNewSenderGroup
                     val repliedMessage = message.replyToMessageId
@@ -3787,6 +3818,7 @@ private fun LiveChatScreen(
                             }
                         }
                     )
+                    }
                 }
             }
         }
@@ -5940,6 +5972,44 @@ private fun SelectionActionButton(
             softWrap = false,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+private fun ChatDateDivider(label: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            color = Color(0xDDE7ECF8),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            shadowElevation = 0.dp
+        ) {
+            Text(
+                text = label,
+                color = Color(0xFF65718A),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.15.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+            )
+        }
+    }
+}
+
+private fun formatChatDateDivider(
+    date: java.time.LocalDate,
+    today: java.time.LocalDate
+): String {
+    return when (date) {
+        today -> "Сегодня"
+        today.minusDays(1) -> "Вчера"
+        else -> {
+            val pattern = if (date.year == today.year) "d MMMM" else "d MMMM yyyy"
+            java.time.format.DateTimeFormatter.ofPattern(pattern, Locale("ru")).format(date)
+        }
     }
 }
 
