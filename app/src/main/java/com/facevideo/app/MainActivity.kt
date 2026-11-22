@@ -647,6 +647,7 @@ private fun FaceVideoApp(
     val incomingCalls by incomingCallsFlow.collectAsState(initial = emptyList())
     var incomingCallerProfile by remember { mutableStateOf<FaceVideoProfile?>(null) }
     var activeCall by remember { mutableStateOf<FaceVideoCall?>(null) }
+    var callDurationRefreshTick by remember { mutableStateOf(0L) }
     // The media session remains alive when the full call UI is collapsed.
     var showActiveCallScreen by remember { mutableStateOf(false) }
     var activeCallTitle by remember { mutableStateOf("") }
@@ -677,6 +678,21 @@ private fun FaceVideoApp(
         onDispose {
             hostActivity?.lifecycle?.removeObserver(observer)
         }
+    }
+
+    LaunchedEffect(activeCall?.id, activeCall?.status, activeCall?.answeredAt) {
+        val call = activeCall ?: return@LaunchedEffect
+        if (call.status != "accepted" || parseCallInstant(call.answeredAt) == null) {
+            callDurationRefreshTick = 0L
+            return@LaunchedEffect
+        }
+        while (currentCoroutineContext().isActive) {
+            callDurationRefreshTick = SystemClock.elapsedRealtime()
+            delay(1_000L)
+        }
+    }
+    val activeCallDuration = remember(activeCall, callDurationRefreshTick) {
+        activeCall?.let(::formatCallDuration)
     }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -896,7 +912,7 @@ private fun FaceVideoApp(
                 appNotifications.cancelNotification(action.call.id)
                 // Start from the visible accept flow before awaiting Supabase.
                 CallForegroundService.start(context, "Собеседник", action.call.mediaType)
-                try {
+                val acceptedCall = try {
                     repository.answerCall(action.call.id)
                 } catch (error: Exception) {
                     CallForegroundService.stop(context)
@@ -905,7 +921,7 @@ private fun FaceVideoApp(
                 val profile = runCatching {
                     repository.getProfile(action.call.callerId)
                 }.getOrNull()
-                activeCall = action.call.copy(status = "accepted")
+                activeCall = acceptedCall
                 activeCallTitle = profile?.displayName?.ifBlank { profile.username } ?: "Собеседник"
                 // Refresh the persistent notification with the resolved caller name.
                 CallForegroundService.start(context, activeCallTitle, action.call.mediaType)
@@ -916,7 +932,7 @@ private fun FaceVideoApp(
                 val client = WebRtcAudioCallClient(
                     context = context,
                     repository = repository,
-                    call = action.call.copy(status = "accepted"),
+                    call = acceptedCall,
                     currentUserId = currentUser,
                     onStatus = { callStatus = it },
                     onError = { callError = it }
@@ -1093,8 +1109,9 @@ private fun FaceVideoApp(
         val repository = callRepository ?: return@LaunchedEffect
         repository.observeCall(call.id).collect { rows ->
             val latest = rows.firstOrNull() ?: return@collect
-            if (activeCall?.id == call.id && activeCall?.status != latest.status) {
-                activeCall = activeCall?.copy(status = latest.status)
+            if (activeCall?.id == call.id && activeCall != latest) {
+                // Keep the server's answered_at and ended_at timestamps in sync.
+                activeCall = latest
             }
             when (latest.status) {
                 "accepted" -> {
@@ -1183,6 +1200,7 @@ private fun FaceVideoApp(
                 peerName = activeCallTitle,
                 mediaType = activeCall?.mediaType ?: "audio",
                 status = callStatus,
+                duration = activeCallDuration,
                 onOpen = { showActiveCallScreen = true }
             )
         }
@@ -1192,6 +1210,7 @@ private fun FaceVideoApp(
                 ActiveVideoCallScreen(
                     peerName = activeCallTitle,
                     status = callStatus,
+                    duration = activeCallDuration,
                     error = callError,
                     muted = callMuted,
                     cameraEnabled = callCameraEnabled,
@@ -1212,6 +1231,7 @@ private fun FaceVideoApp(
                 ActiveAudioCallScreen(
                     peerName = activeCallTitle,
                     status = callStatus,
+                    duration = activeCallDuration,
                     error = callError,
                     muted = callMuted,
                     speakerEnabled = callSpeakerEnabled,
@@ -1257,6 +1277,7 @@ private fun FaceVideoApp(
             LiveChatScreen(
                 chat = currentChat,
                 repository = liveRepository,
+                callRepository = callRepository,
                 cache = localCache,
                 userId = userId,
                 onlineUserIds = onlineUserIds,
@@ -2916,6 +2937,7 @@ private fun NewChatDialog(
 private fun LiveChatScreen(
     chat: FaceVideoChatSummary,
     repository: SupabaseChatRepository,
+    callRepository: SupabaseCallRepository?,
     cache: ArturChatLocalCache,
     userId: String,
     onlineUserIds: Set<String>,
@@ -2939,6 +2961,14 @@ private fun LiveChatScreen(
     }
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = cachedMessages)
+    val callHistoryFlow = remember(callRepository, chat.id, chat.isGroup) {
+        if (callRepository != null && !chat.isGroup) {
+            callRepository.observeChatCallHistory(chat.id)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    val callHistory by callHistoryFlow.collectAsState(initial = emptyList())
     var peerUserId by remember(repository, chat.id, userId) { mutableStateOf(chat.peerUserId) }
     var peerAvatarUrl by remember(repository, chat.id, userId) { mutableStateOf(chat.peerAvatarUrl) }
     LaunchedEffect(repository, chat.id, userId, chat.isGroup, chat.peerUserId, chat.peerAvatarUrl) {
@@ -3011,6 +3041,26 @@ private fun LiveChatScreen(
         allChatMessages
             .filter { it.topicId == activeTopicId }
             .filterNot { it.id in hiddenMessageIds }
+    }
+    // Keep the durable call log separate from ordinary messages and their actions/cache.
+    val timelineMessages = remember(orderedMessages, callHistory, chat.isGroup, activeTopicId) {
+        val callEvents = if (!chat.isGroup && activeTopicId == null) {
+            callHistory.map { call ->
+                com.facevideo.app.data.FaceVideoMessage(
+                    id = "call-${call.callId}",
+                    chatId = call.chatId,
+                    senderId = call.callerId,
+                    body = "",
+                    createdAt = call.createdAt,
+                    messageType = "call",
+                    callId = call.callId,
+                    callMediaType = call.mediaType,
+                    callStatus = call.status,
+                    callDurationSeconds = call.durationSeconds
+                )
+            }
+        } else emptyList()
+        sortChatMessagesChronologically(orderedMessages + callEvents)
     }
     LaunchedEffect(userId, chat.id, allChatMessages) {
         withContext(Dispatchers.IO) {
@@ -3835,7 +3885,7 @@ private fun LiveChatScreen(
             }
         }
 
-        if (orderedMessages.isEmpty()) {
+        if (timelineMessages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text("Это начало вашей переписки. Напиши первое сообщение.", color = Muted, fontSize = 12.sp)
             }
@@ -3865,12 +3915,12 @@ private fun LiveChatScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                itemsIndexed(orderedMessages, key = { _, message -> message.id }) { index, message ->
+                itemsIndexed(timelineMessages, key = { _, message -> message.id }) { index, message ->
                     val messageDate = parseCallInstant(message.createdAt)
                         ?.atZone(chatTimeZone)
                         ?.toLocalDate()
                     val previousMessageDate = if (index > 0) {
-                        parseCallInstant(orderedMessages[index - 1].createdAt)
+                        parseCallInstant(timelineMessages[index - 1].createdAt)
                             ?.atZone(chatTimeZone)
                             ?.toLocalDate()
                     } else null
@@ -3880,11 +3930,23 @@ private fun LiveChatScreen(
                             ChatDateDivider(formatChatDateDivider(messageDate, chatToday))
                         }
 
-                        val startsNewSenderGroup = index > 0 &&
-                        orderedMessages[index - 1].senderId != message.senderId
-                    val followsSameSender = index > 0 && !startsNewSenderGroup
+                        if (message.messageType == "call") {
+                            CallHistoryBubble(
+                                mediaType = message.callMediaType ?: "audio",
+                                status = message.callStatus ?: "ended",
+                                durationSeconds = message.callDurationSeconds ?: 0,
+                                isOutgoing = message.senderId == userId,
+                                time = formatChatMessageTime(message.createdAt)
+                            )
+                        } else {
+                    val startsNewSenderGroup = index > 0 &&
+                        timelineMessages[index - 1].messageType != "call" &&
+                        timelineMessages[index - 1].senderId != message.senderId
+                    val followsSameSender = index > 0 &&
+                        timelineMessages[index - 1].messageType != "call" &&
+                        !startsNewSenderGroup
                     val repliedMessage = message.replyToMessageId
-                        ?.let { replyId -> orderedMessages.firstOrNull { it.id == replyId } }
+                        ?.let { replyId -> timelineMessages.firstOrNull { it.id == replyId } }
                     val replyPreview = repliedMessage?.let { original ->
                         MessageReplyPreview(
                             sender = if (original.senderId == userId) "Вы"
@@ -3909,7 +3971,7 @@ private fun LiveChatScreen(
                         selected = message.id in selectedMessageIds,
                         onSelect = if (message.deletedAt == null) ({ selectedMessageIds = selectedMessageIds + message.id }) else null,
                         onToggleSelection = if (message.deletedAt == null && selectedMessageIds.isNotEmpty()) ({ selectedMessageIds = if (message.id in selectedMessageIds) selectedMessageIds - message.id else selectedMessageIds + message.id }) else null,
-                        showTime = shouldShowChatMessageTime(orderedMessages, index) || message.editedAt != null,
+                        showTime = shouldShowChatMessageTime(timelineMessages, index) || message.editedAt != null,
                         separateFromPrevious = startsNewSenderGroup,
                         sameSenderPrevious = followsSameSender,
                         replyPreview = replyPreview,
@@ -3962,13 +4024,14 @@ private fun LiveChatScreen(
                         }) else null,
                         onReplyPreviewClick = repliedMessage?.let { original ->
                             {
-                                val targetIndex = orderedMessages.indexOfFirst { it.id == original.id }
+                                val targetIndex = timelineMessages.indexOfFirst { it.id == original.id }
                                 if (targetIndex >= 0) {
                                     scope.launch { listState.animateScrollToItem(targetIndex) }
                                 }
                             }
                         }
                     )
+                        }
                     }
                 }
             }
@@ -6755,6 +6818,7 @@ private fun ActiveCallMiniBar(
     peerName: String,
     mediaType: String,
     status: String,
+    duration: String?,
     onOpen: () -> Unit
 ) {
     val callType = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
@@ -6795,8 +6859,8 @@ private fun ActiveCallMiniBar(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "$callType · $status",
-                    color = if (status == "Звонок активен") Color(0xFF328E70) else Muted,
+                    if (duration != null) "$callType · $duration" else "$callType · $status",
+                    color = if (duration != null || status == "Звонок активен") Color(0xFF328E70) else Muted,
                     fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -6814,9 +6878,86 @@ private fun ActiveCallMiniBar(
 }
 
 @Composable
+private fun CallHistoryBubble(
+    mediaType: String,
+    status: String,
+    durationSeconds: Int,
+    isOutgoing: Boolean,
+    time: String
+) {
+    val title = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
+    val duration = formatCallDurationSeconds(durationSeconds)
+    val (subtitle, isMissed) = when (status) {
+        "ended" -> (duration?.let { "Разговор · $it" } ?: "Разговор завершён") to false
+        "declined" -> (if (isOutgoing) "Собеседник отклонил" else "Вы отклонили") to true
+        "cancelled" -> (if (isOutgoing) "Нет ответа" else "Пропущенный вызов") to true
+        else -> "Звонок завершён" to false
+    }
+    val accent = if (isMissed) Color(0xFFC65F70) else AccentSlate
+    val cardBackground = if (isMissed) Color(0xFFFFF0F2) else Color(0xFFF0F3FF)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+        horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(max = 270.dp),
+            color = cardBackground,
+            shape = RoundedCornerShape(17.dp),
+            border = BorderStroke(1.dp, accent.copy(alpha = 0.13f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier.size(36.dp).clip(CircleShape)
+                        .background(accent.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (isOutgoing) "↗" else "↙",
+                        color = accent,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, color = MainText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        subtitle,
+                        color = accent,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(time, color = Muted, fontSize = 9.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+private fun formatCallDurationSeconds(totalSeconds: Int): String? {
+    if (totalSeconds <= 0) return null
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%02d:%02d".format(minutes, seconds)
+    }
+}
+
+@Composable
 private fun ActiveAudioCallScreen(
     peerName: String,
     status: String,
+    duration: String?,
     error: String?,
     muted: Boolean,
     speakerEnabled: Boolean,
@@ -6915,6 +7056,16 @@ private fun ActiveAudioCallScreen(
                 )
             }
         }
+        if (duration != null) {
+            Spacer(Modifier.height(9.dp))
+            Text(
+                duration,
+                color = AccentSlate,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+            )
+        }
         if (error != null) {
             Spacer(Modifier.height(12.dp))
             Surface(
@@ -6970,6 +7121,7 @@ private fun ActiveAudioCallScreen(
 private fun ActiveVideoCallScreen(
     peerName: String,
     status: String,
+    duration: String?,
     error: String?,
     muted: Boolean,
     cameraEnabled: Boolean,
@@ -7035,6 +7187,16 @@ private fun ActiveVideoCallScreen(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (duration != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        duration,
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    )
+                }
             }
         }
 
