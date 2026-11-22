@@ -49,6 +49,22 @@ jobs:
       - name: Validate and prepare required Firebase Android configuration
         run: python3 .github/scripts/prepare_firebase_config.py
 
+      - name: Validate launcher icon resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          for icon in ic_launcher.xml ic_launcher_round.xml; do
+            resource="app/src/main/res/mipmap-anydpi-v26/$icon"
+            test -s "$resource"
+            grep -Fq '@mipmap/ic_launcher_artwork' "$resource"
+            if grep -Fq '@mipmap/ic_launcher"' "$resource"; then
+              echo "::error::Adaptive launcher icon must not reference itself."
+              exit 1
+            fi
+          done
+          test -s app/src/main/res/mipmap-nodpi/ic_launcher_artwork.webp
+          test -s app/src/main/res/mipmap-nodpi/ic_launcher.webp
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:

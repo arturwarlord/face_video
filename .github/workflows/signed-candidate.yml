@@ -1,4 +1,4 @@
-name: ArturChat 0.8.0 signed installable APK
+name: ArturChat 0.8.1 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
@@ -55,6 +55,22 @@ jobs:
       - name: Validate and prepare required Firebase Android configuration
         run: python3 .github/scripts/prepare_firebase_config.py
 
+      - name: Validate launcher icon resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          for icon in ic_launcher.xml ic_launcher_round.xml; do
+            resource="app/src/main/res/mipmap-anydpi-v26/$icon"
+            test -s "$resource"
+            grep -Fq '@mipmap/ic_launcher_artwork' "$resource"
+            if grep -Fq '@mipmap/ic_launcher"' "$resource"; then
+              echo "::error::Adaptive launcher icon must not reference itself."
+              exit 1
+            fi
+          done
+          test -s app/src/main/res/mipmap-nodpi/ic_launcher_artwork.webp
+          test -s app/src/main/res/mipmap-nodpi/ic_launcher.webp
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -79,16 +95,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.0"
-          -PAPP_VERSION_CODE="8000"
+          -PAPP_VERSION_NAME="0.8.1"
+          -PAPP_VERSION_CODE="8001"
 
       - name: Build signed installable APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.0"
-          -PAPP_VERSION_CODE="8000"
+          -PAPP_VERSION_NAME="0.8.1"
+          -PAPP_VERSION_CODE="8001"
 
       - name: Verify package, version and APK signature
         shell: bash
@@ -98,23 +114,23 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='8000' versionName='0.8.0'"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='8001' versionName='0.8.1'"
 
       - name: Prepare APK and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p installable
-          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.8.0.apk
+          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.8.1.apk
           cd installable
-          sha256sum ArturChat-0.8.0.apk > ArturChat-0.8.0.apk.sha256
+          sha256sum ArturChat-0.8.1.apk > ArturChat-0.8.1.apk.sha256
 
       - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: arturchat-0.8.0-installable
+          name: arturchat-0.8.1-installable
           path: |
-            installable/ArturChat-0.8.0.apk
-            installable/ArturChat-0.8.0.apk.sha256
+            installable/ArturChat-0.8.1.apk
+            installable/ArturChat-0.8.1.apk.sha256
           if-no-files-found: error
           retention-days: 14
