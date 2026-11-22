@@ -2859,7 +2859,7 @@ private fun NewChatDialog(
         title = { Text("Новый чат", color = MainText, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Введи псевдоним человека, с которым хочешь начать переписку.", color = Muted, fontSize = 12.sp)
+                Text("Введи псевдоним пользователя. Если переписка уже существует, откроется текущий чат.", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = username,
@@ -2901,16 +2901,15 @@ private fun NewChatDialog(
                                     result = found
                                 }
                             } else {
-                                val chatId = repository.createDirectChat(profile.id)
-                                val chat = repository.getChat(chatId)
+                                val chat = repository.getOrCreateDirectChat(profile.id, currentUserId)
                                 if (chat == null) {
-                                    message = "Чат создан, но пока не удалось загрузить его данные."
+                                    message = "Не удалось открыть переписку. Попробуй ещё раз."
                                 } else {
                                     onOpenChat(chat)
                                 }
                             }
                         } catch (error: Exception) {
-                            message = error.message ?: "Не удалось создать переписку."
+                            message = error.message ?: "Не удалось открыть переписку."
                         } finally {
                             isBusy = false
                         }
@@ -2920,7 +2919,7 @@ private fun NewChatDialog(
                 Text(
                     when {
                         isBusy -> "Подключение..."
-                        result != null -> "Начать переписку"
+                        result != null -> "Открыть чат"
                         else -> "Найти"
                     },
                     color = AccentSlate

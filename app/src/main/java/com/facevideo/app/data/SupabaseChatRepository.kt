@@ -36,6 +36,25 @@ data class FaceVideoChatSummary(
     @SerialName("avatar_url") val avatarUrl: String? = null
 )
 
+/**
+ * Selects the existing one-to-one conversation for a peer.
+ *
+ * Older app versions could create multiple direct chats for the same pair.
+ * Prefer a conversation that already contains messages, then the most recently
+ * active one. If all matching chats are empty, keep the newest one.
+ */
+internal fun findExistingDirectChat(
+    chats: List<FaceVideoChatSummary>,
+    otherUserId: String
+): FaceVideoChatSummary? =
+    chats.asSequence()
+        .filter { !it.isGroup && it.peerUserId == otherUserId }
+        .maxWithOrNull(
+            compareBy<FaceVideoChatSummary> { it.lastMessageAt != null }
+                .thenBy { it.lastMessageAt.orEmpty() }
+                .thenBy { it.createdAt }
+        )
+
 @Serializable
 private data class FaceVideoOnlinePresenceRow(
     @SerialName("user_id") val userId: String,
@@ -945,9 +964,10 @@ class SupabaseChatRepository(
         otherUserId: String,
         currentUserId: String
     ): FaceVideoChatSummary? {
-        val existing = listMyChats(currentUserId).firstOrNull { chat ->
-            !chat.isGroup && getDirectChatPeerId(chat.id, currentUserId) == otherUserId
-        }
+        val existing = findExistingDirectChat(
+            chats = listMyChats(currentUserId),
+            otherUserId = otherUserId
+        )
         if (existing != null) return existing
         val chatId = createDirectChat(otherUserId)
         return getChat(chatId)
