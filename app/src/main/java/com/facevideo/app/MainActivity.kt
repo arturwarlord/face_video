@@ -6,6 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.view.LayoutInflater
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
@@ -173,6 +175,7 @@ import com.facevideo.app.data.ArturChatImageCache
 import com.facevideo.app.data.ArturChatLocalCache
 import com.facevideo.app.data.ArturChatNavigationState
 import com.facevideo.app.data.FaceVideoChatSummary
+import com.facevideo.app.data.FaceVideoScheduledMessage
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.FaceVideoStoryCard
 import com.facevideo.app.data.FaceVideoPresence
@@ -210,6 +213,11 @@ import com.facevideo.app.model.StoryReactionSummary
 import com.facevideo.app.model.nextStoryReaction
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -1762,6 +1770,148 @@ private fun StoriesStrip(
     var isPublishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var scheduledMessages by remember(chat.id) {
+        mutableStateOf<List<FaceVideoScheduledMessage>>(emptyList())
+    }
+    var showScheduledMessages by remember(chat.id) { mutableStateOf(false) }
+    var editingScheduledMessage by remember(chat.id) {
+        mutableStateOf<FaceVideoScheduledMessage?>(null)
+    }
+
+    suspend fun reloadScheduledMessages() {
+        scheduledMessages = repository.listScheduledMessages(chat.id)
+    }
+
+    fun openScheduledMessages() {
+        scope.launch {
+            runCatching { repository.listScheduledMessages(chat.id) }
+                .onSuccess {
+                    scheduledMessages = it
+                    showScheduledMessages = true
+                }
+                .onFailure {
+                    Toast.makeText(
+                        context,
+                        it.message ?: "Не удалось загрузить отложенные сообщения",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
+    }
+
+    fun scheduleCurrentDraft() {
+        val textToSchedule = draft.trim()
+        if (textToSchedule.isBlank() || isSending) return
+        showScheduledMessages = false
+        showArturChatScheduleDateTimePicker(
+            context = context,
+            initialTimeMillis = System.currentTimeMillis() + 60L * 60L * 1000L
+        ) { selectedTime ->
+            scope.launch {
+                isSending = true
+                runCatching {
+                    repository.createScheduledMessage(
+                        chatId = chat.id,
+                        text = textToSchedule,
+                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
+                    )
+                }.onSuccess {
+                    draft = ""
+                    cache.saveDraft(userId, chat.id, "")
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Сообщение запланировано", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось запланировать сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                isSending = false
+            }
+        }
+    }
+
+    fun rescheduleMessage(item: FaceVideoScheduledMessage) {
+        showScheduledMessages = false
+        val initialTime = runCatching {
+            Instant.parse(item.scheduledFor).toEpochMilli()
+        }.getOrDefault(System.currentTimeMillis() + 60L * 60L * 1000L)
+        showArturChatScheduleDateTimePicker(context, initialTime) { selectedTime ->
+            scope.launch {
+                runCatching {
+                    repository.updateScheduledMessage(
+                        id = item.id,
+                        text = item.body,
+                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
+                    )
+                }.onSuccess {
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Время отправки изменено", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось перенести сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    fun saveEditedScheduledMessage() {
+        val item = editingScheduledMessage ?: return
+        val textToSave = draft.trim()
+        if (textToSave.isBlank() || isSending) return
+        scope.launch {
+            isSending = true
+            runCatching {
+                repository.updateScheduledMessage(
+                    id = item.id,
+                    text = textToSave,
+                    scheduledFor = item.scheduledFor
+                )
+            }.onSuccess {
+                draft = ""
+                cache.saveDraft(userId, chat.id, "")
+                editingScheduledMessage = null
+                reloadScheduledMessages()
+                Toast.makeText(context, "Отложенное сообщение изменено", Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    error.message ?: "Не удалось изменить сообщение",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            isSending = false
+        }
+    }
+
+    fun deleteScheduledMessage(item: FaceVideoScheduledMessage) {
+        scope.launch {
+            runCatching { repository.cancelScheduledMessage(item.id) }
+                .onSuccess {
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Отложенное сообщение удалено", Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось удалить сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+        }
+    }
+
+    LaunchedEffect(repository, chat.id) {
+        runCatching { repository.listScheduledMessages(chat.id) }
+            .onSuccess { scheduledMessages = it }
+            .onFailure {
+                android.util.Log.w("ArturChatScheduled", "Could not load scheduled messages", it)
+            }
+    }
     val mediaCache = remember(context) { ArturChatImageCache(context) }
 
     LaunchedEffect(repository, userId, refreshKey) {
@@ -3036,6 +3186,11 @@ private fun LiveChatScreen(
         val text = draft.trim()
         if (text.isBlank() || isSending) return
 
+        if (editingScheduledMessage != null && editingMessage == null) {
+            saveEditedScheduledMessage()
+            return
+        }
+
         val messageBeingEdited = editingMessage
         if (messageBeingEdited != null) {
             if (text == messageBeingEdited.body.trim()) {
@@ -3770,6 +3925,112 @@ private fun LiveChatScreen(
             )
         }
 
+        if (showScheduledMessages) {
+            AlertDialog(
+                onDismissRequest = { showScheduledMessages = false },
+                title = {
+                    Text("Отложенные сообщения", color = InboxPrimary, fontWeight = FontWeight.SemiBold)
+                },
+                text = {
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        Text(
+                            "Сообщения отправляются автоматически в выбранное время, даже если ArturChat закрыт.",
+                            color = InboxSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        if (scheduledMessages.isEmpty()) {
+                            Text(
+                                "Запланированных сообщений пока нет.",
+                                color = InboxMuted,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        }
+                        scheduledMessages.forEach { item ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                                color = Color.White.copy(alpha = 0.78f),
+                                shape = RoundedCornerShape(15.dp),
+                                border = BorderStroke(1.dp, InboxBorder)
+                            ) {
+                                Column(Modifier.padding(11.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        ChatScheduleGlyph()
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(
+                                            if (item.status == "failed") "Не удалось отправить"
+                                            else formatScheduledMessageTime(item.scheduledFor),
+                                            color = if (item.status == "failed") InboxDanger else InboxAccentStrong,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        item.body,
+                                        color = InboxPrimary,
+                                        fontSize = 13.sp,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(top = 5.dp),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (item.status == "pending") {
+                                            TextButton(
+                                                onClick = {
+                                                    editingScheduledMessage = item
+                                                    draft = item.body
+                                                    cache.saveDraft(userId, chat.id, item.body)
+                                                    showScheduledMessages = false
+                                                }
+                                            ) {
+                                                Text("Изменить", color = InboxAccentStrong, fontSize = 11.sp)
+                                            }
+                                            TextButton(onClick = { rescheduleMessage(item) }) {
+                                                Text("Перенести", color = InboxAccentStrong, fontSize = 11.sp)
+                                            }
+                                        }
+                                        TextButton(onClick = { deleteScheduledMessage(item) }) {
+                                            Text(
+                                                "Удалить",
+                                                color = InboxDanger,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (draft.isNotBlank() && editingScheduledMessage == null && editingMessage == null) {
+                            Spacer(Modifier.height(3.dp))
+                            Button(
+                                onClick = { scheduleCurrentDraft() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !isSending
+                            ) {
+                                Text("Запланировать текущее сообщение")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showScheduledMessages = false }) {
+                        Text("Закрыть", color = InboxAccentStrong)
+                    }
+                },
+                containerColor = Panel
+            )
+        }
+
         if (editingMessage != null) {
             val selectedEditingMessage = editingMessage!!
             Row(
@@ -3802,6 +4063,43 @@ private fun LiveChatScreen(
                     modifier = Modifier.clickable {
                         editingMessage = null
                         draft = ""
+                    }.padding(start = 10.dp)
+                )
+            }
+        }
+
+        if (editingScheduledMessage != null && editingMessage == null) {
+            val selectedScheduledMessage = editingScheduledMessage!!
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(PanelLight)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(3.dp).height(34.dp).clip(CircleShape).background(InboxAccent))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Изменение отложенного сообщения",
+                        color = InboxAccentStrong,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Отправка: ${formatScheduledMessageTime(selectedScheduledMessage.scheduledFor)}",
+                        color = InboxSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    "×",
+                    color = Muted,
+                    fontSize = 22.sp,
+                    modifier = Modifier.clickable {
+                        editingScheduledMessage = null
+                        draft = ""
+                        cache.saveDraft(userId, chat.id, "")
                     }.padding(start = 10.dp)
                 )
             }
@@ -4001,9 +4299,29 @@ private fun LiveChatScreen(
                         }
                         Spacer(Modifier.width(4.dp))
                     }
+                    if (editingMessage == null) {
+                        ChatChromeActionButton(
+                            onClick = { openScheduledMessages() },
+                            enabled = !isSending,
+                            filled = false,
+                            size = 34.dp
+                        ) {
+                            ChatScheduleGlyph()
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
                     ChatChromeActionButton(
-                        onClick = { sendMessage() },
-                        enabled = !isSending && draft.isNotBlank() &&
+                        onClick = {
+                            if (draft.isBlank() && scheduledMessages.isNotEmpty()) {
+                                openScheduledMessages()
+                            } else {
+                                sendMessage()
+                            }
+                        },
+                        enabled = !isSending && (
+                            draft.isNotBlank() ||
+                                scheduledMessages.isNotEmpty()
+                            ) &&
                             (editingMessage == null || draft.trim() != editingMessage?.body?.trim()),
                         filled = true
                     ) {
@@ -4017,6 +4335,48 @@ private fun LiveChatScreen(
 
 }
 
+
+private fun formatScheduledMessageTime(value: String): String = runCatching {
+    val instant = Instant.parse(value)
+    SimpleDateFormat("d MMMM, HH:mm", Locale.getDefault())
+        .format(Date(instant.toEpochMilli()))
+}.getOrDefault(value)
+
+private fun showArturChatScheduleDateTimePicker(
+    context: Context,
+    initialTimeMillis: Long,
+    onSelected: (Long) -> Unit
+) {
+    val initial = Calendar.getInstance().apply { timeInMillis = initialTimeMillis }
+    DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            TimePickerDialog(
+                context,
+                { _, hourOfDay, minute ->
+                    val selected = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, year)
+                        set(Calendar.MONTH, month)
+                        set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                        set(Calendar.HOUR_OF_DAY, hourOfDay)
+                        set(Calendar.MINUTE, minute)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    onSelected(selected.timeInMillis)
+                },
+                initial.get(Calendar.HOUR_OF_DAY),
+                initial.get(Calendar.MINUTE),
+                true
+            ).show()
+        },
+        initial.get(Calendar.YEAR),
+        initial.get(Calendar.MONTH),
+        initial.get(Calendar.DAY_OF_MONTH)
+    ).apply {
+        datePicker.minDate = System.currentTimeMillis()
+    }.show()
+}
 
 @Composable
 private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
@@ -8695,6 +9055,39 @@ private fun ChatSendGlyph() {
         drawPath(path, Color.White, style = line)
     }
 }
+
+@Composable
+private fun ChatScheduleGlyph() {
+    Canvas(Modifier.size(19.dp)) {
+        val line = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+        val center = Offset(size.width * 0.5f, size.height * 0.5f)
+        drawCircle(InboxAccentStrong, radius = size.minDimension * 0.39f, center = center, style = line)
+        drawLine(
+            InboxAccentStrong,
+            Offset(center.x, center.y),
+            Offset(center.x, size.height * 0.27f),
+            strokeWidth = line.width,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            InboxAccentStrong,
+            Offset(center.x, center.y),
+            Offset(size.width * 0.69f, center.y * 1.08f),
+            strokeWidth = line.width,
+            cap = StrokeCap.Round
+        )
+        drawArc(
+            color = InboxAccentStrong,
+            startAngle = 218f,
+            sweepAngle = 95f,
+            useCenter = false,
+            topLeft = Offset(size.width * 0.03f, size.height * 0.03f),
+            size = androidx.compose.ui.geometry.Size(size.width * 0.94f, size.height * 0.94f),
+            style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+    }
+}
+
 
 @Composable
 private fun ChatVideoNoteGlyph(tint: Color = InboxAccentStrong) {
