@@ -8305,6 +8305,8 @@ private fun ProfileScreen(
                     errorMessage = it.message ?: "Не удалось обновить профиль."
                     android.util.Log.w("ArturChatProfile", "Could not refresh own profile", it)
                 }
+            // Show the profile as soon as its own data is ready; social counters refresh independently.
+            isLoading = false
             runCatching {
                 val accepted = currentRepository.listMyFriendships(currentUserId)
                     .filter { it.status == "accepted" }
@@ -8332,7 +8334,6 @@ private fun ProfileScreen(
                 android.util.Log.w("ArturChatProfile", "Could not load profile group count", it)
             }
         }
-        isLoading = false
     }
 
     val hasChanges = profile?.let {
