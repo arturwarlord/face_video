@@ -32,6 +32,7 @@ data class FaceVideoChatSummary(
     // Enriched on the client from chat members + profiles; not columns in the SQL view.
     @SerialName("peer_user_id") val peerUserId: String? = null,
     @SerialName("peer_avatar_url") val peerAvatarUrl: String? = null,
+    @SerialName("peer_last_seen_at") val peerLastSeenAt: String? = null,
     @SerialName("avatar_url") val avatarUrl: String? = null
 )
 
@@ -827,11 +828,45 @@ class SupabaseChatRepository(
             filter { isIn("id", peerIds) }
         }.decodeList<FaceVideoProfile>().associateBy { it.id }
 
-        return chats.map { chat ->
+        val enrichedChats = chats.map { chat ->
             val peerId = peerByChat[chat.id]
             chat.copy(
                 peerUserId = peerId,
                 peerAvatarUrl = peerId?.let { profiles[it]?.avatarUrl }
+            )
+        }
+        return refreshChatPeerActivity(enrichedChats)
+    }
+
+    /**
+     * Refreshes one-to-one chat activity timestamps from the peers' last-seen
+     * heartbeat. Message timestamps remain intact so the inbox can display the
+     * preview time separately from the peer's latest activity.
+     */
+    suspend fun refreshChatPeerActivity(
+        chats: List<FaceVideoChatSummary>
+    ): List<FaceVideoChatSummary> {
+        val peerIds = chats.mapNotNull { it.peerUserId }.distinct()
+        if (peerIds.isEmpty()) return chats
+
+        val presenceByUser = runCatching {
+            client.from("face_video_online_presence").select {
+                filter { isIn("user_id", peerIds) }
+            }.decodeList<FaceVideoOnlinePresenceRow>()
+                .associate { it.userId to it.lastSeenAt }
+        }.getOrElse { error ->
+            android.util.Log.w(
+                "ArturChatPresence",
+                "Could not refresh peer activity for inbox ordering",
+                error
+            )
+            return chats
+        }
+
+        return chats.map { chat ->
+            chat.copy(
+                peerLastSeenAt = chat.peerUserId?.let { presenceByUser[it] }
+                    ?: chat.peerLastSeenAt
             )
         }
     }
