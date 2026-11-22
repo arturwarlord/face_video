@@ -3005,7 +3005,7 @@ private fun LiveChatScreen(
             (current as? ContextWrapper)?.baseContext
         }.filterIsInstance<ComponentActivity>().firstOrNull()
     }
-    DisposableEffect(composerLifecycleOwner, userId, chat.id, cache) {
+    DisposableEffect(composerLifecycleOwner, userId, chat.id, draftCacheKey, cache) {
         val observer = LifecycleEventObserver { _, event ->
             if (
                 event == Lifecycle.Event.ON_PAUSE &&
@@ -4372,7 +4372,7 @@ private fun LiveChatScreen(
                                 // Save immediately in the input callback; do not wait
                                 // for the next Compose SideEffect/recomposition.
                                 if (editingMessage == null && editingScheduledMessage == null) {
-                                    cache.saveDraft(userId, chat.id, value)
+                                    cache.saveDraft(userId, draftCacheKey, value)
                                 }
                             },
                             singleLine = true,
@@ -4433,7 +4433,7 @@ private fun LiveChatScreen(
                         }
                         Spacer(Modifier.width(4.dp))
                     }
-                    if (editingMessage == null) {
+                    if (editingMessage == null && activeTopicId == null) {
                         ChatChromeActionButton(
                             onClick = { openScheduledMessages() },
                             enabled = !isSending,
@@ -4446,7 +4446,7 @@ private fun LiveChatScreen(
                     }
                     ChatChromeActionButton(
                         onClick = {
-                            if (draft.isBlank() && scheduledMessages.isNotEmpty()) {
+                            if (activeTopicId == null && draft.isBlank() && scheduledMessages.isNotEmpty()) {
                                 openScheduledMessages()
                             } else {
                                 sendMessage()
@@ -4454,7 +4454,7 @@ private fun LiveChatScreen(
                         },
                         enabled = !isSending && (
                             draft.isNotBlank() ||
-                                scheduledMessages.isNotEmpty()
+                                (activeTopicId == null && scheduledMessages.isNotEmpty())
                             ) &&
                             (editingMessage == null || draft.trim() != editingMessage?.body?.trim()),
                         filled = true
