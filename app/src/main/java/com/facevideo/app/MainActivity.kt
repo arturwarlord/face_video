@@ -2995,6 +2995,7 @@ private fun LiveChatScreen(
     // Keep the latest composer values available to the lifecycle callback without
     // re-registering it for every character typed.
     val latestDraft by rememberUpdatedState(draft)
+    val latestDraftCacheKey by rememberUpdatedState(draftCacheKey)
     val latestEditingMessage by rememberUpdatedState(editingMessage)
     val latestEditingScheduledMessage by rememberUpdatedState(editingScheduledMessage)
     val composerContext = LocalContext.current
@@ -3012,14 +3013,14 @@ private fun LiveChatScreen(
                 latestEditingMessage == null &&
                 latestEditingScheduledMessage == null
             ) {
-                cache.flushDraft(userId, draftCacheKey, latestDraft)
+                cache.flushDraft(userId, latestDraftCacheKey, latestDraft)
             }
         }
         composerLifecycleOwner?.lifecycle?.addObserver(observer)
         onDispose {
             composerLifecycleOwner?.lifecycle?.removeObserver(observer)
             if (latestEditingMessage == null && latestEditingScheduledMessage == null) {
-                cache.flushDraft(userId, draftCacheKey, latestDraft)
+                cache.flushDraft(userId, latestDraftCacheKey, latestDraft)
             }
         }
     }
