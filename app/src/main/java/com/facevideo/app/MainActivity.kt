@@ -91,6 +91,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -153,6 +154,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -219,6 +221,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -1580,6 +1583,7 @@ private fun LiveChatListScreen(
     var showSearch by remember { mutableStateOf(false) }
     var showNewChat by remember { mutableStateOf(false) }
     var reloadKey by remember { mutableStateOf(0) }
+    var revealedChatId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val latestChats by rememberUpdatedState(chats)
 
@@ -1621,6 +1625,7 @@ private fun LiveChatListScreen(
     }
 
     fun openCachedChat(chat: FaceVideoChatSummary) {
+        revealedChatId = null
         chats = (chats.filterNot { it.id == chat.id } + chat)
         cache.saveChats(userId, chats)
         onOpenChat(chat)
@@ -1775,8 +1780,12 @@ private fun LiveChatListScreen(
                                     LiveChatRow(
                                         chat = chat,
                                         unreadSummary = unreadSummaries[chat.id],
+                                        isDeleteRevealed = revealedChatId == chat.id,
+                                        onRevealDelete = { revealedChatId = chat.id },
+                                        onHideDelete = { if (revealedChatId == chat.id) revealedChatId = null },
                                         onClick = { openCachedChat(chat) },
                                         onDelete = {
+                                            revealedChatId = null
                                             scope.launch {
                                                 runCatching { repository.hideChatForMe(chat.id, userId) }
                                                     .onSuccess {
@@ -2728,23 +2737,85 @@ private fun storyTimeLabel(value: String): String = runCatching {
 private fun LiveChatRow(
     chat: FaceVideoChatSummary,
     unreadSummary: FaceVideoChatUnreadSummary?,
+    isDeleteRevealed: Boolean,
+    onRevealDelete: () -> Unit,
+    onHideDelete: () -> Unit,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember(chat.id) { mutableStateOf(false) }
     var confirmDelete by remember(chat.id) { mutableStateOf(false) }
     var showGroupAvatarPreview by remember(chat.id) { mutableStateOf(false) }
+    val deleteActionWidth = 84.dp
+    val deleteActionWidthPx = with(LocalDensity.current) { deleteActionWidth.toPx() }
+    var dragOffset by remember(chat.id) { mutableFloatStateOf(0f) }
+    var isDragging by remember(chat.id) { mutableStateOf(false) }
+    val animatedRowOffset by animateFloatAsState(
+        targetValue = if (isDeleteRevealed) -deleteActionWidthPx else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+        label = "chat-row-delete-reveal"
+    )
+    val latestAnimatedRowOffset by rememberUpdatedState(animatedRowOffset)
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val activityTimestamp = latestChatActivityLabelTime(chat) ?: preview.timestamp
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
-    Surface(
+    Box(
         modifier = Modifier.fillMaxWidth().height(80.dp)
-            .combinedClickable(onClick = onClick, onLongClick = { showMenu = true }),
-        color = Color.Transparent,
-        shape = RoundedCornerShape(22.dp),
-        shadowElevation = 0.dp
+            .clip(RoundedCornerShape(22.dp))
     ) {
+        Column(
+            modifier = Modifier.align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(deleteActionWidth)
+                .padding(vertical = 5.dp)
+                .clip(RoundedCornerShape(17.dp))
+                .background(Color(0xFFE66F80))
+                .clickable {
+                    onHideDelete()
+                    confirmDelete = true
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("⌫", color = Color.White, fontSize = 21.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(2.dp))
+            Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Surface(
+            modifier = Modifier.fillMaxSize()
+                .offset { IntOffset((if (isDragging) dragOffset else animatedRowOffset).roundToInt(), 0) }
+                .pointerInput(chat.id, deleteActionWidthPx) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragOffset = latestAnimatedRowOffset
+                            isDragging = true
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            if (dragAmount < 0f || dragOffset < 0f) {
+                                change.consume()
+                                dragOffset = (dragOffset + dragAmount).coerceIn(-deleteActionWidthPx, 0f)
+                            }
+                        },
+                        onDragEnd = {
+                            val reveal = dragOffset <= -deleteActionWidthPx * 0.42f
+                            isDragging = false
+                            if (reveal) onRevealDelete() else onHideDelete()
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            onHideDelete()
+                        }
+                    )
+                }
+                .combinedClickable(
+                    onClick = { if (isDeleteRevealed) onHideDelete() else onClick() },
+                    onLongClick = { showMenu = true }
+                ),
+            color = Color.Transparent,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 0.dp
+        ) {
         Row(
             Modifier.fillMaxSize()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
