@@ -17,6 +17,8 @@ create unique index if not exists idx_face_video_group_topics_unique_title
     on public.face_video_group_topics (chat_id, lower(btrim(title)));
 create index if not exists idx_face_video_group_topics_chat_order
     on public.face_video_group_topics (chat_id, sort_order, created_at, id);
+create index if not exists idx_face_video_group_topics_created_by
+    on public.face_video_group_topics (created_by);
 
 alter table public.face_video_group_topics enable row level security;
 
@@ -81,6 +83,8 @@ alter table public.face_video_messages
 
 create index if not exists idx_face_video_messages_chat_topic_created
     on public.face_video_messages (chat_id, topic_id, created_at, id);
+create index if not exists idx_face_video_messages_topic_id
+    on public.face_video_messages (topic_id);
 
 create or replace function face_video_private.validate_message_topic()
 returns trigger
