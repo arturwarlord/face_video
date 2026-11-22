@@ -25,7 +25,7 @@ with direct_chat_candidates as (
       ) = 2
 ),
 unique_direct_chats as (
-    select caller_id, callee_id, min(chat_id) as chat_id
+    select caller_id, callee_id, (array_agg(chat_id))[1] as chat_id
     from direct_chat_candidates
     group by caller_id, callee_id
     having count(*) = 1
