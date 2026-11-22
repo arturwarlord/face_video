@@ -1181,7 +1181,7 @@ private fun FaceVideoApp(
         if (activeCall != null && !showActiveCallScreen) {
             ActiveCallMiniBar(
                 peerName = activeCallTitle,
-                mediaType = activeCall.mediaType,
+                mediaType = activeCall?.mediaType ?: "audio",
                 status = callStatus,
                 onOpen = { showActiveCallScreen = true }
             )
