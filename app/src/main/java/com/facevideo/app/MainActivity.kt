@@ -647,6 +647,8 @@ private fun FaceVideoApp(
     val incomingCalls by incomingCallsFlow.collectAsState(initial = emptyList())
     var incomingCallerProfile by remember { mutableStateOf<FaceVideoProfile?>(null) }
     var activeCall by remember { mutableStateOf<FaceVideoCall?>(null) }
+    // The media session remains alive when the full call UI is collapsed.
+    var showActiveCallScreen by remember { mutableStateOf(false) }
     var activeCallTitle by remember { mutableStateOf("") }
     var activeCallIsOutgoing by remember { mutableStateOf(false) }
     var callStatus by remember { mutableStateOf("Подготовка звонка…") }
@@ -656,6 +658,26 @@ private fun FaceVideoApp(
     var callSpeakerEnabled by remember { mutableStateOf(true) }
     var callClient by remember { mutableStateOf<WebRtcAudioCallClient?>(null) }
     var pendingCallAction by remember { mutableStateOf<PendingCallAction?>(null) }
+
+    // Switching to another app collapses the call UI into the in-app mini bar.
+    // The foreground service and WebRTC client continue running unchanged.
+    val hostActivity = remember(context) {
+        generateSequence(context as Context) { current ->
+            (current as? ContextWrapper)?.baseContext
+        }.filterIsInstance<ComponentActivity>().firstOrNull()
+    }
+    DisposableEffect(hostActivity, activeCall?.id) {
+        val hasActiveCall = activeCall != null
+        val observer = LifecycleEventObserver { _, event ->
+            if (hasActiveCall && event == Lifecycle.Event.ON_STOP) {
+                showActiveCallScreen = false
+            }
+        }
+        hostActivity?.lifecycle?.addObserver(observer)
+        onDispose {
+            hostActivity?.lifecycle?.removeObserver(observer)
+        }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -825,6 +847,7 @@ private fun FaceVideoApp(
         when (action) {
             is PendingCallAction.Outgoing -> {
                 callError = null
+                showActiveCallScreen = true
                 // Start before the signaling request so the user can minimize
                 // immediately without missing Android's while-in-use FGS window.
                 CallForegroundService.start(context, action.chat.title, action.mediaType)
@@ -869,6 +892,7 @@ private fun FaceVideoApp(
             }
             is PendingCallAction.Incoming -> {
                 callError = null
+                showActiveCallScreen = true
                 appNotifications.cancelNotification(action.call.id)
                 // Start from the visible accept flow before awaiting Supabase.
                 CallForegroundService.start(context, "Собеседник", action.call.mediaType)
@@ -1002,6 +1026,7 @@ private fun FaceVideoApp(
         // the call screen waiting for a network status update from Supabase.
         callClient = null
         activeCall = null
+        showActiveCallScreen = false
         callMuted = false
         callCameraEnabled = true
         callSpeakerEnabled = true
@@ -1028,14 +1053,14 @@ private fun FaceVideoApp(
     // Back navigation follows the visible screen stack. A profile is shown
     // on top of the existing chat, so dismiss it first and keep that chat open.
     BackHandler(
-        enabled = activeCall != null ||
+        enabled = (activeCall != null && showActiveCallScreen) ||
             openedProfileUserId != null ||
             openedStoriesUserId != null ||
             openedLiveChatId != null ||
             openedChat != null
     ) {
         when {
-            activeCall != null -> finishCall()
+            activeCall != null && showActiveCallScreen -> showActiveCallScreen = false
             openedProfileUserId != null -> openedProfileUserId = null
             openedStoriesUserId != null -> openedStoriesUserId = null
             openedLiveChatId != null -> setOpenedLiveChat(null)
@@ -1148,12 +1173,21 @@ private fun FaceVideoApp(
         }
     }
 
-    Box(
+    Column(
         Modifier.fillMaxSize().background(
             Brush.verticalGradient(listOf(AppBackground, Color(0xFFE5EAF0), AppBackground))
         )
     ) {
-        if (activeCall != null) {
+        if (activeCall != null && !showActiveCallScreen) {
+            ActiveCallMiniBar(
+                peerName = activeCallTitle,
+                mediaType = activeCall.mediaType,
+                status = callStatus,
+                onOpen = { showActiveCallScreen = true }
+            )
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        if (activeCall != null && showActiveCallScreen) {
             if (activeCall?.mediaType == "video" && callClient != null) {
                 ActiveVideoCallScreen(
                     peerName = activeCallTitle,
@@ -1171,6 +1205,7 @@ private fun FaceVideoApp(
                         callClient?.setCameraEnabled(callCameraEnabled)
                     },
                     onSwitchCamera = { callClient?.switchCamera() },
+                    onMinimize = { showActiveCallScreen = false },
                     onEnd = { finishCall() }
                 )
             } else {
@@ -1188,6 +1223,7 @@ private fun FaceVideoApp(
                         callSpeakerEnabled = !callSpeakerEnabled
                         callClient?.setSpeakerEnabled(callSpeakerEnabled)
                     },
+                    onMinimize = { showActiveCallScreen = false },
                     onEnd = { finishCall() }
                 )
             }
@@ -1421,6 +1457,7 @@ private fun FaceVideoApp(
                 )
             }
         }
+    }
     }
 
     if (incomingCall != null && activeCall == null) {
@@ -6693,6 +6730,90 @@ private class ChatVoiceRecorder(private val cacheDirectory: File) {
 }
 
 @Composable
+private fun MinimizeCallButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        color = Color(0xEFFFFFFF),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
+    ) {
+        Text(
+            "↓  Свернуть",
+            color = AccentSlate,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp)
+        )
+    }
+}
+
+@Composable
+private fun ActiveCallMiniBar(
+    peerName: String,
+    mediaType: String,
+    status: String,
+    onOpen: () -> Unit
+) {
+    val callType = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
+    Surface(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .clickable(onClick = onOpen),
+        color = Color(0xFDFDFEFF),
+        shape = RoundedCornerShape(19.dp),
+        border = BorderStroke(1.dp, Color(0xFFDCE4F5))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(contentAlignment = Alignment.BottomEnd) {
+                Avatar(
+                    peerName.take(2).uppercase(),
+                    peerName.hashCode().ushr(1) % 4,
+                    Modifier.size(40.dp)
+                )
+                Box(
+                    Modifier.size(11.dp)
+                        .background(Color.White, CircleShape)
+                        .padding(2.dp)
+                        .background(Color(0xFF35A879), CircleShape)
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    peerName,
+                    color = MainText,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "$callType · $status",
+                    color = if (status == "Звонок активен") Color(0xFF328E70) else Muted,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Вернуться  ›",
+                color = AccentSlate,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun ActiveAudioCallScreen(
     peerName: String,
     status: String,
@@ -6701,6 +6822,7 @@ private fun ActiveAudioCallScreen(
     speakerEnabled: Boolean,
     onToggleMute: () -> Unit,
     onToggleSpeaker: () -> Unit,
+    onMinimize: () -> Unit,
     onEnd: () -> Unit
 ) {
     Column(
@@ -6713,13 +6835,20 @@ private fun ActiveAudioCallScreen(
             .padding(horizontal = 22.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            "ARTURCHAT",
-            color = AccentSlate,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 2.2.sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "ARTURCHAT",
+                color = AccentSlate,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 2.2.sp
+            )
+            MinimizeCallButton(onClick = onMinimize)
+        }
         Spacer(Modifier.weight(0.72f))
         Box(
             modifier = Modifier.size(164.dp)
@@ -6848,6 +6977,7 @@ private fun ActiveVideoCallScreen(
     onToggleMute: () -> Unit,
     onToggleCamera: () -> Unit,
     onSwitchCamera: () -> Unit,
+    onMinimize: () -> Unit,
     onEnd: () -> Unit
 ) {
     val remoteRenderer = client.remoteVideoRenderer
@@ -6874,9 +7004,15 @@ private fun ActiveVideoCallScreen(
             )
         }
 
+        MinimizeCallButton(
+            onClick = onMinimize,
+            modifier = Modifier.align(Alignment.TopStart)
+                .padding(start = 14.dp, top = 12.dp)
+        )
+
         Surface(
             modifier = Modifier.align(Alignment.TopStart)
-                .padding(start = 14.dp, top = 12.dp, end = 126.dp)
+                .padding(start = 14.dp, top = 62.dp, end = 126.dp)
                 .widthIn(max = 230.dp),
             color = Color(0xA91A2432),
             shape = RoundedCornerShape(18.dp),
