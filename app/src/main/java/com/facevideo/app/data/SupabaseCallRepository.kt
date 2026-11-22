@@ -39,7 +39,23 @@ data class FaceVideoCall(
     val status: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("answered_at") val answeredAt: String? = null,
-    @SerialName("ended_at") val endedAt: String? = null
+    @SerialName("ended_at") val endedAt: String? = null,
+    @SerialName("chat_id") val chatId: String? = null
+)
+
+@Serializable
+data class FaceVideoCallHistory(
+    val id: String,
+    @SerialName("call_id") val callId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("caller_id") val callerId: String,
+    @SerialName("callee_id") val calleeId: String,
+    @SerialName("media_type") val mediaType: String,
+    val status: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("answered_at") val answeredAt: String? = null,
+    @SerialName("ended_at") val endedAt: String? = null,
+    @SerialName("duration_seconds") val durationSeconds: Int = 0
 )
 
 @Serializable
@@ -61,6 +77,7 @@ private data class FaceVideoChatMember(
 
 @Serializable
 private data class NewFaceVideoCall(
+    @SerialName("chat_id") val chatId: String,
     @SerialName("caller_id") val callerId: String,
     @SerialName("callee_id") val calleeId: String,
     @SerialName("media_type") val mediaType: String
@@ -128,7 +145,7 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             ?: throw IllegalStateException("Не удалось определить собеседника.")
 
         return client.from("face_video_calls")
-            .insert(NewFaceVideoCall(callerId, peerId, mediaType)) {
+            .insert(NewFaceVideoCall(chatId, callerId, peerId, mediaType)) {
                 select()
             }
             .decodeSingle<FaceVideoCall>()
@@ -175,9 +192,8 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             .decodeList<FaceVideoProfile>()
             .firstOrNull()
 
-    suspend fun answerCall(callId: String) {
+    suspend fun answerCall(callId: String): FaceVideoCall =
         updateStatus(callId, "accepted")
-    }
 
     suspend fun declineCall(callId: String) {
         updateStatus(callId, "declined")
@@ -191,11 +207,11 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
         updateStatus(callId, "ended")
     }
 
-    private suspend fun updateStatus(callId: String, status: String) {
+    private suspend fun updateStatus(callId: String, status: String): FaceVideoCall =
         client.from("face_video_calls").update(FaceVideoCallStatusUpdate(status)) {
             filter { eq("id", callId) }
-        }
-    }
+            select()
+        }.decodeSingle<FaceVideoCall>()
 
     suspend fun sendSignal(
         callId: String,
@@ -259,6 +275,12 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
         client.from("face_video_call_signals").selectAsFlow(FaceVideoCallSignal::id) {
             eq("call_id", callId)
             eq("recipient_id", recipientId)
+        }
+
+    @OptIn(SupabaseExperimental::class)
+    fun observeChatCallHistory(chatId: String): Flow<List<FaceVideoCallHistory>> =
+        client.from("face_video_call_history").selectAsFlow(FaceVideoCallHistory::id) {
+            eq("chat_id", chatId)
         }
 
     @OptIn(SupabaseExperimental::class)

@@ -213,7 +213,12 @@ data class FaceVideoMessage(
     @SerialName("deleted_by") val deletedBy: String? = null,
     @SerialName("forwarded_from_sender_id") val forwardedFromSenderId: String? = null,
     @SerialName("forwarded_from_name") val forwardedFromName: String? = null,
-    @SerialName("edited_at") val editedAt: String? = null
+    @SerialName("edited_at") val editedAt: String? = null,
+    @SerialName("message_type") val messageType: String = "text",
+    @SerialName("call_id") val callId: String? = null,
+    @SerialName("call_media_type") val callMediaType: String? = null,
+    @SerialName("call_status") val callStatus: String? = null,
+    @SerialName("call_duration_seconds") val callDurationSeconds: Int? = null
 )
 
 @Serializable
