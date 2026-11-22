@@ -1223,6 +1223,9 @@ class SupabaseChatRepository(
         require(cleanTitle.length in 2..48) {
             "Название темы должно содержать от 2 до 48 символов."
         }
+        require(!cleanTitle.equals("Общие", ignoreCase = true)) {
+            "Название «Общие» зарезервировано для основной переписки."
+        }
         return client.from("face_video_group_topics")
             .insert(NewFaceVideoGroupTopic(chatId, cleanTitle, cleanIcon)) {
                 select()
@@ -1240,6 +1243,9 @@ class SupabaseChatRepository(
         val cleanIcon = icon.trim().take(8).ifBlank { "💬" }
         require(cleanTitle.length in 2..48) {
             "Название темы должно содержать от 2 до 48 символов."
+        }
+        require(!cleanTitle.equals("Общие", ignoreCase = true)) {
+            "Название «Общие» зарезервировано для основной переписки."
         }
         return client.from("face_video_group_topics").update(
             UpdateFaceVideoGroupTopic(
