@@ -2894,6 +2894,7 @@ private fun LiveChatRow(
             }
         }
     }
+    }
     DropdownMenu(
         expanded = showMenu,
         onDismissRequest = { showMenu = false },
