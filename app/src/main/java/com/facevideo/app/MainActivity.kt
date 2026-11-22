@@ -163,6 +163,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import com.facevideo.app.calls.WebRtcAudioCallClient
 import com.facevideo.app.calls.OutgoingCallRingbackTone
@@ -6664,6 +6665,9 @@ private fun MessageBubble(
             DropdownMenu(
                 expanded = showActions,
                 onDismissRequest = { showActions = false },
+                // Keep the chat composer focus and current IME state unchanged when
+                // the quick-reaction menu opens and closes.
+                properties = PopupProperties(focusable = false),
                 containerColor = PanelLight
             ) {
                 if (onReaction != null && !message.isDeleted) {
