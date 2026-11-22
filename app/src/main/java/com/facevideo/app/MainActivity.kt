@@ -1770,148 +1770,6 @@ private fun StoriesStrip(
     var isPublishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var scheduledMessages by remember(chat.id) {
-        mutableStateOf<List<FaceVideoScheduledMessage>>(emptyList())
-    }
-    var showScheduledMessages by remember(chat.id) { mutableStateOf(false) }
-    var editingScheduledMessage by remember(chat.id) {
-        mutableStateOf<FaceVideoScheduledMessage?>(null)
-    }
-
-    suspend fun reloadScheduledMessages() {
-        scheduledMessages = repository.listScheduledMessages(chat.id)
-    }
-
-    fun openScheduledMessages() {
-        scope.launch {
-            runCatching { repository.listScheduledMessages(chat.id) }
-                .onSuccess {
-                    scheduledMessages = it
-                    showScheduledMessages = true
-                }
-                .onFailure {
-                    Toast.makeText(
-                        context,
-                        it.message ?: "Не удалось загрузить отложенные сообщения",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-        }
-    }
-
-    fun scheduleCurrentDraft() {
-        val textToSchedule = draft.trim()
-        if (textToSchedule.isBlank() || isSending) return
-        showScheduledMessages = false
-        showArturChatScheduleDateTimePicker(
-            context = context,
-            initialTimeMillis = System.currentTimeMillis() + 60L * 60L * 1000L
-        ) { selectedTime ->
-            scope.launch {
-                isSending = true
-                runCatching {
-                    repository.createScheduledMessage(
-                        chatId = chat.id,
-                        text = textToSchedule,
-                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
-                    )
-                }.onSuccess {
-                    draft = ""
-                    cache.saveDraft(userId, chat.id, "")
-                    reloadScheduledMessages()
-                    Toast.makeText(context, "Сообщение запланировано", Toast.LENGTH_SHORT).show()
-                }.onFailure { error ->
-                    Toast.makeText(
-                        context,
-                        error.message ?: "Не удалось запланировать сообщение",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-                isSending = false
-            }
-        }
-    }
-
-    fun rescheduleMessage(item: FaceVideoScheduledMessage) {
-        showScheduledMessages = false
-        val initialTime = runCatching {
-            Instant.parse(item.scheduledFor).toEpochMilli()
-        }.getOrDefault(System.currentTimeMillis() + 60L * 60L * 1000L)
-        showArturChatScheduleDateTimePicker(context, initialTime) { selectedTime ->
-            scope.launch {
-                runCatching {
-                    repository.updateScheduledMessage(
-                        id = item.id,
-                        text = item.body,
-                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
-                    )
-                }.onSuccess {
-                    reloadScheduledMessages()
-                    Toast.makeText(context, "Время отправки изменено", Toast.LENGTH_SHORT).show()
-                }.onFailure { error ->
-                    Toast.makeText(
-                        context,
-                        error.message ?: "Не удалось перенести сообщение",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-        }
-    }
-
-    fun saveEditedScheduledMessage() {
-        val item = editingScheduledMessage ?: return
-        val textToSave = draft.trim()
-        if (textToSave.isBlank() || isSending) return
-        scope.launch {
-            isSending = true
-            runCatching {
-                repository.updateScheduledMessage(
-                    id = item.id,
-                    text = textToSave,
-                    scheduledFor = item.scheduledFor
-                )
-            }.onSuccess {
-                draft = ""
-                cache.saveDraft(userId, chat.id, "")
-                editingScheduledMessage = null
-                reloadScheduledMessages()
-                Toast.makeText(context, "Отложенное сообщение изменено", Toast.LENGTH_SHORT).show()
-            }.onFailure { error ->
-                Toast.makeText(
-                    context,
-                    error.message ?: "Не удалось изменить сообщение",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-            isSending = false
-        }
-    }
-
-    fun deleteScheduledMessage(item: FaceVideoScheduledMessage) {
-        scope.launch {
-            runCatching { repository.cancelScheduledMessage(item.id) }
-                .onSuccess {
-                    reloadScheduledMessages()
-                    Toast.makeText(context, "Отложенное сообщение удалено", Toast.LENGTH_SHORT).show()
-                }
-                .onFailure { error ->
-                    Toast.makeText(
-                        context,
-                        error.message ?: "Не удалось удалить сообщение",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-        }
-    }
-
-    LaunchedEffect(repository, chat.id) {
-        runCatching { repository.listScheduledMessages(chat.id) }
-            .onSuccess { scheduledMessages = it }
-            .onFailure {
-                android.util.Log.w("ArturChatScheduled", "Could not load scheduled messages", it)
-            }
-    }
     val mediaCache = remember(context) { ArturChatImageCache(context) }
 
     LaunchedEffect(repository, userId, refreshKey) {
@@ -3139,6 +2997,148 @@ private fun LiveChatScreen(
     var notificationMuteBusy by remember(chat.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    var scheduledMessages by remember(chat.id) {
+        mutableStateOf<List<FaceVideoScheduledMessage>>(emptyList())
+    }
+    var showScheduledMessages by remember(chat.id) { mutableStateOf(false) }
+    var editingScheduledMessage by remember(chat.id) {
+        mutableStateOf<FaceVideoScheduledMessage?>(null)
+    }
+
+    suspend fun reloadScheduledMessages() {
+        scheduledMessages = repository.listScheduledMessages(chat.id)
+    }
+
+    fun openScheduledMessages() {
+        scope.launch {
+            runCatching { repository.listScheduledMessages(chat.id) }
+                .onSuccess {
+                    scheduledMessages = it
+                    showScheduledMessages = true
+                }
+                .onFailure {
+                    Toast.makeText(
+                        context,
+                        it.message ?: "Не удалось загрузить отложенные сообщения",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        }
+    }
+
+    fun scheduleCurrentDraft() {
+        val textToSchedule = draft.trim()
+        if (textToSchedule.isBlank() || isSending) return
+        showScheduledMessages = false
+        showArturChatScheduleDateTimePicker(
+            context = context,
+            initialTimeMillis = System.currentTimeMillis() + 60L * 60L * 1000L
+        ) { selectedTime ->
+            scope.launch {
+                isSending = true
+                runCatching {
+                    repository.createScheduledMessage(
+                        chatId = chat.id,
+                        text = textToSchedule,
+                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
+                    )
+                }.onSuccess {
+                    draft = ""
+                    cache.saveDraft(userId, chat.id, "")
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Сообщение запланировано", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось запланировать сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                isSending = false
+            }
+        }
+    }
+
+    fun rescheduleMessage(item: FaceVideoScheduledMessage) {
+        showScheduledMessages = false
+        val initialTime = runCatching {
+            Instant.parse(item.scheduledFor).toEpochMilli()
+        }.getOrDefault(System.currentTimeMillis() + 60L * 60L * 1000L)
+        showArturChatScheduleDateTimePicker(context, initialTime) { selectedTime ->
+            scope.launch {
+                runCatching {
+                    repository.updateScheduledMessage(
+                        id = item.id,
+                        text = item.body,
+                        scheduledFor = Instant.ofEpochMilli(selectedTime).toString()
+                    )
+                }.onSuccess {
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Время отправки изменено", Toast.LENGTH_SHORT).show()
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось перенести сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    fun saveEditedScheduledMessage() {
+        val item = editingScheduledMessage ?: return
+        val textToSave = draft.trim()
+        if (textToSave.isBlank() || isSending) return
+        scope.launch {
+            isSending = true
+            runCatching {
+                repository.updateScheduledMessage(
+                    id = item.id,
+                    text = textToSave,
+                    scheduledFor = item.scheduledFor
+                )
+            }.onSuccess {
+                draft = ""
+                cache.saveDraft(userId, chat.id, "")
+                editingScheduledMessage = null
+                reloadScheduledMessages()
+                Toast.makeText(context, "Отложенное сообщение изменено", Toast.LENGTH_SHORT).show()
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    error.message ?: "Не удалось изменить сообщение",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            isSending = false
+        }
+    }
+
+    fun deleteScheduledMessage(item: FaceVideoScheduledMessage) {
+        scope.launch {
+            runCatching { repository.cancelScheduledMessage(item.id) }
+                .onSuccess {
+                    reloadScheduledMessages()
+                    Toast.makeText(context, "Отложенное сообщение удалено", Toast.LENGTH_SHORT).show()
+                }
+                .onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: "Не удалось удалить сообщение",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+        }
+    }
+
+    LaunchedEffect(repository, chat.id) {
+        runCatching { repository.listScheduledMessages(chat.id) }
+            .onSuccess { scheduledMessages = it }
+            .onFailure {
+                android.util.Log.w("ArturChatScheduled", "Could not load scheduled messages", it)
+            }
+    }
     val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
     var showVideoNoteRecorder by remember(chat.id) { mutableStateOf(false) }
     var isVoiceRecording by remember(chat.id) { mutableStateOf(false) }
