@@ -3082,7 +3082,11 @@ private fun LiveChatScreen(
             cache.saveMessages(userId, chat.id, allChatMessages)
         }
     }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    // Keep each chat/topic's scroll position independent when the user switches conversations.
+    val listState = androidx.compose.runtime.key(chat.id, activeTopicId) {
+        androidx.compose.foundation.lazy.rememberLazyListState()
+    }
+    val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val composerFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var draft by remember(chat.id, activeTopicId, userId, cache) {
@@ -3333,9 +3337,18 @@ private fun LiveChatScreen(
             }
     }
 
-    LaunchedEffect(orderedMessages.lastOrNull()?.id, orderedMessages.size) {
-        if (orderedMessages.isNotEmpty()) {
-            listState.animateScrollToItem(orderedMessages.lastIndex)
+    // The LazyColumn renders timelineMessages (chronologically sorted and including call events),
+    // not orderedMessages. Always target the rendered list's final item; repeat when the IME
+    // opens so resizing the viewport cannot leave the composer covering the newest message.
+    LaunchedEffect(
+        chat.id,
+        activeTopicId,
+        timelineMessages.lastOrNull()?.id,
+        timelineMessages.size,
+        isImeVisible
+    ) {
+        if (timelineMessages.isNotEmpty()) {
+            listState.animateScrollToItem(timelineMessages.lastIndex)
         }
     }
 
