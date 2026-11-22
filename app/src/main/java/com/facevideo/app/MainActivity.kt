@@ -10207,6 +10207,7 @@ private fun InboxDeleteGlyph() {
     }
 }
 
+@Composable
 private fun InboxMoreGlyph() {
     Canvas(Modifier.size(18.dp)) {
         val dotRadius = 1.55.dp.toPx()
