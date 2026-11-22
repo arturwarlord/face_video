@@ -3084,6 +3084,7 @@ private fun LiveChatScreen(
     // re-registering it for every character typed.
     val latestDraft by rememberUpdatedState(draft)
     val latestEditingMessage by rememberUpdatedState(editingMessage)
+    val latestEditingScheduledMessage by rememberUpdatedState(editingScheduledMessage)
     val composerContext = LocalContext.current
     // Resolve the host Activity directly; this avoids relying on an unavailable
     // ViewTreeLifecycleOwner API in the app's current AndroidX dependency set.
@@ -3094,14 +3095,18 @@ private fun LiveChatScreen(
     }
     DisposableEffect(composerLifecycleOwner, userId, chat.id, cache) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE && latestEditingMessage == null) {
+            if (
+                event == Lifecycle.Event.ON_PAUSE &&
+                latestEditingMessage == null &&
+                latestEditingScheduledMessage == null
+            ) {
                 cache.flushDraft(userId, chat.id, latestDraft)
             }
         }
         composerLifecycleOwner?.lifecycle?.addObserver(observer)
         onDispose {
             composerLifecycleOwner?.lifecycle?.removeObserver(observer)
-            if (latestEditingMessage == null) {
+            if (latestEditingMessage == null && latestEditingScheduledMessage == null) {
                 cache.flushDraft(userId, chat.id, latestDraft)
             }
         }
@@ -3109,7 +3114,7 @@ private fun LiveChatScreen(
 
     // Backstop for programmatic changes (for example, clearing after a successful send).
     SideEffect {
-        if (editingMessage == null) {
+        if (editingMessage == null && editingScheduledMessage == null) {
             cache.saveDraft(userId, chat.id, draft)
         }
     }
@@ -3989,7 +3994,6 @@ private fun LiveChatScreen(
                                                 onClick = {
                                                     editingScheduledMessage = item
                                                     draft = item.body
-                                                    cache.saveDraft(userId, chat.id, item.body)
                                                     showScheduledMessages = false
                                                 }
                                             ) {
@@ -4237,7 +4241,7 @@ private fun LiveChatScreen(
                                 draft = value
                                 // Save immediately in the input callback; do not wait
                                 // for the next Compose SideEffect/recomposition.
-                                if (editingMessage == null) {
+                                if (editingMessage == null && editingScheduledMessage == null) {
                                     cache.saveDraft(userId, chat.id, value)
                                 }
                             },
