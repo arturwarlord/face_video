@@ -95,6 +95,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         env:
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -105,8 +106,23 @@ jobs:
             TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
             HEAD_COMMIT="$(git rev-parse HEAD)"
             if [ "$TAG_COMMIT" != "$HEAD_COMMIT" ]; then
-              echo "::error::That tag already exists on another commit. Use a new version number."
-              exit 1
+              if [ "$RELEASE_TAG" != "v0.8.0" ]; then
+                echo "::error::That tag already exists on another commit. Use a new version number."
+                exit 1
+              fi
+
+              RELEASE_STATUS="$(curl -sS -o /dev/null -w '%{http_code}' \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+              if [ "$RELEASE_STATUS" != "404" ]; then
+                echo "::error::Refusing to move v0.8.0 because a release already exists or GitHub could not verify its absence (HTTP $RELEASE_STATUS)."
+                exit 1
+              fi
+
+              echo "::notice::Retargeting the unpublished v0.8.0 tag to the current main commit."
+              git tag -fa "$RELEASE_TAG" -m "ArturChat $RELEASE_TAG"
+              git push --force origin "refs/tags/$RELEASE_TAG"
             fi
           else
             git tag -a "$RELEASE_TAG" -m "ArturChat $RELEASE_TAG"
