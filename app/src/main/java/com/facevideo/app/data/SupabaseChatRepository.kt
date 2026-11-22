@@ -72,6 +72,13 @@ data class FaceVideoProfile(
 )
 
 @Serializable
+data class FaceVideoProfileStats(
+    @SerialName("friend_count") val friendCount: Int = 0,
+    @SerialName("story_count") val storyCount: Int = 0,
+    @SerialName("group_count") val groupCount: Int = 0
+)
+
+@Serializable
 data class FaceVideoChannel(
     val id: String,
     val title: String,
@@ -493,6 +500,11 @@ private data class FriendTargetArguments(
 )
 
 @Serializable
+private data class GetProfileStatsArguments(
+    @SerialName("p_user_id") val userId: String
+)
+
+@Serializable
 private data class RespondFriendRequestArguments(
     @SerialName("p_target_user_id") val targetUserId: String,
     @SerialName("p_accept") val accept: Boolean
@@ -576,6 +588,13 @@ class SupabaseChatRepository(
             .select { filter { eq("id", userId) } }
             .decodeList<FaceVideoProfile>()
             .firstOrNull()
+
+    /** Aggregate public counters only; private friend and group membership rows stay hidden. */
+    suspend fun getProfileStats(userId: String): FaceVideoProfileStats =
+        client.postgrest.rpc(
+            "face_video_get_profile_stats",
+            GetProfileStatsArguments(userId)
+        ).decodeList<FaceVideoProfileStats>().firstOrNull() ?: FaceVideoProfileStats()
 
     /** Lists relationships visible to this user (accepted friends and pending requests). */
     suspend fun listMyFriendships(userId: String): List<FaceVideoFriendship> {

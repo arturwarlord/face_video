@@ -87,6 +87,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.aspectRatio
@@ -181,6 +182,7 @@ import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.GroupTopicDestination
 import com.facevideo.app.data.FaceVideoScheduledMessage
 import com.facevideo.app.data.FaceVideoProfile
+import com.facevideo.app.data.FaceVideoProfileStats
 import com.facevideo.app.data.FaceVideoStoryCard
 import com.facevideo.app.data.FaceVideoPresence
 import com.facevideo.app.data.FaceVideoChatUnreadSummary
@@ -1279,6 +1281,7 @@ private fun FaceVideoApp(
                 cache = localCache,
                 onlineUserIds = onlineUserIds,
                 onBack = { openedProfileUserId = null },
+                onOpenStories = { openedStoriesUserId = openedProfileUserId!! },
                 onOpenChat = { chat ->
                     openedProfileUserId = null
                     setOpenedLiveChat(chat)
@@ -9477,17 +9480,27 @@ private fun UserProfileScreen(
     cache: ArturChatLocalCache,
     onlineUserIds: Set<String>,
     onBack: () -> Unit,
+    onOpenStories: () -> Unit,
     onOpenChat: (FaceVideoChatSummary) -> Unit
 ) {
     val cachedProfile = remember(cache, userId, currentUserId) { cache.readProfile(currentUserId, userId) }
     var profile by remember(userId, currentUserId, cache) { mutableStateOf(cachedProfile) }
     var friendship by remember(userId, currentUserId) { mutableStateOf<com.facevideo.app.data.FaceVideoFriendship?>(null) }
+    var profileStats by remember(userId, currentUserId) { mutableStateOf<FaceVideoProfileStats?>(null) }
     var isLoading by remember(userId) { mutableStateOf(cachedProfile == null) }
     var isBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRemoveFriend by remember { mutableStateOf(false) }
     var showAvatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    suspend fun refreshProfileStats() {
+        runCatching { repository.getProfileStats(userId) }
+            .onSuccess { profileStats = it }
+            .onFailure {
+                android.util.Log.w("ArturChatProfile", "Could not load public profile counters", it)
+            }
+    }
 
     LaunchedEffect(repository, userId, currentUserId, cache) {
         isLoading = profile == null
@@ -9502,6 +9515,7 @@ private fun UserProfileScreen(
             errorMessage = it.message ?: "Не удалось загрузить профиль."
             android.util.Log.w("ArturChatProfile", "Could not refresh user profile; keeping local cache", it)
         }
+        refreshProfileStats()
         isLoading = false
     }
 
@@ -9509,7 +9523,10 @@ private fun UserProfileScreen(
         scope.launch {
             isBusy = true
             runCatching { repository.getFriendshipWith(currentUserId, userId) }
-                .onSuccess { friendship = it }
+                .onSuccess {
+                    friendship = it
+                    refreshProfileStats()
+                }
                 .onFailure { errorMessage = it.message ?: "Не удалось обновить статус дружбы." }
             isBusy = false
         }
@@ -9523,25 +9540,118 @@ private fun UserProfileScreen(
             }
         } else if (profile != null) {
             val p = profile!!
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(Modifier.height(22.dp))
-                Avatar(
-                    p.displayName.ifBlank { p.username }.take(1).uppercase(),
-                    2,
-                    Modifier.size(124.dp),
-                    imageUrl = p.avatarUrl,
-                    imageCacheKey = p.id,
-                    onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(p.displayName.ifBlank { p.username }, color = MainText, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text("@${p.username}", color = Muted, fontSize = 13.sp)
-                Spacer(Modifier.height(8.dp))
-                Text(if (userId in onlineUserIds) "В сети" else "Не в сети", color = if (userId in onlineUserIds) AccentSlate else Muted, fontSize = 11.sp)
-                if (p.statusText.isNotBlank()) {
-                    Spacer(Modifier.height(12.dp))
-                    Surface(color = PaletteBlush, shape = RoundedCornerShape(18.dp)) {
-                        Text(p.statusText, color = MainText, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp), fontSize = 12.sp)
+            val acceptedFriend = friendship?.status == "accepted"
+            val canOpenStories = acceptedFriend && (profileStats?.storyCount ?: 0) > 0
+            Column(Modifier.fillMaxWidth()) {
+                Spacer(Modifier.height(20.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(112.dp)
+                            .background(
+                                Brush.sweepGradient(
+                                    listOf(
+                                        Color(0xFF5DAAF1),
+                                        Color(0xFF8269E8),
+                                        Color(0xFFCE79B6),
+                                        Color(0xFF5DAAF1)
+                                    )
+                                ),
+                                CircleShape
+                            )
+                            .padding(4.dp)
+                    ) {
+                        Avatar(
+                            p.displayName.ifBlank { p.username }.take(1).uppercase(),
+                            2,
+                            Modifier.fillMaxSize(),
+                            imageUrl = p.avatarUrl,
+                            imageCacheKey = p.id,
+                            onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
+                        )
+                    }
+                    Spacer(Modifier.width(13.dp))
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                profileStats?.friendCount?.toString() ?: "—",
+                                color = MainText,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("друзья", color = Muted, fontSize = 9.sp, maxLines = 1)
+                        }
+                        Column(
+                            Modifier.weight(1f).clickable(
+                                enabled = canOpenStories,
+                                onClick = onOpenStories
+                            ),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                profileStats?.storyCount?.toString() ?: "—",
+                                color = MainText,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("истории", color = Muted, fontSize = 9.sp, maxLines = 1)
+                        }
+                        Column(
+                            Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                profileStats?.groupCount?.toString() ?: "—",
+                                color = MainText,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("группы", color = Muted, fontSize = 9.sp, maxLines = 1)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        p.displayName.ifBlank { p.username },
+                        color = MainText,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("@${p.username}", color = Muted, fontSize = 11.sp)
+                    Spacer(Modifier.height(7.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(7.dp).background(
+                                if (userId in onlineUserIds) Color(0xFF41B88A) else Color(0xFF9AA4B6),
+                                CircleShape
+                            )
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (userId in onlineUserIds) "В сети" else "Не в сети",
+                            color = if (userId in onlineUserIds) AccentSlate else Muted,
+                            fontSize = 10.sp
+                        )
+                    }
+                    if (p.statusText.isNotBlank()) {
+                        Spacer(Modifier.height(11.dp))
+                        Surface(color = PaletteBlush, shape = RoundedCornerShape(18.dp)) {
+                            Text(
+                                p.statusText,
+                                color = MainText,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                fontSize = 12.sp
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -9672,7 +9782,10 @@ private fun UserProfileScreen(
                     scope.launch {
                         isBusy = true
                         runCatching { repository.removeFriend(userId) }
-                            .onSuccess { friendship = null }
+                            .onSuccess {
+                                friendship = null
+                                refreshProfileStats()
+                            }
                             .onFailure { errorMessage = it.message ?: "Не удалось удалить друга." }
                         isBusy = false
                     }
