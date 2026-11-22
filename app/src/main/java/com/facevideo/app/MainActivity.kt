@@ -636,6 +636,18 @@ private fun FaceVideoApp(
     }
 
     val appNotifications = remember(context) { AppNotificationManager(context) }
+
+    LaunchedEffect(appNotifications, unreadSummaries, userId) {
+        val unreadCount = if (userId == null) {
+            0
+        } else {
+            unreadSummaries.values.sumOf { it.unreadCount.coerceAtLeast(0L) }
+                .coerceAtMost(999L)
+                .toInt()
+        }
+        appNotifications.updateUnreadMessageCount(unreadCount)
+    }
+
     val outgoingCallRingback = remember { OutgoingCallRingbackTone() }
     val incomingCallsFlow = remember(callRepository, userId) {
         if (callRepository != null && userId != null) {
