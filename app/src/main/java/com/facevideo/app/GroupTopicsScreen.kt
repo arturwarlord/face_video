@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import com.facevideo.app.data.FaceVideoGroupTopic
 import com.facevideo.app.data.GroupTopicDestination
 import com.facevideo.app.data.SupabaseChatRepository
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 private val TopicAccent = Color(0xFF5369DC)
