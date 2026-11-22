@@ -3343,11 +3343,18 @@ private fun LiveChatScreen(
     // scrollToItem is immediate (no animation), so opening the chat, receiving/sending
     // a message, or resizing the viewport for the keyboard never causes a visible glide.
     // Draft text changes are deliberately not a trigger: typing cannot move the timeline.
+    val newestTimelineMessage = timelineMessages.lastOrNull()
+    // The anchor is the newest message in the whole conversation, regardless of sender.
+    // Include sender and timestamp as well as id so both outgoing and incoming last messages
+    // explicitly trigger the same bottom-pinning behavior.
     LaunchedEffect(
         chat.id,
         activeTopicId,
-        timelineMessages.lastOrNull()?.id,
         timelineMessages.size,
+        newestTimelineMessage?.id,
+        newestTimelineMessage?.senderId,
+        newestTimelineMessage?.createdAt,
+        newestTimelineMessage?.messageType,
         messageViewportHeight
     ) {
         if (timelineMessages.isNotEmpty() && messageViewportHeight > 0) {

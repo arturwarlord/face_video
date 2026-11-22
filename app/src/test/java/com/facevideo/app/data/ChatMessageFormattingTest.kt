@@ -49,6 +49,48 @@ class ChatMessageFormattingTest {
     }
 
     @Test
+    fun latestOutgoingMessageIsTheBottomMessageWhenItIsTheNewest() {
+        val newestOutgoing = message(
+            "outgoing-latest",
+            "My latest message",
+            "2026-11-03T10:05:00Z"
+        )
+        val earlierIncoming = message(
+            "incoming-earlier",
+            "Their earlier message",
+            "2026-11-03T10:04:00Z"
+        ).copy(senderId = "user-2")
+
+        val sorted = sortChatMessagesChronologically(
+            listOf(newestOutgoing, earlierIncoming)
+        )
+
+        assertEquals("outgoing-latest", sorted.last().id)
+        assertEquals("user-1", sorted.last().senderId)
+    }
+
+    @Test
+    fun latestIncomingMessageIsTheBottomMessageWhenItIsTheNewest() {
+        val newestIncoming = message(
+            "incoming-latest",
+            "Their latest message",
+            "2026-11-03T10:06:00Z"
+        ).copy(senderId = "user-2")
+        val earlierOutgoing = message(
+            "outgoing-earlier",
+            "My earlier message",
+            "2026-11-03T10:05:00Z"
+        )
+
+        val sorted = sortChatMessagesChronologically(
+            listOf(earlierOutgoing, newestIncoming)
+        )
+
+        assertEquals("incoming-latest", sorted.last().id)
+        assertEquals("user-2", sorted.last().senderId)
+    }
+
+    @Test
     fun timestampIsHiddenForEarlierMessagesInSameTenMinuteSenderBurst() {
         val messages = listOf(
             message("1", "first", "2026-11-03T10:00:00Z"),
