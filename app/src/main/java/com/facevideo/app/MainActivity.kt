@@ -5991,10 +5991,19 @@ private fun MessageBubble(
     )
 
     Row(
-        Modifier.fillMaxWidth()
-            // Listen on the entire message row, not only on the visible bubble.
-            // This lets the user start the reply swipe from the empty space beside it.
-            .pointerInput(message.id, onReply) {
+        Modifier.fillMaxWidth().padding(
+            top = when {
+                separateFromPrevious -> 8.dp
+                sameSenderPrevious -> 3.dp
+                else -> 0.dp
+            }
+        ),
+        horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                            .pointerInput(message.id, onReply) {
                 if (onReply != null) {
                     var horizontalDragDistance = 0f
                     var currentDragOffset = 0f
@@ -6048,18 +6057,9 @@ private fun MessageBubble(
                         }
                     )
                 }
-            }
-            .padding(
-                top = when {
-                    separateFromPrevious -> 8.dp
-                    sameSenderPrevious -> 3.dp
-                    else -> 0.dp
-                }
-            ),
-        horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
-        verticalAlignment = Alignment.Bottom
-    ) {
-        Box {
+            },
+            contentAlignment = if (message.isMine) Alignment.BottomEnd else Alignment.BottomStart
+        ) {
             if (replyDragOffset.value < -8f) {
                 val replyHintProgress = (-replyDragOffset.value / maxReplyDragOffsetPx).coerceIn(0f, 1f)
                 Box(
