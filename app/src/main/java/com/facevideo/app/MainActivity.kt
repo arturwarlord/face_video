@@ -1589,6 +1589,7 @@ private fun FaceVideoApp(
                                 GroupsScreen(
                                     repository = liveRepository,
                                     userId = userId,
+                                    isOrangeChocolateTheme = appOrangeChocolateTheme.value,
                                     onOpenGroup = { setOpenedLiveChat(it) }
                                 )
                             } else {
