@@ -8337,23 +8337,31 @@ private fun FriendsScreen(
         Box(
             Modifier.fillMaxWidth().height(52.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
+                .background(
+                    Brush.horizontalGradient(
+                        if (appOrangeChocolateTheme.value) {
+                            listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                        } else {
+                            listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))
+                        }
+                    )
+                )
                 .clickable(onClick = { showAddFriend = true }),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    color = Color(0x33FFFFFF),
+                    color = if (appOrangeChocolateTheme.value) Color(0x33FFF0D8) else Color(0x33FFFFFF),
                     shape = CircleShape,
                     modifier = Modifier.size(28.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                    border = BorderStroke(1.dp, if (appOrangeChocolateTheme.value) Color(0x88FFE0B8) else Color.White.copy(alpha = 0.42f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("+", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium)
+                        Text("+", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium)
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                Text("Добавить друга", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Добавить друга", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(15.dp))
@@ -8377,7 +8385,10 @@ private fun FriendsScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .then(
                                 if (selected) Modifier.background(
-                                    Brush.horizontalGradient(listOf(Color(0xFF5B6FE4), Color(0xFF8266E9)))
+                                    Brush.horizontalGradient(
+                                        if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB35B), Color(0xFFFF902F))
+                                        else listOf(Color(0xFF5B6FE4), Color(0xFF8266E9))
+                                    )
                                 ) else Modifier
                             )
                             .clickable(interactionSource = null, indication = null) { selectedSection = section },
@@ -8385,7 +8396,7 @@ private fun FriendsScreen(
                     ) {
                         Text(
                             title,
-                            color = if (selected) Color.White else MainText,
+                            color = if (selected && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (selected) Color.White else MainText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -8573,13 +8584,13 @@ private fun FriendDirectoryRow(
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Surface(
-                    color = Color(0xFFE9EEFF),
+                    color = if (appOrangeChocolateTheme.value) Color(0xFFFFE1BC) else Color(0xFFE9EEFF),
                     shape = RoundedCornerShape(11.dp),
                     modifier = Modifier.clickable(enabled = actionEnabled, onClick = onAction)
                 ) {
                     Text(
                         actionLabel,
-                        color = AccentSlate,
+                        color = if (appOrangeChocolateTheme.value) Color(0xFF9B4E17) else AccentSlate,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
@@ -8587,13 +8598,13 @@ private fun FriendDirectoryRow(
                 }
                 if (secondaryActionLabel != null && onSecondaryAction != null) {
                     Surface(
-                        color = Color(0xFFFFF0F2),
+                        color = if (appOrangeChocolateTheme.value) Color(0xFF482016) else Color(0xFFFFF0F2),
                         shape = RoundedCornerShape(11.dp),
                         modifier = Modifier.clickable(enabled = actionEnabled, onClick = onSecondaryAction)
                     ) {
                         Text(
                             secondaryActionLabel,
-                            color = Color(0xFFA85F6E),
+                            color = if (appOrangeChocolateTheme.value) Color(0xFFFFA18A) else Color(0xFFA85F6E),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
@@ -8940,12 +8951,21 @@ private fun ProfileScreen(
                                     Modifier.size(78.dp)
                                         .background(
                                             Brush.sweepGradient(
-                                                listOf(
-                                                    Color(0xFF45A9F5),
-                                                    Color(0xFF7168E8),
-                                                    Color(0xFFB56FD4),
-                                                    Color(0xFF45A9F5)
-                                                )
+                                                if (appOrangeChocolateTheme.value) {
+                                                    listOf(
+                                                        Color(0xFFFFD08A),
+                                                        Color(0xFFFF9A3D),
+                                                        Color(0xFFC75A19),
+                                                        Color(0xFFFFD08A)
+                                                    )
+                                                } else {
+                                                    listOf(
+                                                        Color(0xFF45A9F5),
+                                                        Color(0xFF7168E8),
+                                                        Color(0xFFB56FD4),
+                                                        Color(0xFF45A9F5)
+                                                    )
+                                                }
                                             ),
                                             CircleShape
                                         )
@@ -8990,7 +9010,7 @@ private fun ProfileScreen(
                                         Spacer(Modifier.width(6.dp))
                                         Text(
                                             "В сети",
-                                            color = Color(0xFF4E607D),
+                                            color = if (appOrangeChocolateTheme.value) Color(0xFFD8B89F) else Color(0xFF4E607D),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -8999,7 +9019,7 @@ private fun ProfileScreen(
                                         Spacer(Modifier.height(5.dp))
                                         Text(
                                             statusText,
-                                            color = Color(0xFF6678A8),
+                                            color = if (appOrangeChocolateTheme.value) Color(0xFFFFB15C) else Color(0xFF6678A8),
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Medium,
                                             maxLines = 1,
@@ -9020,7 +9040,7 @@ private fun ProfileScreen(
                             Spacer(Modifier.height(17.dp))
                             Box(
                                 Modifier.fillMaxWidth().height(1.dp)
-                                    .background(Color.White.copy(alpha = 0.78f))
+                                    .background(if (appOrangeChocolateTheme.value) Color(0xFF89532F) else Color.White.copy(alpha = 0.78f))
                             )
                             Spacer(Modifier.height(13.dp))
                             Row(
@@ -9028,7 +9048,7 @@ private fun ProfileScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
-                                Box(Modifier.width(1.dp).height(38.dp).background(Color(0x6695A5C6)))
+                                Box(Modifier.width(1.dp).height(38.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0x6695A5C6)))
                                 ProfileStat(
                                     "истории",
                                     storyCount?.toString() ?: "—",
@@ -9074,8 +9094,8 @@ private fun ProfileScreen(
                         iconKind = "person",
                         title = "Личные данные",
                         subtitle = "Имя, фото и описание",
-                        iconBackground = Color(0xFFE2F0FF),
-                        iconTint = Color(0xFF4B78D6),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE5C7) else Color(0xFFE2F0FF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4B78D6),
                         showDivider = true,
                         onClick = { startProfileEditor(0) }
                     )
@@ -9083,8 +9103,8 @@ private fun ProfileScreen(
                         iconKind = "shield",
                         title = "Приватность",
                         subtitle = "Кто видит вашу активность",
-                        iconBackground = Color(0xFFECE8FF),
-                        iconTint = Color(0xFF735BDA),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFF1DFC9) else Color(0xFFECE8FF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF8D5728) else Color(0xFF735BDA),
                         onClick = { showPrivacyInfo = true }
                     )
                 }
@@ -9104,8 +9124,8 @@ private fun ProfileScreen(
                         iconKind = "bell",
                         title = "Уведомления",
                         subtitle = "Звуки и сообщения",
-                        iconBackground = Color(0xFFF7E4F8),
-                        iconTint = Color(0xFF9A61C8),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE0B8) else Color(0xFFF7E4F8),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFFAE5B1C) else Color(0xFF9A61C8),
                         showDivider = true,
                         onClick = { openNotificationSettings() }
                     )
@@ -9113,8 +9133,8 @@ private fun ProfileScreen(
                         iconKind = "appearance",
                         title = "Оформление",
                         subtitle = when { appOrangeChocolateTheme.value -> "Orange & Chocolate"; appDarkTheme.value -> "Чёрная тема"; else -> "Светлая тема · по умолчанию" },
-                        iconBackground = Color(0xFFE4EDFF),
-                        iconTint = Color(0xFF4F70CC),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE9D2) else Color(0xFFE4EDFF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4F70CC),
                         showDivider = true,
                         onClick = { showAppearanceInfo = true }
                     )
@@ -9140,8 +9160,8 @@ private fun ProfileScreen(
                     iconKind = "support",
                     title = "Помощь и поддержка",
                     subtitle = null,
-                    iconBackground = Color(0xFFE2F0FF),
-                    iconTint = Color(0xFF4B78D6),
+                    iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE5C7) else Color(0xFFE2F0FF),
+                    iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4B78D6),
                     onClick = {
                         runCatching {
                             context.startActivity(
@@ -9321,7 +9341,9 @@ private fun ProfileScreen(
                                 Modifier.fillMaxWidth()
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                            if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                            else if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                    else listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
                                         )
                                     )
                                     .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
@@ -9375,7 +9397,10 @@ private fun ProfileScreen(
                                     listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
                                 )
                             } else {
-                                Brush.horizontalGradient(listOf(Color(0xFFD7DEED), Color(0xFFC8D2E7)))
+                                Brush.horizontalGradient(
+                                    if (appOrangeChocolateTheme.value) listOf(Color(0xFF5A3923), Color(0xFF402516))
+                                    else listOf(Color(0xFFD7DEED), Color(0xFFC8D2E7))
+                                )
                             }
                         )
                         .clickable(enabled = canSave && repository != null && userId != null) {
@@ -9422,7 +9447,7 @@ private fun ProfileScreen(
                     if (isSaving) {
                         androidx.compose.material3.CircularProgressIndicator(
                             Modifier.size(19.dp),
-                            color = if (canSave) Color.White else Muted,
+                            color = if (canSave && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (canSave) Color.White else Muted,
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(9.dp))
@@ -9435,7 +9460,12 @@ private fun ProfileScreen(
                             hasChanges && displayName.isBlank() -> "Укажите имя"
                             else -> "Все изменения сохранены"
                         },
-                        color = if (canSave) Color.White else Color(0xFF73809A),
+                        color = when {
+                            canSave && appOrangeChocolateTheme.value -> Color(0xFF2B1509)
+                            canSave -> Color.White
+                            appOrangeChocolateTheme.value -> Color(0xFFC9A990)
+                            else -> Color(0xFF73809A)
+                        },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -9646,7 +9676,7 @@ private fun ProfileMenuRow(
         if (showDivider) {
             Box(
                 Modifier.fillMaxWidth().padding(start = 71.dp, end = 15.dp)
-                    .height(1.dp).background(Color(0xFFE4E8F1))
+                    .height(1.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0xFFE4E8F1))
             )
         }
     }
@@ -9819,7 +9849,8 @@ private fun ProfileEditorTab(
                 .then(
                     if (selected) Modifier.background(
                         Brush.horizontalGradient(
-                            listOf(Color(0xFF28A8F3), Color(0xFF5364E8), Color(0xFF9160EA))
+                            if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                            else listOf(Color(0xFF28A8F3), Color(0xFF5364E8), Color(0xFF9160EA))
                         )
                     ) else Modifier
                 )
@@ -9828,7 +9859,7 @@ private fun ProfileEditorTab(
         ) {
             Text(
                 number,
-                color = if (selected) Color.White.copy(alpha = 0.82f) else AccentSlate.copy(alpha = 0.72f),
+                color = if (selected && appOrangeChocolateTheme.value) Color(0xFF4A2811) else if (selected) Color.White.copy(alpha = 0.82f) else AccentSlate.copy(alpha = 0.72f),
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp
@@ -9836,7 +9867,7 @@ private fun ProfileEditorTab(
             Spacer(Modifier.height(3.dp))
             Text(
                 title,
-                color = if (selected) Color.White else MainText,
+                color = if (selected && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (selected) Color.White else MainText,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -9873,7 +9904,9 @@ private fun ProfileFeedbackMessage(
     isSuccess: Boolean
 ) {
     Surface(
-        color = if (isSuccess) Color(0xFFEAF7F1).copy(alpha = 0.94f) else Color(0xFFFFF0F1).copy(alpha = 0.94f),
+        color = if (appOrangeChocolateTheme.value) {
+            if (isSuccess) Color(0xFF1D3B2C) else Color(0xFF482016)
+        } else if (isSuccess) Color(0xFFEAF7F1).copy(alpha = 0.94f) else Color(0xFFFFF0F1).copy(alpha = 0.94f),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             1.dp,
@@ -9968,7 +10001,7 @@ private fun ProfileInputField(
                     if (value.isEmpty()) {
                         Text(
                             placeholder,
-                            color = Color(0xFF7E8BAA).copy(alpha = 0.86f),
+                            color = (if (appOrangeChocolateTheme.value) Color(0xFFC9A990) else Color(0xFF7E8BAA)).copy(alpha = 0.86f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp
                         )
