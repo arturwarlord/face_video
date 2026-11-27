@@ -8684,13 +8684,14 @@ private fun ProfileScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 Surface(
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(15.dp),
-                    border = BorderStroke(0.dp, Color.Transparent),
-                    modifier = Modifier.size(44.dp).clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
+                    color = Color.White.copy(alpha = 0.56f),
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
+                    modifier = Modifier.size(42.dp)
+                        .clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("⚙", color = AccentSlate, fontSize = 22.sp)
+                        ProfileMenuGlyph("settings", AccentSlate)
                     }
                 }
             }
@@ -8719,118 +8720,145 @@ private fun ProfileScreen(
                 }
             } else if (profile != null) {
                 val p = profile!!
+                val profileShape = RoundedCornerShape(28.dp)
                 Surface(
                     color = Color.Transparent,
-                    shape = RoundedCornerShape(27.dp),
-                    border = BorderStroke(0.dp, Color.Transparent),
-                    shadowElevation = 3.dp,
+                    shape = profileShape,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.72f)),
+                    shadowElevation = 8.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 17.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        Modifier.fillMaxWidth().background(
+                            Brush.linearGradient(
+                                listOf(
+                                    Color(0xFFDCE8FF),
+                                    Color(0xFFE4E5FF),
+                                    Color(0xFFF0E7FB)
+                                )
+                            )
+                        )
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 17.dp)
                         ) {
-                            Box(
-                                Modifier.size(88.dp)
-                                    .background(
-                                        Brush.sweepGradient(
-                                            listOf(
-                                                Color(0xFF5DAAF1),
-                                                Color(0xFF8269E8),
-                                                Color(0xFFCE79B6),
-                                                Color(0xFF5DAAF1)
-                                            )
-                                        ),
-                                        CircleShape
-                                    )
-                                    .padding(3.dp)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Avatar(
-                                    displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
-                                        .trim().take(1).uppercase(),
-                                    1,
-                                    Modifier.fillMaxSize(),
-                                    imageUrl = p.avatarUrl,
-                                    imageCacheKey = userId,
-                                    onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
-                                )
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    displayName.ifBlank { "Ваше имя" },
-                                    color = MainText,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    "@${username.ifBlank { "username" }}",
-                                    color = Muted,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        Modifier.size(8.dp)
-                                            .background(Color(0xFF31BD72), CircleShape)
+                                Box(
+                                    Modifier.size(78.dp)
+                                        .background(
+                                            Brush.sweepGradient(
+                                                listOf(
+                                                    Color(0xFF45A9F5),
+                                                    Color(0xFF7168E8),
+                                                    Color(0xFFB56FD4),
+                                                    Color(0xFF45A9F5)
+                                                )
+                                            ),
+                                            CircleShape
+                                        )
+                                        .padding(3.dp)
+                                ) {
+                                    Avatar(
+                                        displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                            .trim().take(1).uppercase(),
+                                        1,
+                                        Modifier.fillMaxSize(),
+                                        imageUrl = p.avatarUrl,
+                                        imageCacheKey = userId,
+                                        onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
                                     )
-                                    Spacer(Modifier.width(7.dp))
-                                    Text("В сети", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                 }
-                                if (statusText.isNotBlank()) {
-                                    Spacer(Modifier.height(5.dp))
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        statusText,
-                                        color = Color(0xFF6678B2),
-                                        fontSize = 10.sp,
+                                        displayName.ifBlank { "Ваше имя" },
+                                        color = MainText,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "@${username.ifBlank { "username" }}",
+                                        color = Muted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(
+                                        Modifier.clip(RoundedCornerShape(50))
+                                            .background(Color.White.copy(alpha = 0.56f))
+                                            .padding(horizontal = 9.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            Modifier.size(7.dp)
+                                                .background(Color(0xFF31BD72), CircleShape)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "В сети",
+                                            color = Color(0xFF4E607D),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    if (statusText.isNotBlank()) {
+                                        Spacer(Modifier.height(5.dp))
+                                        Text(
+                                            statusText,
+                                            color = Color(0xFF6678A8),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.66f),
+                                    shape = CircleShape,
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.88f)),
+                                    modifier = Modifier.size(39.dp).clickable { startProfileEditor(0) }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        ProfileMenuGlyph("edit", AccentSlate)
+                                    }
                                 }
                             }
-                            Spacer(Modifier.width(7.dp))
-                            Surface(
-                                color = Color(0xFFEDEBFF),
-                                shape = RoundedCornerShape(17.dp),
-                                modifier = Modifier.size(43.dp).clickable { startProfileEditor(0) }
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("✎", color = AccentSlate, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
 
-                        Spacer(Modifier.height(17.dp))
-                        Box(
-                            Modifier.fillMaxWidth().height(1.dp)
-                                .background(Color(0xFFE5E9F4))
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
-                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
-                            ProfileStat(
-                                "истории",
-                                storyCount?.toString() ?: "—",
-                                Modifier.weight(1f),
-                                onOpenStories,
-                                enabled = (storyCount ?: 0) > 0
+                            Spacer(Modifier.height(17.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(1.dp)
+                                    .background(Color.White.copy(alpha = 0.78f))
                             )
-                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
-                            ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
+                            Spacer(Modifier.height(13.dp))
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
+                                Box(Modifier.width(1.dp).height(38.dp).background(Color(0x6695A5C6)))
+                                ProfileStat(
+                                    "истории",
+                                    storyCount?.toString() ?: "—",
+                                    Modifier.weight(1f),
+                                    onOpenStories,
+                                    enabled = (storyCount ?: 0) > 0
+                                )
+                                Box(Modifier.width(1.dp).height(38.dp).background(Color(0x6695A5C6)))
+                                ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
+                            }
                         }
                     }
-                }
-            } else {
+                }            } else {
                 Surface(
                     color = Color.Transparent,
                     shape = RoundedCornerShape(24.dp),
@@ -8900,7 +8928,7 @@ private fun ProfileScreen(
                         onClick = { openNotificationSettings() }
                     )
                     ProfileMenuRow(
-                        iconKind = "palette",
+                        iconKind = "appearance",
                         title = "Оформление",
                         subtitle = "Тема и внешний вид",
                         iconBackground = Color(0xFFE4EDFF),
@@ -9434,14 +9462,47 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
                 drawArc(tint, 200f, 140f, false, Offset(w * 0.40f, h * 0.78f), androidx.compose.ui.geometry.Size(w * 0.20f, h * 0.18f), style = line)
                 drawLine(tint, Offset(w * 0.42f, h * 0.94f), Offset(w * 0.58f, h * 0.94f), line.width, cap = StrokeCap.Round)
             }
-            "palette" -> {
-                drawCircle(tint, radius = w * 0.37f, center = Offset(w * 0.48f, h * 0.51f), style = line)
+            "appearance" -> {
+                val center = Offset(w * 0.5f, h * 0.5f)
+                val radius = w * 0.35f
+                val lightDarkSplit = Path().apply {
+                    moveTo(w * 0.5f, h * 0.15f)
+                    cubicTo(w * 0.31f, h * 0.15f, w * 0.15f, h * 0.31f, w * 0.15f, h * 0.5f)
+                    cubicTo(w * 0.15f, h * 0.69f, w * 0.31f, h * 0.85f, w * 0.5f, h * 0.85f)
+                    close()
+                }
+                drawPath(lightDarkSplit, tint)
+                drawCircle(tint, radius = radius, center = center, style = line)
+                drawLine(tint, Offset(w * 0.5f, h * 0.15f), Offset(w * 0.5f, h * 0.85f), line.width, cap = StrokeCap.Round)
+            }
+            "settings" -> {
+                val center = Offset(w * 0.5f, h * 0.5f)
                 listOf(
-                    Offset(w * 0.36f, h * 0.31f),
-                    Offset(w * 0.59f, h * 0.32f),
-                    Offset(w * 0.68f, h * 0.52f),
-                    Offset(w * 0.43f, h * 0.68f)
-                ).forEach { point -> drawCircle(tint, radius = w * 0.045f, center = point) }
+                    Pair(Offset(w * 0.5f, h * 0.02f), Offset(w * 0.5f, h * 0.15f)),
+                    Pair(Offset(w * 0.84f, h * 0.16f), Offset(w * 0.75f, h * 0.25f)),
+                    Pair(Offset(w * 0.98f, h * 0.5f), Offset(w * 0.85f, h * 0.5f)),
+                    Pair(Offset(w * 0.84f, h * 0.84f), Offset(w * 0.75f, h * 0.75f)),
+                    Pair(Offset(w * 0.5f, h * 0.98f), Offset(w * 0.5f, h * 0.85f)),
+                    Pair(Offset(w * 0.16f, h * 0.84f), Offset(w * 0.25f, h * 0.75f)),
+                    Pair(Offset(w * 0.02f, h * 0.5f), Offset(w * 0.15f, h * 0.5f)),
+                    Pair(Offset(w * 0.16f, h * 0.16f), Offset(w * 0.25f, h * 0.25f))
+                ).forEach { (outer, inner) ->
+                    drawLine(tint, outer, inner, line.width, cap = StrokeCap.Round)
+                }
+                drawCircle(tint, radius = w * 0.29f, center = center, style = line)
+                drawCircle(tint, radius = w * 0.105f, center = center, style = line)
+            }
+            "edit" -> {
+                val pencil = Path().apply {
+                    moveTo(w * 0.24f, h * 0.73f)
+                    lineTo(w * 0.67f, h * 0.30f)
+                    lineTo(w * 0.79f, h * 0.42f)
+                    lineTo(w * 0.36f, h * 0.85f)
+                    lineTo(w * 0.20f, h * 0.89f)
+                    close()
+                }
+                drawPath(pencil, tint, style = line)
+                drawLine(tint, Offset(w * 0.60f, h * 0.36f), Offset(w * 0.72f, h * 0.48f), line.width, cap = StrokeCap.Round)
             }
             "device" -> {
                 drawRoundRect(
