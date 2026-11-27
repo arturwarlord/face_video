@@ -5629,8 +5629,8 @@ private fun VoiceWaveformBars(
         val strokeWidth = (step * 0.58f).coerceIn(1.0.dp.toPx(), 1.7.dp.toPx())
         val minBarHeight = 2.4.dp.toPx()
         val maxBarHeight = size.height * 0.96f
-        val playedColor = Color(0xFF5266DE)
-        val futureColor = Color(0xFF9EAECE)
+        val playedColor = if (appOrangeChocolateTheme.value) Color(0xFFFF9B3D) else Color(0xFF5266DE)
+        val futureColor = if (appOrangeChocolateTheme.value) Color(0xFF825638) else Color(0xFF9EAECE)
         bars.forEachIndexed { index, level ->
             val amplitude = ((level - 8) / 92f).coerceIn(0f, 1f)
             val barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)
@@ -6477,14 +6477,14 @@ private fun ChatDateDivider(label: String) {
         horizontalArrangement = Arrangement.Center
     ) {
         Surface(
-            color = if (appDarkTheme.value) PanelLight else Color(0xDDE7ECF8),
+            color = if (isDarkAppearance) PanelLight else Color(0xDDE7ECF8),
             shape = RoundedCornerShape(14.dp),
             border = BorderStroke(1.dp, ThemeBorder),
             shadowElevation = 0.dp
         ) {
             Text(
                 text = label,
-                color = if (appDarkTheme.value) InboxSecondary else Color(0xFF65718A),
+                color = if (isDarkAppearance) InboxSecondary else Color(0xFF65718A),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.15.sp,
@@ -6539,7 +6539,7 @@ private fun MessageBubble(
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
             MessageDeliveryStatus.DELIVERED -> 2 to Muted
-            MessageDeliveryStatus.READ -> 2 to Color(0xFF5D6C84)
+            MessageDeliveryStatus.READ -> 2 to if (appOrangeChocolateTheme.value) Color(0xFFFFB35C) else Color(0xFF5D6C84)
             null -> null
         }
     } else null
@@ -7330,7 +7330,7 @@ private fun CallHistoryBubble(
         "cancelled" -> (if (isOutgoing) "Нет ответа" else "Пропущенный вызов") to true
         else -> "Звонок завершён" to false
     }
-    val accent = if (isMissed) Color(0xFFC65F70) else AccentSlate
+    val accent = if (isMissed) Color(0xFFE47768) else AccentSlate
     val cardBackground = when {
         appOrangeChocolateTheme.value && isMissed -> Color(0xFF421A13)
         appOrangeChocolateTheme.value -> Color(0xFF351A0C)
@@ -10073,9 +10073,9 @@ private fun UserProfileScreen(
                             .background(
                                 Brush.sweepGradient(
                                     listOf(
-                                        Color(0xFF5DAAF1),
-                                        Color(0xFF8269E8),
-                                        Color(0xFFCE79B6),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFFFC27A) else Color(0xFF5DAAF1),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFFF8B2B) else Color(0xFF8269E8),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFB84C12) else Color(0xFFCE79B6),
                                         Color(0xFF5DAAF1)
                                     )
                                 ),
@@ -10327,7 +10327,11 @@ private fun ChatChromeActionButton(
     content: @Composable () -> Unit
 ) {
     val gradient = Brush.linearGradient(
-        listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+        if (appOrangeChocolateTheme.value) {
+            listOf(Color(0xFFFFB45C), Color(0xFFFF8F2D), Color(0xFFC85A16))
+        } else {
+            listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+        }
     )
     Box(
         modifier = modifier.size(size)
@@ -10362,11 +10366,19 @@ private fun InboxHeaderActionButton(
             .size(46.dp)
             .background(
                 Brush.linearGradient(
-                    listOf(
-                        Color(0xFF9EADFF).copy(alpha = 0.82f),
-                        Color(0xFFB7D9FF).copy(alpha = 0.96f),
-                        Color(0xFFC7B5FF).copy(alpha = 0.88f)
-                    )
+                    if (appOrangeChocolateTheme.value) {
+                        listOf(
+                            Color(0xFFFFC47B).copy(alpha = 0.92f),
+                            Color(0xFFFF9234).copy(alpha = 0.98f),
+                            Color(0xFFB9561D).copy(alpha = 0.92f)
+                        )
+                    } else {
+                        listOf(
+                            Color(0xFF9EADFF).copy(alpha = 0.82f),
+                            Color(0xFFB7D9FF).copy(alpha = 0.96f),
+                            Color(0xFFC7B5FF).copy(alpha = 0.88f)
+                        )
+                    }
                 ),
                 CircleShape
             ),
@@ -10374,9 +10386,9 @@ private fun InboxHeaderActionButton(
     ) {
         Surface(
             modifier = Modifier.size(42.dp).clickable(onClick = onClick),
-            color = Color(0xF7FFFFFF),
+            color = if (appOrangeChocolateTheme.value) Color(0xF32D170C) else Color(0xF7FFFFFF),
             shape = CircleShape,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.98f)),
+            border = BorderStroke(1.dp, if (appOrangeChocolateTheme.value) Color(0xFF704329) else Color.White.copy(alpha = 0.98f)),
             shadowElevation = 2.dp
         ) {
             Box(
@@ -10384,7 +10396,7 @@ private fun InboxHeaderActionButton(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.White, Color(0xFFF0F3FF))
+                            if (appOrangeChocolateTheme.value) listOf(Color(0xFF3B1E10), Color(0xFF2B1409)) else listOf(Color.White, Color(0xFFF0F3FF))
                         )
                     ),
                 contentAlignment = Alignment.Center
