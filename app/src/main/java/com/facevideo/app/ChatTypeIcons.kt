@@ -34,12 +34,21 @@ internal enum class ArturChatIconType {
 @Composable
 internal fun ArturChatTypeAvatar(
     type: ArturChatIconType,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isOrangeChocolateTheme: Boolean = false
 ) {
-    val palette = when (type) {
-        ArturChatIconType.VIDEO_NOTE -> Triple(Color(0xFFE8E8FF), Color(0xFFF2E9FF), Color(0xFF635FD2))
-        ArturChatIconType.GROUP -> Triple(Color(0xFFE3EAFF), Color(0xFFEAF0FF), Color(0xFF5369D8))
-        ArturChatIconType.CHANNEL -> Triple(Color(0xFFDFF0F0), Color(0xFFE8F1FF), Color(0xFF438B96))
+    val palette = if (isOrangeChocolateTheme) {
+        when (type) {
+            ArturChatIconType.VIDEO_NOTE -> Triple(Color(0xFF4A2512), Color(0xFF32190C), Color(0xFFFFAE55))
+            ArturChatIconType.GROUP -> Triple(Color(0xFF4A2410), Color(0xFF32180B), Color(0xFFFFB15C))
+            ArturChatIconType.CHANNEL -> Triple(Color(0xFF432414), Color(0xFF2D180D), Color(0xFFFFC27A))
+        }
+    } else {
+        when (type) {
+            ArturChatIconType.VIDEO_NOTE -> Triple(Color(0xFFE8E8FF), Color(0xFFF2E9FF), Color(0xFF635FD2))
+            ArturChatIconType.GROUP -> Triple(Color(0xFFE3EAFF), Color(0xFFEAF0FF), Color(0xFF5369D8))
+            ArturChatIconType.CHANNEL -> Triple(Color(0xFFDFF0F0), Color(0xFFE8F1FF), Color(0xFF438B96))
+        }
     }
 
     Box(

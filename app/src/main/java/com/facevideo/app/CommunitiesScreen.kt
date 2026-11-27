@@ -451,7 +451,7 @@ private fun CommunityGroupRow(
                 onClick = { showAvatarPreview = true }
             )
         } else {
-            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp))
+            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -511,7 +511,7 @@ private fun CommunityChannelRow(
                 onClick = { showAvatarPreview = true }
             )
         } else {
-            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
+            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -965,7 +965,8 @@ private fun ChannelDetailsScreen(
                             ArturChatIconType.CHANNEL,
                             Modifier.fillMaxSize().then(
                                 if (isOwner) Modifier.clickable(enabled = !isBusy) { avatarPicker.launch("image/*") } else Modifier
-                            )
+                            ),
+                            isOrangeChocolateTheme = communityOrangeChocolate.value
                         )
                     }
                     if (isOwner) {
@@ -1467,7 +1468,7 @@ private fun ChannelPostCard(
             .padding(15.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(30.dp))
+            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(30.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Публикация канала", color = CommunityText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
