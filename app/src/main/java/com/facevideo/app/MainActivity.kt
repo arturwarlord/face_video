@@ -1423,8 +1423,22 @@ private fun FaceVideoApp(
     }
 
     Column(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(when { appOrangeChocolateTheme.value -> listOf(Color(0xFF321205), Color(0xFF1C0903), Color(0xFF321205)); appDarkTheme.value -> listOf(Color(0xFF0E1520), Color(0xFF090D14), Color(0xFF0E1520)); else -> listOf(AppBackground, Color(0xFFE5EAF0), AppBackground) })
+        Modifier.fillMaxSize().then(
+            if (appOrangeChocolateTheme.value) {
+                // Let the exact Orange & Chocolate wallpaper from MainActivity
+                // remain visible underneath every tab and the bottom navigation.
+                Modifier
+            } else {
+                Modifier.background(
+                    Brush.verticalGradient(
+                        if (appDarkTheme.value) {
+                            listOf(Color(0xFF0E1520), Color(0xFF090D14), Color(0xFF0E1520))
+                        } else {
+                            listOf(AppBackground, Color(0xFFE5EAF0), AppBackground)
+                        }
+                    )
+                )
+            }
         )
     ) {
         if (activeCall != null && !showActiveCallScreen) {
