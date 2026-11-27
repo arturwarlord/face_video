@@ -9341,9 +9341,11 @@ private fun ProfileScreen(
                                 Modifier.fillMaxWidth()
                                     .background(
                                         Brush.horizontalGradient(
-                                            if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
-                                            else if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
-                                    else listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                            if (appOrangeChocolateTheme.value) {
+                                                listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                            } else {
+                                                listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                            }
                                         )
                                     )
                                     .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
@@ -9351,11 +9353,11 @@ private fun ProfileScreen(
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("＋", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Text("＋", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if (isSaving) "Обновляем фото…" else "Выбрать фотографию",
-                                    color = Color.White,
+                                    color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -9394,7 +9396,11 @@ private fun ProfileScreen(
                         .background(
                             if (canSave) {
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                    if (appOrangeChocolateTheme.value) {
+                                        listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                    } else {
+                                        listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                    }
                                 )
                             } else {
                                 Brush.horizontalGradient(
