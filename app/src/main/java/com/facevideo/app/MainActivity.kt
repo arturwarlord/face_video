@@ -1883,6 +1883,7 @@ private fun StoriesStrip(
     var isPublishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val profileScrollState = rememberScrollState()
     val mediaCache = remember(context) { ArturChatImageCache(context) }
 
     LaunchedEffect(repository, userId, refreshKey) {
@@ -8523,7 +8524,7 @@ private fun ProfileScreen(
 
     Column(
         Modifier.fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(profileScrollState)
             .padding(horizontal = 18.dp, vertical = 18.dp)
     ) {
         if (!isEditing) {
@@ -8564,7 +8565,7 @@ private fun ProfileScreen(
                     color = Color.White.copy(alpha = 0.86f),
                     shape = RoundedCornerShape(15.dp),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
-                    modifier = Modifier.size(44.dp).clickable { openNotificationSettings() }
+                    modifier = Modifier.size(44.dp).clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("⚙", color = AccentSlate, fontSize = 22.sp)
