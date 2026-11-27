@@ -8562,9 +8562,9 @@ private fun ProfileScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 Surface(
-                    color = Color.White.copy(alpha = 0.86f),
+                    color = Color.Transparent,
                     shape = RoundedCornerShape(15.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                    border = BorderStroke(0.dp, Color.Transparent),
                     modifier = Modifier.size(44.dp).clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -8577,9 +8577,9 @@ private fun ProfileScreen(
 
             if (isLoading && profile == null) {
                 Surface(
-                    color = Color.White.copy(alpha = 0.84f),
+                    color = Color.Transparent,
                     shape = RoundedCornerShape(25.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                    border = BorderStroke(0.dp, Color.Transparent),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -8598,9 +8598,9 @@ private fun ProfileScreen(
             } else if (profile != null) {
                 val p = profile!!
                 Surface(
-                    color = Color.White.copy(alpha = 0.88f),
+                    color = Color.Transparent,
                     shape = RoundedCornerShape(27.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                    border = BorderStroke(0.dp, Color.Transparent),
                     shadowElevation = 3.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -8710,9 +8710,9 @@ private fun ProfileScreen(
                 }
             } else {
                 Surface(
-                    color = Color.White.copy(alpha = 0.84f),
+                    color = Color.Transparent,
                     shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                    border = BorderStroke(0.dp, Color.Transparent),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(18.dp)) {
@@ -8732,9 +8732,9 @@ private fun ProfileScreen(
             Text("Аккаунт", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             Surface(
-                color = Color.White.copy(alpha = 0.88f),
+                color = Color.Transparent,
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                border = BorderStroke(0.dp, Color.Transparent),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
@@ -8762,9 +8762,9 @@ private fun ProfileScreen(
             Text("Настройки", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             Surface(
-                color = Color.White.copy(alpha = 0.88f),
+                color = Color.Transparent,
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                border = BorderStroke(0.dp, Color.Transparent),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column {
@@ -8799,9 +8799,9 @@ private fun ProfileScreen(
 
             Spacer(Modifier.height(18.dp))
             Surface(
-                color = Color.White.copy(alpha = 0.88f),
+                color = Color.Transparent,
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                border = BorderStroke(0.dp, Color.Transparent),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 ProfileMenuRow(
@@ -8934,9 +8934,9 @@ private fun ProfileScreen(
                     )
                     Spacer(Modifier.height(13.dp))
                     Surface(
-                        color = Color.White.copy(alpha = 0.58f),
+                        color = Color.Transparent,
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+                        border = BorderStroke(0.dp, Color.Transparent),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
