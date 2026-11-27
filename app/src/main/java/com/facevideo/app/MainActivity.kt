@@ -102,6 +102,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -2812,7 +2813,7 @@ private fun LiveChatRow(
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Box(
         modifier = Modifier.fillMaxWidth().height(80.dp)
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RectangleShape)
     ) {
         if (revealedWidthPx > 0.5f) {
             Column(
@@ -2820,7 +2821,7 @@ private fun LiveChatRow(
                     .fillMaxHeight()
                     .width(revealedWidth)
                     .padding(vertical = 5.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                    .clip(RectangleShape)
                     .background(Color(0xFFE66F80))
                     .clickable(enabled = !isDragging && revealProgress >= 0.98f) {
                         onHideDelete()
