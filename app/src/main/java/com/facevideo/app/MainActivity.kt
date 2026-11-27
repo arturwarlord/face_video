@@ -1481,7 +1481,6 @@ private fun FaceVideoApp(
                             onOpenFriends = { selectedTab = MainTab.CONTACTS },
                             onOpenGroups = { selectedTab = MainTab.GROUPS },
                             onOpenStories = { if (userId != null) openedStoriesUserId = userId },
-                            onOpenProfile = { openedProfileUserId = it },
                             onSignOut = {
                                 val currentUserId = userId
                                 scope.launch {
@@ -8383,7 +8382,6 @@ private fun ProfileScreen(
     onOpenFriends: () -> Unit,
     onOpenGroups: () -> Unit,
     onOpenStories: () -> Unit,
-    onOpenProfile: (String) -> Unit,
     onSignOut: () -> Unit
 ) {
     val cachedProfile = remember(cache, userId) { userId?.let { cache.readProfile(it, it) } }
@@ -8406,7 +8404,6 @@ private fun ProfileScreen(
     var friendCount by remember(userId) { mutableStateOf<Int?>(null) }
     var storyCount by remember(userId) { mutableStateOf<Int?>(null) }
     var groupCount by remember(userId) { mutableStateOf<Int?>(null) }
-    var friendPreview by remember(userId) { mutableStateOf<List<FaceVideoProfile>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -8434,17 +8431,10 @@ private fun ProfileScreen(
             // Show the profile as soon as its own data is ready; social counters refresh independently.
             isLoading = false
             runCatching {
-                val accepted = currentRepository.listMyFriendships(currentUserId)
-                    .filter { it.status == "accepted" }
-                friendCount = accepted.size
-                val friendIds = accepted.map { row ->
-                    if (row.userLow == currentUserId) row.userHigh else row.userLow
-                }.distinct()
-                friendPreview = friendIds.take(4).mapNotNull { friendId ->
-                    runCatching { currentRepository.getProfile(friendId) }.getOrNull()
-                }
+                friendCount = currentRepository.listMyFriendships(currentUserId)
+                    .count { it.status == "accepted" }
             }.onFailure {
-                android.util.Log.w("ArturChatProfile", "Could not load profile friends", it)
+                android.util.Log.w("ArturChatProfile", "Could not load profile friend count", it)
             }
             runCatching {
                 storyCount = currentRepository.listVisibleStories(
