@@ -237,36 +237,40 @@ import io.github.jan.supabase.realtime.presenceDataFlow
 import io.github.jan.supabase.realtime.track
 import io.github.jan.supabase.realtime.realtime
 
-// ArturChat palette inspired by the supplied pastel sky reference.
-private val AppBackground = Color(0xFFF0F3FF)
-private val Panel = Color(0xFFFAFBFF)
-private val PanelLight = Color(0xFFEDF1FF)
-private val IncomingMessage = Color(0xFFE5EAF6)
-private val AccentSlate = Color(0xFF5266D8)
-private val MainText = Color(0xFF253047)
-private val Muted = Color(0xFF77839A)
-private val PaletteBlush = Color(0xFFE6DFFF)
-private val PaletteSlate = Color(0xFFC8D7F2)
-private val PaletteBlueGray = Color(0xFFD2E3F8)
-private val PaletteMist = Color(0xFFE0E7F6)
-private val AvatarColors = listOf(
-    PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist
-)
+private const val ARTURCHAT_THEME_PREFERENCES = "arturchat_appearance"
+private const val ARTURCHAT_THEME_DARK_KEY = "black_theme_enabled"
+private val appDarkTheme = mutableStateOf(false)
 
-// Inbox-only design tokens. Kept separate from the call/chat surfaces so this
-// visual pass cannot unintentionally restyle the already-working call screens.
-private val InboxBackground = Color(0xFFF2F4FF)
-private val InboxSurface = Color(0xFFFFFFFF)
-private val InboxSurfaceSoft = Color(0xFFE8EBFF)
-private val InboxMessageIncoming = Color(0xFFDDE3EA)
-private val InboxAccent = Color(0xFF5267DB)
-private val InboxAccentStrong = Color(0xFF3F50C9)
-private val InboxPrimary = Color(0xFF202936)
-private val InboxSecondary = Color(0xFF485464)
-private val InboxMuted = Color(0xFF788493)
-private val InboxBorder = Color(0xFFE1E6EC)
-private val InboxOnline = Color(0xFF2F9A72)
-private val InboxDanger = Color(0xFFBE5E67)
+// Theme-aware ArturChat palette. The existing pastel palette remains the default.
+private val AppBackground: Color get() = if (appDarkTheme.value) Color(0xFF090D14) else Color(0xFFF0F3FF)
+private val Panel: Color get() = if (appDarkTheme.value) Color(0xFF151C28) else Color(0xFFFAFBFF)
+private val PanelLight: Color get() = if (appDarkTheme.value) Color(0xFF202B3B) else Color(0xFFEDF1FF)
+private val IncomingMessage: Color get() = if (appDarkTheme.value) Color(0xFF273246) else Color(0xFFE5EAF6)
+private val AccentSlate: Color get() = if (appDarkTheme.value) Color(0xFF91A4FF) else Color(0xFF5266D8)
+private val MainText: Color get() = if (appDarkTheme.value) Color(0xFFF1F4FB) else Color(0xFF253047)
+private val Muted: Color get() = if (appDarkTheme.value) Color(0xFF9AA8BC) else Color(0xFF77839A)
+private val PaletteBlush: Color get() = if (appDarkTheme.value) Color(0xFF3A304C) else Color(0xFFE6DFFF)
+private val PaletteSlate: Color get() = if (appDarkTheme.value) Color(0xFF293B59) else Color(0xFFC8D7F2)
+private val PaletteBlueGray: Color get() = if (appDarkTheme.value) Color(0xFF263C50) else Color(0xFFD2E3F8)
+private val PaletteMist: Color get() = if (appDarkTheme.value) Color(0xFF283347) else Color(0xFFE0E7F6)
+private val AvatarColors: List<Color> get() = listOf(PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist)
+private val ThemeSurface: Color get() = if (appDarkTheme.value) Color(0xFF192231) else Color.White
+private val ThemeSurfaceRaised: Color get() = if (appDarkTheme.value) Color(0xFF202B3A) else Color(0xFFFDFEFF)
+private val ThemeBorder: Color get() = if (appDarkTheme.value) Color(0xFF344155) else Color(0xFFE1E6EC)
+
+// Inbox tokens use the same light/dark choice as the rest of the app.
+private val InboxBackground: Color get() = if (appDarkTheme.value) Color(0xFF090D14) else Color(0xFFF2F4FF)
+private val InboxSurface: Color get() = if (appDarkTheme.value) Color(0xFF151E2B) else Color(0xFFFFFFFF)
+private val InboxSurfaceSoft: Color get() = if (appDarkTheme.value) Color(0xFF222D3F) else Color(0xFFE8EBFF)
+private val InboxMessageIncoming: Color get() = if (appDarkTheme.value) Color(0xFF293548) else Color(0xFFDDE3EA)
+private val InboxAccent: Color get() = if (appDarkTheme.value) Color(0xFF8FA4FF) else Color(0xFF5267DB)
+private val InboxAccentStrong: Color get() = if (appDarkTheme.value) Color(0xFFADB9FF) else Color(0xFF3F50C9)
+private val InboxPrimary: Color get() = if (appDarkTheme.value) Color(0xFFF1F4FB) else Color(0xFF202936)
+private val InboxSecondary: Color get() = if (appDarkTheme.value) Color(0xFFC3CCDA) else Color(0xFF485464)
+private val InboxMuted: Color get() = if (appDarkTheme.value) Color(0xFF929FB2) else Color(0xFF788493)
+private val InboxBorder: Color get() = if (appDarkTheme.value) Color(0xFF303B4E) else Color(0xFFE1E6EC)
+private val InboxOnline: Color get() = if (appDarkTheme.value) Color(0xFF62C99D) else Color(0xFF2F9A72)
+private val InboxDanger: Color get() = if (appDarkTheme.value) Color(0xFFF08D98) else Color(0xFFBE5E67)
 
 private enum class MainTab(val title: String) {
     CHATS("Чаты"),
@@ -387,18 +391,14 @@ data class CallNotificationAction(
 private fun Modifier.arturChatGradientBackground(): Modifier = this
     .background(
         Brush.verticalGradient(
-            listOf(
-                Color(0xFFE2DCFF),
-                Color(0xFFE2E9FF),
-                Color(0xFFE8F0FF),
-                Color(0xFFF2F5FF),
-                Color(0xFFE8E9FF)
-            )
+            if (appDarkTheme.value) listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+            else listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF), Color(0xFFE8E9FF))
         )
     )
     .drawBehind {
         val w = size.width
         val h = size.height
+        val dark = appDarkTheme.value
         val glowTopLeft = Offset(-w * 0.10f, h * 0.10f)
         val glowTopRight = Offset(w * 1.02f, h * 0.22f)
         val glowCenter = Offset(w * 0.46f, h * 0.56f)
@@ -407,52 +407,36 @@ private fun Modifier.arturChatGradientBackground(): Modifier = this
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFB49BFF).copy(alpha = 0.58f),
-                    Color(0xFFC9BFFF).copy(alpha = 0.22f),
+                    (if (dark) Color(0xFF6660A8) else Color(0xFFB49BFF)).copy(alpha = if (dark) 0.12f else 0.58f),
+                    (if (dark) Color(0xFF4D5E85) else Color(0xFFC9BFFF)).copy(alpha = if (dark) 0.05f else 0.22f),
                     Color.Transparent
-                ),
-                center = glowTopLeft,
-                radius = w * 0.90f
-            ),
-            radius = w * 0.90f,
-            center = glowTopLeft
+                ), center = glowTopLeft, radius = w * 0.90f
+            ), radius = w * 0.90f, center = glowTopLeft
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF9BCBFF).copy(alpha = 0.56f),
-                    Color(0xFFB8D9FF).copy(alpha = 0.18f),
+                    (if (dark) Color(0xFF3E6388) else Color(0xFF9BCBFF)).copy(alpha = if (dark) 0.10f else 0.56f),
+                    (if (dark) Color(0xFF334967) else Color(0xFFB8D9FF)).copy(alpha = if (dark) 0.04f else 0.18f),
                     Color.Transparent
-                ),
-                center = glowTopRight,
-                radius = w * 0.82f
-            ),
-            radius = w * 0.82f,
-            center = glowTopRight
+                ), center = glowTopRight, radius = w * 0.82f
+            ), radius = w * 0.82f, center = glowTopRight
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFD0B8FF).copy(alpha = 0.30f),
+                    (if (dark) Color(0xFF514274) else Color(0xFFD0B8FF)).copy(alpha = if (dark) 0.08f else 0.30f),
                     Color.Transparent
-                ),
-                center = glowCenter,
-                radius = w * 0.78f
-            ),
-            radius = w * 0.78f,
-            center = glowCenter
+                ), center = glowCenter, radius = w * 0.78f
+            ), radius = w * 0.78f, center = glowCenter
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFB8D8FF).copy(alpha = 0.30f),
+                    (if (dark) Color(0xFF35516E) else Color(0xFFB8D8FF)).copy(alpha = if (dark) 0.08f else 0.30f),
                     Color.Transparent
-                ),
-                center = glowBottomLeft,
-                radius = w * 0.70f
-            ),
-            radius = w * 0.70f,
-            center = glowBottomLeft
+                ), center = glowBottomLeft, radius = w * 0.70f
+            ), radius = w * 0.70f, center = glowBottomLeft
         )
     }
 
@@ -461,6 +445,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        appDarkTheme.value = getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+            .getBoolean(ARTURCHAT_THEME_DARK_KEY, false)
 
         // Android 15+ enforces edge-to-edge for targetSdk 35+. Enable it
         // consistently on older Android versions and let Compose apply safe insets.
@@ -472,21 +459,41 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = !appDarkTheme.value
+            isAppearanceLightNavigationBars = !appDarkTheme.value
         }
 
         captureCallNotificationAction(intent)
         setContent {
+            val darkTheme = appDarkTheme.value
+            SideEffect {
+                WindowInsetsControllerCompat(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
             MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = AccentSlate,
-                    background = AppBackground,
-                    surface = Panel,
-                    onPrimary = Color.White,
-                    onBackground = MainText,
-                    onSurface = MainText
-                )
+                colorScheme = if (darkTheme) {
+                    androidx.compose.material3.darkColorScheme(
+                        primary = AccentSlate,
+                        background = AppBackground,
+                        surface = Panel,
+                        surfaceVariant = PanelLight,
+                        onPrimary = Color.White,
+                        onBackground = MainText,
+                        onSurface = MainText,
+                        onSurfaceVariant = Muted
+                    )
+                } else {
+                    lightColorScheme(
+                        primary = AccentSlate,
+                        background = AppBackground,
+                        surface = Panel,
+                        onPrimary = Color.White,
+                        onBackground = MainText,
+                        onSurface = MainText
+                    )
+                }
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -496,12 +503,8 @@ class MainActivity : ComponentActivity() {
                         Modifier.fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(
-                                        Color(0xFFE2DCFF),
-                                        Color(0xFFE2E9FF),
-                                        Color(0xFFE8F0FF),
-                                        Color(0xFFF2F5FF)
-                                    )
+                                    if (darkTheme) listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+                                    else listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF))
                                 )
                             )
                             // Keep the gradient edge-to-edge, but keep all app
@@ -1283,7 +1286,7 @@ private fun FaceVideoApp(
 
     Column(
         Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(AppBackground, Color(0xFFE5EAF0), AppBackground))
+            Brush.verticalGradient(if (appDarkTheme.value) listOf(Color(0xFF0E1520), Color(0xFF090D14), Color(0xFF0E1520)) else listOf(AppBackground, Color(0xFFE5EAF0), AppBackground))
         )
     ) {
         if (activeCall != null && !showActiveCallScreen) {
@@ -4310,9 +4313,9 @@ private fun LiveChatScreen(
         if (selectedMessageIds.isNotEmpty()) {
             val selectedRows = orderedMessages.filter { it.id in selectedMessageIds }
             Surface(
-                color = Color.White.copy(alpha = 0.90f),
+                color = ThemeSurface.copy(alpha = if (appDarkTheme.value) 0.98f else 0.90f),
                 shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 5.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
@@ -4408,7 +4411,7 @@ private fun LiveChatScreen(
                         scheduledMessages.forEach { item ->
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
-                                color = Color.White.copy(alpha = 0.78f),
+                                color = ThemeSurface.copy(alpha = if (appDarkTheme.value) 0.98f else 0.78f),
                                 shape = RoundedCornerShape(15.dp),
                                 border = BorderStroke(1.dp, InboxBorder)
                             ) {
@@ -4595,16 +4598,16 @@ private fun LiveChatScreen(
         if (isVoiceRecording) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.58f),
+                color = ThemeSurface.copy(alpha = if (appDarkTheme.value) 0.98f else 0.58f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 8.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF))
+                                if (appDarkTheme.value) listOf(Color(0xFF263247), Color(0xFF1D293B), Color(0xFF263247)) else listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF))
                             )
                         )
                         .padding(9.dp),
@@ -4650,16 +4653,16 @@ private fun LiveChatScreen(
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.60f),
+                color = ThemeSurface.copy(alpha = if (appDarkTheme.value) 0.98f else 0.60f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.90f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 4.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                                if (appDarkTheme.value) listOf(Color(0xF21D2736), Color(0xE91A2432), Color(0xF21D2736)) else listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
                             )
                         )
                         .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -4678,9 +4681,9 @@ private fun LiveChatScreen(
                     }
                     Surface(
                         modifier = Modifier.weight(1f),
-                        color = Color.White.copy(alpha = 0.88f),
+                        color = ThemeSurfaceRaised,
                         shape = RoundedCornerShape(23.dp),
-                        border = BorderStroke(1.dp, Color.White)
+                        border = BorderStroke(1.dp, ThemeBorder)
                     ) {
                         BasicTextField(
                             value = draft,
@@ -6397,9 +6400,9 @@ private fun ChatDateDivider(label: String) {
         horizontalArrangement = Arrangement.Center
     ) {
         Surface(
-            color = Color(0xDDE7ECF8),
+            color = if (appDarkTheme.value) PanelLight else Color(0xDDE7ECF8),
             shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            border = BorderStroke(1.dp, ThemeBorder),
             shadowElevation = 0.dp
         ) {
             Text(
@@ -6559,7 +6562,7 @@ private fun MessageBubble(
                             scaleY = hintScale
                         }
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.96f)),
+                        .background(ThemeSurfaceRaised),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("↩", color = AccentSlate, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -7003,9 +7006,9 @@ private fun MinimizeCallButton(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        color = Color(0xEFFFFFFF),
+        color = ThemeSurfaceRaised,
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
+        border = BorderStroke(1.dp, ThemeBorder)
     ) {
         Text(
             "↓  Свернуть",
@@ -7359,9 +7362,9 @@ private fun ActiveAudioCallScreen(
         )
         Spacer(Modifier.height(12.dp))
         Surface(
-            color = Color(0xDFFFFFFF),
+            color = ThemeSurfaceRaised,
             shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f))
+            border = BorderStroke(1.dp, ThemeBorder)
         ) {
             Row(
                 Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
@@ -8225,9 +8228,9 @@ private fun FriendsScreen(
         }
         Spacer(Modifier.height(15.dp))
         Surface(
-            color = Color(0xAFFFFFFF),
+            color = ThemeSurface,
             shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            border = BorderStroke(1.dp, ThemeBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -8415,9 +8418,9 @@ private fun FriendDirectoryRow(
     onSecondaryAction: (() -> Unit)? = null
 ) {
     Surface(
-        color = Color(0xDFFFFFFF),
+        color = ThemeSurfaceRaised,
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+        border = BorderStroke(1.dp, ThemeBorder),
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
@@ -8979,7 +8982,7 @@ private fun ProfileScreen(
                     ProfileMenuRow(
                         iconKind = "appearance",
                         title = "Оформление",
-                        subtitle = "Тема и внешний вид",
+                        subtitle = if (appDarkTheme.value) "Чёрная тема" else "Светлая тема · по умолчанию",
                         iconBackground = Color(0xFFE4EDFF),
                         iconTint = Color(0xFF4F70CC),
                         showDivider = true,
@@ -9336,10 +9339,41 @@ private fun ProfileScreen(
     if (showAppearanceInfo) {
         AlertDialog(
             onDismissRequest = { showAppearanceInfo = false },
-            title = { Text("Оформление") },
-            text = { Text("Сейчас в ArturChat используется фирменная светлая тема. Переключение тем добавим отдельно, чтобы настройка действительно меняла весь интерфейс.") },
+            containerColor = Panel,
+            title = { Text("Оформление", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Выбери тему приложения. Настройка сохранится на этом устройстве.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                    ThemeOptionRow(
+                        title = "Светлая",
+                        subtitle = "Фирменные пастельные цвета",
+                        selected = !appDarkTheme.value,
+                        onClick = {
+                            appDarkTheme.value = false
+                            context.getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+                                .edit().putBoolean(ARTURCHAT_THEME_DARK_KEY, false).apply()
+                        }
+                    )
+                    ThemeOptionRow(
+                        title = "Чёрная",
+                        subtitle = "Тёмный фон и светлый текст",
+                        selected = appDarkTheme.value,
+                        onClick = {
+                            appDarkTheme.value = true
+                            context.getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+                                .edit().putBoolean(ARTURCHAT_THEME_DARK_KEY, true).apply()
+                        }
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { showAppearanceInfo = false }) { Text("Хорошо") }
+                TextButton(onClick = { showAppearanceInfo = false }) {
+                    Text("Готово", color = AccentSlate, fontWeight = FontWeight.SemiBold)
+                }
             }
         )
     }
@@ -9576,6 +9610,41 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
 
 
 @Composable
+private fun ThemeOptionRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        color = if (selected) PanelLight else ThemeSurface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, if (selected) AccentSlate.copy(alpha = 0.55f) else ThemeBorder)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.RadioButton(
+                selected = selected,
+                onClick = onClick,
+                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                    selectedColor = AccentSlate,
+                    unselectedColor = Muted
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, color = Muted, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProfileEditorTab(
     title: String,
     number: String,
@@ -9586,10 +9655,10 @@ private fun ProfileEditorTab(
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(15.dp),
-        color = if (selected) Color.Transparent else Color.White.copy(alpha = 0.55f),
+        color = if (selected) Color.Transparent else ThemeSurface,
         border = BorderStroke(
             1.dp,
-            if (selected) Color.White.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.76f)
+            if (selected) AccentSlate.copy(alpha = 0.72f) else ThemeBorder
         ),
         shadowElevation = if (selected) 3.dp else 0.dp
     ) {
@@ -9631,9 +9700,9 @@ private fun ProfileReadOnlyRow(
     note: String
 ) {
     Surface(
-        color = Color.White.copy(alpha = 0.58f),
+        color = ThemeSurface,
         shape = RoundedCornerShape(17.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.84f)),
+        border = BorderStroke(1.dp, ThemeBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -9712,7 +9781,7 @@ private fun ProfileInputField(
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(
                 1.2.dp,
-                if (isInvalid) Color(0xFFE2BFC1) else Color.White.copy(alpha = 0.96f)
+                if (isInvalid) Color(0xFFE2BFC1) else ThemeBorder
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -9720,7 +9789,7 @@ private fun ProfileInputField(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.linearGradient(
-                            listOf(
+                            if (appDarkTheme.value) listOf(Color(0xFF202B3A), Color(0xFF1A2432), Color(0xFF202B3A)) else listOf(
                                 Color.White.copy(alpha = 0.62f),
                                 Color(0xFFE8EDFF).copy(alpha = 0.54f),
                                 Color.White.copy(alpha = 0.70f)
