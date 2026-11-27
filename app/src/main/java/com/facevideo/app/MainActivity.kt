@@ -9056,7 +9056,7 @@ private fun ProfileScreen(
                                     onOpenStories,
                                     enabled = (storyCount ?: 0) > 0
                                 )
-                                Box(Modifier.width(1.dp).height(38.dp).background(Color(0x6695A5C6)))
+                                Box(Modifier.width(1.dp).height(38.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0x6695A5C6)))
                                 ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
                             }
                         }
