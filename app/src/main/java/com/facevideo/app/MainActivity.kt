@@ -8400,6 +8400,9 @@ private fun ProfileScreen(
     var editSection by remember(userId) { mutableStateOf(0) }
     var showDiscardChanges by remember { mutableStateOf(false) }
     var showAvatarPreview by remember { mutableStateOf(false) }
+    var showPrivacyInfo by remember { mutableStateOf(false) }
+    var showAppearanceInfo by remember { mutableStateOf(false) }
+    var showDevicesInfo by remember { mutableStateOf(false) }
     var friendCount by remember(userId) { mutableStateOf<Int?>(null) }
     var storyCount by remember(userId) { mutableStateOf<Int?>(null) }
     var groupCount by remember(userId) { mutableStateOf<Int?>(null) }
@@ -8534,59 +8537,58 @@ private fun ProfileScreen(
             .padding(horizontal = 18.dp, vertical = 18.dp)
     ) {
         if (!isEditing) {
+            fun startProfileEditor(section: Int = 0) {
+                resetDraft()
+                isEditing = true
+                editSection = section
+                errorMessage = null
+                successMessage = null
+            }
+
+            fun openNotificationSettings() {
+                val notificationIntent = Intent("android.settings.APP_NOTIFICATION_SETTINGS").apply {
+                    putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+                }
+                runCatching { context.startActivity(notificationIntent) }
+                    .onFailure {
+                        val fallback = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                        runCatching { context.startActivity(fallback) }
+                    }
+            }
+
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "МОЙ ПРОФИЛЬ",
-                        color = AccentSlate,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.6.sp
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        username.takeIf { it.isNotBlank() }?.let { "@$it" } ?: "Ваш аккаунт",
-                        color = MainText,
-                        fontSize = 23.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.6).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    "Профиль",
+                    color = MainText,
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.5).sp
+                )
+                Spacer(Modifier.weight(1f))
                 Surface(
                     color = Color.White.copy(alpha = 0.86f),
                     shape = RoundedCornerShape(15.dp),
-                    border = BorderStroke(1.dp, PaletteMist),
-                    modifier = Modifier.clickable {
-                        resetDraft()
-                        isEditing = true
-                        editSection = 0
-                        errorMessage = null
-                        successMessage = null
-                    }
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                    modifier = Modifier.size(44.dp).clickable { openNotificationSettings() }
                 ) {
-                    Row(
-                        Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("✎", color = AccentSlate, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(7.dp))
-                        Text("Изменить", color = MainText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("⚙", color = AccentSlate, fontSize = 22.sp)
                     }
                 }
             }
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(18.dp))
 
             if (isLoading && profile == null) {
                 Surface(
-                    color = Color.White.copy(alpha = 0.72f),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, PaletteMist),
+                    color = Color.White.copy(alpha = 0.84f),
+                    shape = RoundedCornerShape(25.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -8604,320 +8606,122 @@ private fun ProfileScreen(
                 }
             } else if (profile != null) {
                 val p = profile!!
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        Modifier.size(112.dp)
-                            .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color(0xFF5DAAF1),
-                                        Color(0xFF8269E8),
-                                        Color(0xFFCE79B6),
-                                        Color(0xFF5DAAF1)
-                                    )
-                                ),
-                                CircleShape
-                            )
-                            .padding(4.dp)
-                    ) {
-                        Avatar(
-                            displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
-                                .trim().take(1).uppercase(),
-                            1,
-                            Modifier.fillMaxSize(),
-                            imageUrl = p.avatarUrl,
-                            imageCacheKey = userId,
-                            onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
-                        )
-                    }
-                    Spacer(Modifier.width(15.dp))
-                    Row(
-                        Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            Modifier.weight(1f).clickable(onClick = onOpenFriends),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                friendCount?.toString() ?: "—",
-                                color = MainText,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("друзья", color = Muted, fontSize = 10.sp)
-                        }
-                        Column(
-                            Modifier.weight(1f)
-                                .clickable(enabled = (storyCount ?: 0) > 0, onClick = onOpenStories),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                storyCount?.toString() ?: "—",
-                                color = MainText,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("истории", color = Muted, fontSize = 10.sp)
-                        }
-                        Column(
-                            Modifier.weight(1f).clickable(onClick = onOpenGroups),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                groupCount?.toString() ?: "—",
-                                color = MainText,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("группы", color = Muted, fontSize = 10.sp)
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(18.dp))
-
-                Column(Modifier.fillMaxWidth()) {
-                    Text(
-                        displayName.ifBlank { "Ваше имя" },
-                        color = MainText,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        "@${username.ifBlank { "username" }}",
-                        color = Muted,
-                        fontSize = 11.sp
-                    )
-                    if (statusText.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Surface(
-                            color = Color(0xFFEAF3FF),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                statusText,
-                                color = Color(0xFF466D9C),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
-                            )
-                        }
-                    }
-                    if (about.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            about,
-                            color = MainText,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    } else {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Расскажите о себе — добавьте описание профиля.",
-                            color = Muted,
-                            fontSize = 11.sp,
-                            modifier = Modifier.clickable {
-                                resetDraft()
-                                isEditing = true
-                                editSection = 1
-                            }
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(17.dp))
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(9.dp)
-                ) {
-                    Surface(
-                        color = Color(0xFFE9F0FF),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, Color(0xFFDCE6FB)),
-                        modifier = Modifier.weight(1f).clickable {
-                            resetDraft()
-                            isEditing = true
-                            editSection = 0
-                            errorMessage = null
-                            successMessage = null
-                        }
-                    ) {
-                        Text(
-                            "Редактировать профиль",
-                            color = Color(0xFF425D9B),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
-                        )
-                    }
-                    Surface(
-                        color = Color.White.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, PaletteMist),
-                        modifier = Modifier.weight(1f).clickable(onClick = onOpenFriends)
-                    ) {
-                        Text(
-                            "Мои друзья",
-                            color = MainText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
-                        )
-                    }
-                }
-
-                Spacer(Modifier.height(22.dp))
-
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("ДРУЗЬЯ", color = MainText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            when (friendCount) {
-                                null -> "Обновляем список…"
-                                0 -> "Ваш круг общения начнётся здесь"
-                                1 -> "Ваш первый друг в ArturChat"
-                                else -> "Люди, с которыми вы на связи"
-                            },
-                            color = Muted,
-                            fontSize = 10.sp
-                        )
-                    }
-                    Text(
-                        "Все  ›",
-                        color = AccentSlate,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable(onClick = onOpenFriends).padding(6.dp)
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
                 Surface(
-                    color = Color.White.copy(alpha = 0.80f),
-                    shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, PaletteMist),
+                    color = Color.White.copy(alpha = 0.88f),
+                    shape = RoundedCornerShape(27.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                    shadowElevation = 3.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    if (friendPreview.isEmpty()) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 17.dp)) {
                         Row(
-                            Modifier.fillMaxWidth()
-                                .clickable(onClick = onOpenFriends)
-                                .padding(horizontal = 15.dp, vertical = 17.dp),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
-                                Modifier.size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFEAF0FC)),
-                                contentAlignment = Alignment.Center
+                                Modifier.size(88.dp)
+                                    .background(
+                                        Brush.sweepGradient(
+                                            listOf(
+                                                Color(0xFF5DAAF1),
+                                                Color(0xFF8269E8),
+                                                Color(0xFFCE79B6),
+                                                Color(0xFF5DAAF1)
+                                            )
+                                        ),
+                                        CircleShape
+                                    )
+                                    .padding(3.dp)
                             ) {
-                                Text("＋", color = AccentSlate, fontSize = 25.sp, fontWeight = FontWeight.Light)
+                                Avatar(
+                                    displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                        .trim().take(1).uppercase(),
+                                    1,
+                                    Modifier.fillMaxSize(),
+                                    imageUrl = p.avatarUrl,
+                                    imageCacheKey = userId,
+                                    onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
+                                )
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    if (friendCount == 0) "Добавить друзей" else "Открыть список друзей",
+                                    displayName.ifBlank { "Ваше имя" },
                                     color = MainText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(Modifier.height(3.dp))
                                 Text(
-                                    "Находите людей и общайтесь в ArturChat",
+                                    "@${username.ifBlank { "username" }}",
                                     color = Muted,
-                                    fontSize = 10.sp
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                            }
-                            Text("›", color = Muted, fontSize = 22.sp)
-                        }
-                    } else {
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 15.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            friendPreview.take(4).forEach { friend ->
-                                Column(
-                                    Modifier.weight(1f).clickable { onOpenProfile(friend.id) },
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Avatar(
-                                        friend.displayName.ifBlank { friend.username }.take(1).uppercase(),
-                                        friend.id.hashCode().ushr(1) % 4,
-                                        Modifier.size(56.dp),
-                                        imageUrl = friend.avatarUrl,
-                                        imageCacheKey = friend.id,
-                                        onClick = { onOpenProfile(friend.id) }
+                                Spacer(Modifier.height(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        Modifier.size(8.dp)
+                                            .background(Color(0xFF31BD72), CircleShape)
                                     )
-                                    Spacer(Modifier.height(6.dp))
+                                    Spacer(Modifier.width(7.dp))
+                                    Text("В сети", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                                if (statusText.isNotBlank()) {
+                                    Spacer(Modifier.height(5.dp))
                                     Text(
-                                        friend.displayName.ifBlank { friend.username },
-                                        color = MainText,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        "@${friend.username}",
-                                        color = Muted,
-                                        fontSize = 8.sp,
+                                        statusText,
+                                        color = Color(0xFF6678B2),
+                                        fontSize = 10.sp,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
+                            Spacer(Modifier.width(7.dp))
+                            Surface(
+                                color = Color(0xFFEDEBFF),
+                                shape = RoundedCornerShape(17.dp),
+                                modifier = Modifier.size(43.dp).clickable { startProfileEditor(0) }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("✎", color = AccentSlate, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
-                    }
-                }
 
-                if (!userEmail.isNullOrBlank()) {
-                    Spacer(Modifier.height(17.dp))
-                    Surface(
-                        color = Color.White.copy(alpha = 0.66f),
-                        shape = RoundedCornerShape(17.dp),
-                        border = BorderStroke(1.dp, PaletteMist),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                        Spacer(Modifier.height(17.dp))
+                        Box(
+                            Modifier.fillMaxWidth().height(1.dp)
+                                .background(Color(0xFFE5E9F4))
+                        )
+                        Spacer(Modifier.height(14.dp))
                         Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("✉", color = AccentSlate, fontSize = 14.sp)
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("Электронная почта", color = Muted, fontSize = 9.sp)
-                                Text(
-                                    userEmail.orEmpty(),
-                                    color = MainText,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Text("ПОДТВЕРЖДЕНА", color = AccentSlate, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
+                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
+                            ProfileStat(
+                                "истории",
+                                storyCount?.toString() ?: "—",
+                                Modifier.weight(1f),
+                                onOpenStories,
+                                enabled = (storyCount ?: 0) > 0
+                            )
+                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
+                            ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
                         }
                     }
                 }
             } else {
                 Surface(
-                    color = Color.White.copy(alpha = 0.66f),
-                    shape = RoundedCornerShape(22.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+                    color = Color.White.copy(alpha = 0.84f),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(18.dp)) {
@@ -8933,6 +8737,101 @@ private fun ProfileScreen(
                 }
             }
 
+            Spacer(Modifier.height(22.dp))
+            Text("Аккаунт", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                color = Color.White.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuRow(
+                        iconKind = "person",
+                        title = "Личные данные",
+                        subtitle = "Имя, фото и описание",
+                        iconBackground = Color(0xFFE2F0FF),
+                        iconTint = Color(0xFF4B78D6),
+                        showDivider = true,
+                        onClick = { startProfileEditor(0) }
+                    )
+                    ProfileMenuRow(
+                        iconKind = "shield",
+                        title = "Приватность",
+                        subtitle = "Кто видит вашу активность",
+                        iconBackground = Color(0xFFECE8FF),
+                        iconTint = Color(0xFF735BDA),
+                        onClick = { showPrivacyInfo = true }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(22.dp))
+            Text("Настройки", color = MainText, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            Surface(
+                color = Color.White.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column {
+                    ProfileMenuRow(
+                        iconKind = "bell",
+                        title = "Уведомления",
+                        subtitle = "Звуки и сообщения",
+                        iconBackground = Color(0xFFF7E4F8),
+                        iconTint = Color(0xFF9A61C8),
+                        showDivider = true,
+                        onClick = { openNotificationSettings() }
+                    )
+                    ProfileMenuRow(
+                        iconKind = "palette",
+                        title = "Оформление",
+                        subtitle = "Тема и внешний вид",
+                        iconBackground = Color(0xFFE4EDFF),
+                        iconTint = Color(0xFF4F70CC),
+                        showDivider = true,
+                        onClick = { showAppearanceInfo = true }
+                    )
+                    ProfileMenuRow(
+                        iconKind = "device",
+                        title = "Устройства",
+                        subtitle = "Активные сеансы",
+                        iconBackground = Color(0xFFECE8FF),
+                        iconTint = Color(0xFF735BDA),
+                        onClick = { showDevicesInfo = true }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            Surface(
+                color = Color.White.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.96f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                ProfileMenuRow(
+                    iconKind = "support",
+                    title = "Помощь и поддержка",
+                    subtitle = null,
+                    iconBackground = Color(0xFFE2F0FF),
+                    iconTint = Color(0xFF4B78D6),
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/arturwarlord/face_video/issues"))
+                            )
+                        }.onFailure {
+                            Toast.makeText(context, "Не удалось открыть поддержку", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(19.dp))
         } else {
             Row(
                 Modifier.fillMaxWidth(),
@@ -9231,6 +9130,41 @@ private fun ProfileScreen(
         Spacer(Modifier.height(20.dp))
     }
 
+    if (showPrivacyInfo) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyInfo = false },
+            title = { Text("Приватность") },
+            text = {
+                Text("Здесь будут собраны настройки видимости активности и список заблокированных пользователей. Отдельный пункт для заблокированных на главной странице профиля не нужен.")
+            },
+            confirmButton = {
+                TextButton(onClick = { showPrivacyInfo = false }) { Text("Понятно") }
+            }
+        )
+    }
+
+    if (showAppearanceInfo) {
+        AlertDialog(
+            onDismissRequest = { showAppearanceInfo = false },
+            title = { Text("Оформление") },
+            text = { Text("Сейчас в ArturChat используется фирменная светлая тема. Переключение тем добавим отдельно, чтобы настройка действительно меняла весь интерфейс.") },
+            confirmButton = {
+                TextButton(onClick = { showAppearanceInfo = false }) { Text("Хорошо") }
+            }
+        )
+    }
+
+    if (showDevicesInfo) {
+        AlertDialog(
+            onDismissRequest = { showDevicesInfo = false },
+            title = { Text("Устройства") },
+            text = { Text("Управление активными сеансами пока не подключено. Мы добавим этот раздел отдельно, чтобы здесь отображались реальные подключения, а не условный список.") },
+            confirmButton = {
+                TextButton(onClick = { showDevicesInfo = false }) { Text("Понятно") }
+            }
+        )
+    }
+
     if (showAvatarPreview && !profile?.avatarUrl.isNullOrBlank() && userId != null) {
         FullscreenAvatarDialog(
             imageUrl = profile!!.avatarUrl!!,
@@ -9262,6 +9196,157 @@ private fun ProfileScreen(
                 }
             }
         )
+    }
+}
+
+
+@Composable
+private fun ProfileStat(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Column(
+        modifier.clickable(enabled = enabled, onClick = onClick).padding(vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(value, color = MainText, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(2.dp))
+        Text(label, color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun ProfileMenuRow(
+    iconKind: String,
+    title: String,
+    subtitle: String?,
+    iconBackground: Color,
+    iconTint: Color,
+    showDivider: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 15.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(43.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(iconBackground),
+                contentAlignment = Alignment.Center
+            ) {
+                ProfileMenuGlyph(iconKind, iconTint)
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = MainText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        subtitle,
+                        color = Muted,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            Text("›", color = Muted, fontSize = 25.sp, fontWeight = FontWeight.Light)
+        }
+        if (showDivider) {
+            Box(
+                Modifier.fillMaxWidth().padding(start = 71.dp, end = 15.dp)
+                    .height(1.dp).background(Color(0xFFE4E8F1))
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileMenuGlyph(kind: String, tint: Color) {
+    Canvas(Modifier.size(23.dp)) {
+        val w = size.width
+        val h = size.height
+        val line = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
+        when (kind) {
+            "person" -> {
+                drawCircle(tint, radius = w * 0.17f, center = Offset(w * 0.5f, h * 0.29f), style = line)
+                val shoulders = Path().apply {
+                    moveTo(w * 0.17f, h * 0.88f)
+                    cubicTo(w * 0.19f, h * 0.64f, w * 0.32f, h * 0.55f, w * 0.5f, h * 0.55f)
+                    cubicTo(w * 0.68f, h * 0.55f, w * 0.81f, h * 0.64f, w * 0.83f, h * 0.88f)
+                }
+                drawPath(shoulders, tint, style = line)
+            }
+            "shield" -> {
+                val shield = Path().apply {
+                    moveTo(w * 0.5f, h * 0.08f)
+                    lineTo(w * 0.84f, h * 0.22f)
+                    lineTo(w * 0.80f, h * 0.57f)
+                    cubicTo(w * 0.77f, h * 0.73f, w * 0.63f, h * 0.86f, w * 0.5f, h * 0.93f)
+                    cubicTo(w * 0.37f, h * 0.86f, w * 0.23f, h * 0.73f, w * 0.20f, h * 0.57f)
+                    lineTo(w * 0.16f, h * 0.22f)
+                    close()
+                }
+                drawPath(shield, tint, style = line)
+                drawLine(tint, Offset(w * 0.35f, h * 0.50f), Offset(w * 0.46f, h * 0.61f), line.width, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.46f, h * 0.61f), Offset(w * 0.68f, h * 0.37f), line.width, cap = StrokeCap.Round)
+            }
+            "bell" -> {
+                val bell = Path().apply {
+                    moveTo(w * 0.5f, h * 0.13f)
+                    cubicTo(w * 0.31f, h * 0.13f, w * 0.25f, h * 0.30f, w * 0.25f, h * 0.48f)
+                    lineTo(w * 0.25f, h * 0.66f)
+                    cubicTo(w * 0.25f, h * 0.75f, w * 0.19f, h * 0.79f, w * 0.15f, h * 0.82f)
+                    lineTo(w * 0.85f, h * 0.82f)
+                    cubicTo(w * 0.81f, h * 0.79f, w * 0.75f, h * 0.75f, w * 0.75f, h * 0.66f)
+                    lineTo(w * 0.75f, h * 0.48f)
+                    cubicTo(w * 0.75f, h * 0.30f, w * 0.69f, h * 0.13f, w * 0.5f, h * 0.13f)
+                }
+                drawPath(bell, tint, style = line)
+                drawArc(tint, 200f, 140f, false, Offset(w * 0.40f, h * 0.78f), androidx.compose.ui.geometry.Size(w * 0.20f, h * 0.18f), style = line)
+                drawLine(tint, Offset(w * 0.42f, h * 0.94f), Offset(w * 0.58f, h * 0.94f), line.width, cap = StrokeCap.Round)
+            }
+            "palette" -> {
+                drawCircle(tint, radius = w * 0.37f, center = Offset(w * 0.48f, h * 0.51f), style = line)
+                listOf(
+                    Offset(w * 0.36f, h * 0.31f),
+                    Offset(w * 0.59f, h * 0.32f),
+                    Offset(w * 0.68f, h * 0.52f),
+                    Offset(w * 0.43f, h * 0.68f)
+                ).forEach { point -> drawCircle(tint, radius = w * 0.045f, center = point) }
+            }
+            "device" -> {
+                drawRoundRect(
+                    tint,
+                    topLeft = Offset(w * 0.24f, h * 0.07f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.52f, h * 0.86f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.09f, w * 0.09f),
+                    style = line
+                )
+                drawLine(tint, Offset(w * 0.42f, h * 0.81f), Offset(w * 0.58f, h * 0.81f), line.width, cap = StrokeCap.Round)
+            }
+            "support" -> {
+                drawCircle(tint, radius = w * 0.39f, center = Offset(w * 0.5f, h * 0.5f), style = line)
+                drawArc(tint, 190f, 160f, false, Offset(w * 0.24f, h * 0.24f), androidx.compose.ui.geometry.Size(w * 0.52f, h * 0.52f), style = line)
+                drawLine(tint, Offset(w * 0.5f, h * 0.39f), Offset(w * 0.5f, h * 0.58f), line.width, cap = StrokeCap.Round)
+                drawCircle(tint, radius = w * 0.035f, center = Offset(w * 0.5f, h * 0.71f))
+            }
+        }
     }
 }
 
