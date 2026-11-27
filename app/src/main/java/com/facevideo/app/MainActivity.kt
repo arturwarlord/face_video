@@ -3848,54 +3848,10 @@ private fun LiveChatScreen(
         )
     } else {
         Column(
-        Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFE2DCFF),
-                        Color(0xFFE2E9FF),
-                        Color(0xFFE8F0FF),
-                        Color(0xFFF2F5FF),
-                        Color(0xFFE8E9FF)
-                    )
-                )
-            )
-            .drawBehind {
-                val w = size.width
-                val h = size.height
-                val topLeft = Offset(-w * 0.12f, h * 0.08f)
-                val topRight = Offset(w * 1.04f, h * 0.22f)
-                val center = Offset(w * 0.48f, h * 0.62f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFB49BFF).copy(alpha = 0.42f), Color.Transparent),
-                        center = topLeft,
-                        radius = w * 0.86f
-                    ),
-                    radius = w * 0.86f,
-                    center = topLeft
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF9BCBFF).copy(alpha = 0.40f), Color.Transparent),
-                        center = topRight,
-                        radius = w * 0.78f
-                    ),
-                    radius = w * 0.78f,
-                    center = topRight
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFD0B8FF).copy(alpha = 0.24f), Color.Transparent),
-                        center = center,
-                        radius = w * 0.78f
-                    ),
-                    radius = w * 0.78f,
-                    center = center
-                )
-            }
-            .imePadding()
-    ) {
+            Modifier.fillMaxSize()
+                .arturChatGradientBackground()
+                .imePadding()
+        ) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             color = Color.Transparent,
@@ -6407,7 +6363,7 @@ private fun ChatDateDivider(label: String) {
         ) {
             Text(
                 text = label,
-                color = Color(0xFF65718A),
+                color = if (appDarkTheme.value) InboxSecondary else Color(0xFF65718A),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.15.sp,
@@ -6602,15 +6558,19 @@ private fun MessageBubble(
                         }
                     ),
                 color = when {
-                    selected -> Color(0xFF879BCB)
+                    selected -> if (appDarkTheme.value) Color(0xFF40577D) else Color(0xFF879BCB)
                     isImageAttachment || isVideoNoteAttachment -> Color.Transparent
+                    appDarkTheme.value && message.isMine -> Color(0xFF293A55)
+                    appDarkTheme.value -> Color(0xFF1D2939)
                     message.isMine -> Color(0xE9E4EBFF)
                     else -> Color(0xEAFBFCFF)
                 },
                 border = if ((isImageAttachment || isVideoNoteAttachment) && !selected) null else BorderStroke(
                     if (selected) 1.4.dp else 1.dp,
                     when {
-                        selected -> Color(0xFF607BB9)
+                        selected -> if (appDarkTheme.value) Color(0xFF738DB9) else Color(0xFF607BB9)
+                        appDarkTheme.value && message.isMine -> Color(0xFF536D99)
+                        appDarkTheme.value -> Color(0xFF35445A)
                         message.isMine -> Color(0xFFBFCBFA).copy(alpha = 0.82f)
                         else -> Color.White.copy(alpha = 0.92f)
                     }
@@ -6647,7 +6607,11 @@ private fun MessageBubble(
                             Modifier.fillMaxWidth()
                                 .then(if (isImageAttachment || isVideoNoteAttachment) Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp) else Modifier)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8))
+                                .background(
+                                    if (appDarkTheme.value) {
+                                        if (message.isMine) Color(0xFF3A4D6C) else Color(0xFF2B394D)
+                                    } else if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8)
+                                )
                                 .clickable(enabled = onReplyPreviewClick != null) {
                                     onReplyPreviewClick?.invoke()
                                 }
@@ -6796,10 +6760,14 @@ private fun MessageBubble(
                                         )
                                     },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (reaction.selectedByMe) Color(0xFFDCE4FF) else Color(0xFFF2F4FA),
+                                    color = if (appDarkTheme.value) {
+                                        if (reaction.selectedByMe) Color(0xFF34496A) else Color(0xFF273447)
+                                    } else if (reaction.selectedByMe) Color(0xFFDCE4FF) else Color(0xFFF2F4FA),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (reaction.selectedByMe) Color(0xFF8EA2E8) else Color(0xFFE2E7F1)
+                                        if (appDarkTheme.value) {
+                                            if (reaction.selectedByMe) Color(0xFF627CA9) else Color(0xFF3B4A5F)
+                                        } else if (reaction.selectedByMe) Color(0xFF8EA2E8) else Color(0xFFE2E7F1)
                                     ),
                                     shadowElevation = 0.dp
                                 ) {
@@ -6834,8 +6802,8 @@ private fun MessageBubble(
                     Surface(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(24.dp),
-                        color = Color(0xFFE8F3E5),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
+                        color = if (appDarkTheme.value) Color(0xFF263B35) else Color(0xFFE8F3E5),
+                        border = BorderStroke(1.dp, if (appDarkTheme.value) Color(0xFF3C6455) else Color.White.copy(alpha = 0.92f)),
                         shadowElevation = 1.dp
                     ) {
                         Row(
@@ -6859,7 +6827,7 @@ private fun MessageBubble(
                                     Text(emoji, fontSize = 20.sp)
                                 }
                             }
-                            Text("⌄", color = Color(0xFF769173), fontSize = 16.sp)
+                            Text("⌄", color = if (appDarkTheme.value) Color(0xFF9CC8B5) else Color(0xFF769173), fontSize = 16.sp)
                         }
                     }
                 }
