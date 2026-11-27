@@ -1430,7 +1430,13 @@ private fun FaceVideoApp(
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
                                     onOpenChat = { setOpenedLiveChat(it) },
-                                    onOpenStories = { openedStoriesUserId = it }
+                                    onOpenStories = { openedStoriesUserId = it },
+                                    mutedChatIds = mutedChatIds,
+                                    onNotificationMuteChanged = { chatId, muted ->
+                                        mutedChatIds = if (muted) mutedChatIds + chatId
+                                        else mutedChatIds - chatId
+                                    },
+                                    onOpenProfile = { openedProfileUserId = it }
                                 )
                             } else {
                                 ChatListScreen(onOpenChat = { setOpenedDemoChat(it) })
@@ -1577,6 +1583,9 @@ private fun LiveChatListScreen(
     unreadSummaries: Map<String, FaceVideoChatUnreadSummary>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     onOpenStories: (String) -> Unit,
+    mutedChatIds: Set<String>,
+    onNotificationMuteChanged: (String, Boolean) -> Unit,
+    onOpenProfile: (String) -> Unit,
     contactsMode: Boolean = false
 ) {
     val cachedChats = remember(cache, userId) { cache.readChats(userId) }
@@ -1589,6 +1598,7 @@ private fun LiveChatListScreen(
     var reloadKey by remember { mutableStateOf(0) }
     var revealedChatId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val latestChats by rememberUpdatedState(chats)
 
     LaunchedEffect(repository, userId) {
@@ -1785,9 +1795,36 @@ private fun LiveChatListScreen(
                                         chat = chat,
                                         unreadSummary = unreadSummaries[chat.id],
                                         isDeleteRevealed = revealedChatId == chat.id,
+                                        isNotificationsMuted = chat.id in mutedChatIds,
                                         onRevealDelete = { revealedChatId = chat.id },
                                         onHideDelete = { if (revealedChatId == chat.id) revealedChatId = null },
                                         onClick = { openCachedChat(chat) },
+                                        onOpenProfile = { peerId -> onOpenProfile(peerId) },
+                                        onToggleNotifications = { muted ->
+                                            scope.launch {
+                                                runCatching {
+                                                    repository.setChatNotificationsMuted(chat.id, muted)
+                                                }.onSuccess {
+                                                    onNotificationMuteChanged(chat.id, muted)
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (muted) "Уведомления отключены" else "Уведомления включены",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }.onFailure { error ->
+                                                    android.util.Log.w(
+                                                        "ArturChatNotifications",
+                                                        "Could not update chat mute setting from inbox",
+                                                        error
+                                                    )
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Не удалось изменить уведомления",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
                                         onDelete = {
                                             revealedChatId = null
                                             scope.launch {
@@ -2742,16 +2779,20 @@ private fun LiveChatRow(
     chat: FaceVideoChatSummary,
     unreadSummary: FaceVideoChatUnreadSummary?,
     isDeleteRevealed: Boolean,
+    isNotificationsMuted: Boolean,
     onRevealDelete: () -> Unit,
     onHideDelete: () -> Unit,
     onClick: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+    onToggleNotifications: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember(chat.id) { mutableStateOf(false) }
     var confirmDelete by remember(chat.id) { mutableStateOf(false) }
     var showGroupAvatarPreview by remember(chat.id) { mutableStateOf(false) }
     val deleteActionWidth = 84.dp
-    val deleteActionWidthPx = with(LocalDensity.current) { deleteActionWidth.toPx() }
+    val density = LocalDensity.current
+    val deleteActionWidthPx = with(density) { deleteActionWidth.toPx() }
     var dragOffset by remember(chat.id) { mutableFloatStateOf(0f) }
     var isDragging by remember(chat.id) { mutableStateOf(false) }
     val animatedRowOffset by animateFloatAsState(
@@ -2760,6 +2801,10 @@ private fun LiveChatRow(
         label = "chat-row-delete-reveal"
     )
     val latestAnimatedRowOffset by rememberUpdatedState(animatedRowOffset)
+    val visibleRowOffset = if (isDragging) dragOffset else animatedRowOffset
+    val revealedWidthPx = (-visibleRowOffset).coerceIn(0f, deleteActionWidthPx)
+    val revealedWidth = with(density) { revealedWidthPx.toDp() }
+    val revealProgress = (revealedWidthPx / deleteActionWidthPx).coerceIn(0f, 1f)
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val activityTimestamp = latestChatActivityLabelTime(chat) ?: preview.timestamp
@@ -2768,29 +2813,33 @@ private fun LiveChatRow(
         modifier = Modifier.fillMaxWidth().height(80.dp)
             .clip(RoundedCornerShape(22.dp))
     ) {
-        if (isDeleteRevealed || (isDragging && dragOffset < 0f)) {
+        if (revealedWidthPx > 0.5f) {
             Column(
                 modifier = Modifier.align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(deleteActionWidth)
+                    .width(revealedWidth)
                     .padding(vertical = 5.dp)
                     .clip(RoundedCornerShape(17.dp))
                     .background(Color(0xFFE66F80))
-                    .clickable {
+                    .clickable(enabled = !isDragging && revealProgress >= 0.98f) {
                         onHideDelete()
                         confirmDelete = true
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                InboxDeleteGlyph()
-                Spacer(Modifier.height(3.dp))
-                Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                // The action itself grows with the drag; its contents appear only
+                // when there is enough room, so the label never pops out early.
+                if (revealProgress >= 0.68f) {
+                    InboxDeleteGlyph()
+                    Spacer(Modifier.height(3.dp))
+                    Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Surface(
             modifier = Modifier.fillMaxSize()
-                .offset { IntOffset((if (isDragging) dragOffset else animatedRowOffset).roundToInt(), 0) }
+                .offset { IntOffset(visibleRowOffset.roundToInt(), 0) }
                 .pointerInput(chat.id, deleteActionWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -2816,7 +2865,7 @@ private fun LiveChatRow(
                 }
                 .combinedClickable(
                     onClick = { if (isDeleteRevealed) onHideDelete() else onClick() },
-                    onLongClick = { showMenu = true }
+                    onLongClick = { onHideDelete(); showMenu = true }
                 ),
             color = Color.Transparent,
             shape = RoundedCornerShape(22.dp),
@@ -2892,7 +2941,7 @@ private fun LiveChatRow(
             }
         }
             ChatChromeActionButton(
-                onClick = { showMenu = true },
+                onClick = { onHideDelete(); showMenu = true },
                 size = 34.dp,
                 transparent = true
             ) {
@@ -2904,15 +2953,43 @@ private fun LiveChatRow(
     DropdownMenu(
         expanded = showMenu,
         onDismissRequest = { showMenu = false },
-        containerColor = Color.Transparent,
+        containerColor = InboxSurface,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 9.dp,
+        shape = RoundedCornerShape(18.dp)
     ) {
+        if (!chat.peerUserId.isNullOrBlank()) {
+            DropdownMenuItem(
+                text = { Text("Открыть профиль", color = InboxPrimary, fontSize = 13.sp) },
+                leadingIcon = { ProfileMenuGlyph("person", InboxAccentStrong) },
+                onClick = {
+                    showMenu = false
+                    onOpenProfile(chat.peerUserId!!)
+                },
+                colors = androidx.compose.material3.MenuDefaults.itemColors(textColor = InboxPrimary)
+            )
+        }
         DropdownMenuItem(
-            text = { Text("Удалить чат", color = InboxPrimary) },
+            text = {
+                Text(
+                    if (isNotificationsMuted) "Включить уведомления" else "Отключить уведомления",
+                    color = InboxPrimary,
+                    fontSize = 13.sp
+                )
+            },
+            leadingIcon = { ProfileMenuGlyph("bell", InboxAccentStrong) },
+            onClick = {
+                showMenu = false
+                onToggleNotifications(!isNotificationsMuted)
+            },
+            colors = androidx.compose.material3.MenuDefaults.itemColors(textColor = InboxPrimary)
+        )
+        DropdownMenuItem(
+            text = { Text("Удалить чат", color = Color(0xFFB85E69), fontSize = 13.sp) },
+            leadingIcon = { InboxDeleteGlyph() },
             onClick = { showMenu = false; confirmDelete = true },
             colors = androidx.compose.material3.MenuDefaults.itemColors(
-                textColor = InboxPrimary
+                textColor = Color(0xFFB85E69)
             )
         )
     }
