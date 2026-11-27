@@ -6947,57 +6947,179 @@ private fun ActiveCallMiniBar(
     onOpen: () -> Unit
 ) {
     val callType = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
+    val isConnected = duration != null || status == "Звонок активен"
+    val stateTint = if (isConnected) Color(0xFF279B70) else AccentSlate
+    val cardShape = RoundedCornerShape(21.dp)
+    val cardBrush = Brush.linearGradient(
+        listOf(
+            Color(0xFFF8FAFF),
+            Color(0xFFECEBFF),
+            Color(0xFFE5F1FF)
+        )
+    )
+    val brandBrush = Brush.linearGradient(
+        listOf(Color(0xFF38A6F6), Color(0xFF725FE6), Color(0xFF9460DC))
+    )
+
     Surface(
         modifier = Modifier.fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-            .clickable(onClick = onOpen),
-        color = Color(0xFDFDFEFF),
-        shape = RoundedCornerShape(19.dp),
-        border = BorderStroke(1.dp, Color(0xFFDCE4F5))
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(contentAlignment = Alignment.BottomEnd) {
-                Avatar(
-                    peerName.take(2).uppercase(),
-                    peerName.hashCode().ushr(1) % 4,
-                    Modifier.size(40.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        color = Color.Transparent,
+        shape = cardShape,
+        border = BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(
+                    Color(0xFF8EB9F5).copy(alpha = 0.72f),
+                    Color(0xFFB9A8F4).copy(alpha = 0.82f),
+                    Color(0xFF9CCDF3).copy(alpha = 0.72f)
                 )
-                Box(
-                    Modifier.size(11.dp)
-                        .background(Color.White, CircleShape)
-                        .padding(2.dp)
-                        .background(Color(0xFF35A879), CircleShape)
-                )
-            }
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    peerName,
-                    color = MainText,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    if (duration != null) "$callType · $duration" else "$callType · $status",
-                    color = if (duration != null || status == "Звонок активен") Color(0xFF328E70) else Muted,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                "Вернуться  ›",
-                color = AccentSlate,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
             )
+        ),
+        shadowElevation = 4.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .clip(cardShape)
+                .background(cardBrush)
+                .clickable(onClick = onOpen)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(23.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(brandBrush),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "A",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.4).sp
+                    )
+                }
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    "ARTURCHAT",
+                    color = AccentSlate,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 1.15.sp
+                )
+                Spacer(Modifier.weight(1f))
+                Row(
+                    modifier = Modifier.clip(CircleShape)
+                        .background(stateTint.copy(alpha = 0.10f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier.size(6.dp).background(stateTint, CircleShape)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        if (isConnected) "ИДЁТ ЗВОНОК" else "СОЕДИНЕНИЕ",
+                        color = stateTint,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.35.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(9.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(43.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(
+                                Brush.sweepGradient(
+                                    listOf(
+                                        Color(0xFF45A6F3),
+                                        Color(0xFF795FE7),
+                                        Color(0xFFC17DD1),
+                                        Color(0xFF45A6F3)
+                                    )
+                                ),
+                                CircleShape
+                            )
+                            .padding(2.dp)
+                    ) {
+                        Avatar(
+                            peerName.take(2).uppercase(),
+                            peerName.hashCode().ushr(1) % 4,
+                            Modifier.fillMaxSize()
+                        )
+                    }
+                    Box(
+                        Modifier.align(Alignment.BottomEnd)
+                            .size(19.dp)
+                            .background(Color(0xFFF3F5FF), CircleShape)
+                            .padding(2.dp)
+                            .background(brandBrush, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ChatCallGlyph(
+                            video = mediaType == "video",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        peerName,
+                        color = MainText,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        if (duration != null) "$callType  ·  $duration" else "$callType  ·  $status",
+                        color = if (isConnected) Color(0xFF328E70) else Muted,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier.clip(RoundedCornerShape(13.dp))
+                        .background(brandBrush)
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Вернуться",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "›",
+                        color = Color.White,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
     }
 }
