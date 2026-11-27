@@ -10202,7 +10202,7 @@ private fun ChatChromeActionButton(
                         )
                     )
                     transparent -> Modifier
-                    else -> Modifier.background(Color.White.copy(alpha = 0.30f))
+                    else -> Modifier.background(ThemeSurface.copy(alpha = if (appDarkTheme.value) 0.46f else 0.30f))
                 }
             )
             .clickable(enabled = enabled, onClick = onClick),
@@ -10718,7 +10718,11 @@ private fun BottomNavigation(
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                        if (appDarkTheme.value) {
+                            listOf(Color(0xF21B2534), Color(0xED141D2A), Color(0xF21B2534))
+                        } else {
+                            listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                        }
                     )
                 )
                 .padding(top = 8.dp, bottom = 8.dp),
