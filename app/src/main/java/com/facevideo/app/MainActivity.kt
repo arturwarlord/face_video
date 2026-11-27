@@ -1883,7 +1883,6 @@ private fun StoriesStrip(
     var isPublishing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val profileScrollState = rememberScrollState()
     val mediaCache = remember(context) { ArturChatImageCache(context) }
 
     LaunchedEffect(repository, userId, refreshKey) {
@@ -8407,6 +8406,7 @@ private fun ProfileScreen(
     var groupCount by remember(userId) { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val profileScrollState = rememberScrollState()
 
     LaunchedEffect(repository, userId, cache) {
         val currentRepository = repository
