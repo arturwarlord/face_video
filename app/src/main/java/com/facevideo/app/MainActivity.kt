@@ -148,6 +148,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -496,13 +497,18 @@ data class CallNotificationAction(
     val nonce: Long
 )
 
-private fun Modifier.arturChatGradientBackground(): Modifier = this
+private fun Modifier.arturChatGradientBackground(): Modifier =
+    if (appOrangeChocolateTheme.value) {
+        // The Orange & Chocolate theme uses the supplied full-screen wallpaper.
+        // Keep section containers transparent so the image remains visible beneath UI.
+        this
+    } else this
     .background(
         Brush.verticalGradient(
-            when {
-                appOrangeChocolateTheme.value -> listOf(Color(0xFF2D1004), Color(0xFF210B03), Color(0xFF130602))
-                appDarkTheme.value -> listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
-                else -> listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF), Color(0xFFE8E9FF))
+            if (appDarkTheme.value) {
+                listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+            } else {
+                listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF), Color(0xFFE8E9FF))
             }
         )
     )
@@ -631,23 +637,31 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             )
-                            // Keep the gradient edge-to-edge, but keep all app
-                            // content clear of status/navigation bars and cutouts.
-                            .windowInsetsPadding(WindowInsets.safeDrawing)
                     ) {
-                        ArturChatUpdateHost {
-                            SupabaseAuthGate { userEmail, userId, onSignOut ->
-                                FaceVideoApp(
-                                    userEmail = userEmail,
-                                    userId = userId,
-                                    onSignOut = onSignOut,
-                                    callNotificationActionFlow = pendingCallNotificationAction,
-                                    onCallNotificationActionHandled = { nonce ->
-                                        if (pendingCallNotificationAction.value?.nonce == nonce) {
-                                            pendingCallNotificationAction.value = null
+                        if (appOrangeChocolateTheme.value) {
+                            Image(
+                                painter = painterResource(id = R.drawable.orange_chocolate_wallpaper),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        // Keep the wallpaper edge-to-edge; only app content respects system insets.
+                        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                            ArturChatUpdateHost {
+                                SupabaseAuthGate { userEmail, userId, onSignOut ->
+                                    FaceVideoApp(
+                                        userEmail = userEmail,
+                                        userId = userId,
+                                        onSignOut = onSignOut,
+                                        callNotificationActionFlow = pendingCallNotificationAction,
+                                        onCallNotificationActionHandled = { nonce ->
+                                            if (pendingCallNotificationAction.value?.nonce == nonce) {
+                                                pendingCallNotificationAction.value = null
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
