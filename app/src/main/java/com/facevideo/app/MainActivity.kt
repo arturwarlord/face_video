@@ -102,7 +102,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -142,6 +141,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -8762,16 +8762,12 @@ private fun ProfileScreen(
                     letterSpacing = (-0.5).sp
                 )
                 Spacer(Modifier.weight(1f))
-                Surface(
-                    color = Color.White.copy(alpha = 0.56f),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.86f)),
+                Box(
                     modifier = Modifier.size(42.dp)
-                        .clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
+                        .clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        ProfileMenuGlyph("settings", AccentSlate)
-                    }
+                    ProfileMenuGlyph("settings", AccentSlate)
                 }
             }
 
@@ -8799,29 +8795,10 @@ private fun ProfileScreen(
                 }
             } else if (profile != null) {
                 val p = profile!!
-                val profileShape = RoundedCornerShape(28.dp)
-                Surface(
-                    color = Color.Transparent,
-                    shape = profileShape,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.72f)),
-                    shadowElevation = 8.dp,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 10.dp)
                 ) {
-                    Box(
-                        Modifier.fillMaxWidth().background(
-                            Brush.linearGradient(
-                                listOf(
-                                    Color(0xFFDCE8FF),
-                                    Color(0xFFE4E5FF),
-                                    Color(0xFFF0E7FB)
-                                )
-                            )
-                        )
-                    ) {
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 17.dp)
-                        ) {
                             Row(
                                 Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
@@ -8871,9 +8848,6 @@ private fun ProfileScreen(
                                     )
                                     Spacer(Modifier.height(7.dp))
                                     Row(
-                                        Modifier.clip(RoundedCornerShape(50))
-                                            .background(Color.White.copy(alpha = 0.56f))
-                                            .padding(horizontal = 9.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
@@ -8901,15 +8875,12 @@ private fun ProfileScreen(
                                     }
                                 }
                                 Spacer(Modifier.width(8.dp))
-                                Surface(
-                                    color = Color.White.copy(alpha = 0.66f),
-                                    shape = CircleShape,
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.88f)),
-                                    modifier = Modifier.size(39.dp).clickable { startProfileEditor(0) }
+                                Box(
+                                    modifier = Modifier.size(39.dp)
+                                        .clickable { startProfileEditor(0) },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        ProfileMenuGlyph("edit", AccentSlate)
-                                    }
+                                    ProfileMenuGlyph("edit", AccentSlate)
                                 }
                             }
 
@@ -8936,8 +8907,7 @@ private fun ProfileScreen(
                                 ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
                             }
                         }
-                    }
-                }            } else {
+            } else {
                 Surface(
                     color = Color.Transparent,
                     shape = RoundedCornerShape(24.dp),
@@ -9556,20 +9526,21 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
             }
             "settings" -> {
                 val center = Offset(w * 0.5f, h * 0.5f)
-                listOf(
-                    Pair(Offset(w * 0.5f, h * 0.02f), Offset(w * 0.5f, h * 0.15f)),
-                    Pair(Offset(w * 0.84f, h * 0.16f), Offset(w * 0.75f, h * 0.25f)),
-                    Pair(Offset(w * 0.98f, h * 0.5f), Offset(w * 0.85f, h * 0.5f)),
-                    Pair(Offset(w * 0.84f, h * 0.84f), Offset(w * 0.75f, h * 0.75f)),
-                    Pair(Offset(w * 0.5f, h * 0.98f), Offset(w * 0.5f, h * 0.85f)),
-                    Pair(Offset(w * 0.16f, h * 0.84f), Offset(w * 0.25f, h * 0.75f)),
-                    Pair(Offset(w * 0.02f, h * 0.5f), Offset(w * 0.15f, h * 0.5f)),
-                    Pair(Offset(w * 0.16f, h * 0.16f), Offset(w * 0.25f, h * 0.25f))
-                ).forEach { (outer, inner) ->
-                    drawLine(tint, outer, inner, line.width, cap = StrokeCap.Round)
+                val radii = floatArrayOf(0.33f, 0.33f, 0.42f, 0.42f, 0.42f, 0.33f, 0.33f, 0.28f)
+                val gear = Path().apply {
+                    repeat(48) { index ->
+                        val angle = Math.toRadians((index * 7.5f - 90f).toDouble())
+                        val radius = w * radii[index % radii.size]
+                        val point = Offset(
+                            center.x + kotlin.math.cos(angle).toFloat() * radius,
+                            center.y + kotlin.math.sin(angle).toFloat() * radius
+                        )
+                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                    }
+                    close()
                 }
-                drawCircle(tint, radius = w * 0.29f, center = center, style = line)
-                drawCircle(tint, radius = w * 0.105f, center = center, style = line)
+                drawPath(gear, tint, style = line)
+                drawCircle(tint, radius = w * 0.115f, center = center, style = line)
             }
             "edit" -> {
                 val pencil = Path().apply {
