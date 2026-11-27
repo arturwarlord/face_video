@@ -1786,7 +1786,7 @@ private fun LiveChatListScreen(
                         }
                         LazyColumn(
                             Modifier.weight(1f),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 16.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 88.dp),
                             verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             items(visibleChats, key = { it.id }) { chat ->
@@ -1859,31 +1859,32 @@ private fun LiveChatListScreen(
                 }
             }
 
-        }
-        Surface(
-            color = Color.Transparent,
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 6.dp,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(vertical = 8.dp)
-                .height(50.dp)
-                .clickable { showNewChat = true }
-        ) {
-            Row(
-                Modifier
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
-                        )
-                    )
-                    .padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            Surface(
+                color = Color.Transparent,
+                shape = RoundedCornerShape(28.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .height(50.dp)
+                    .clickable { showNewChat = true }
             ) {
-                NewChatGlyph()
-                Spacer(Modifier.width(10.dp))
-                Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
+                            )
+                        )
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    NewChatGlyph()
+                    Spacer(Modifier.width(10.dp))
+                    Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
