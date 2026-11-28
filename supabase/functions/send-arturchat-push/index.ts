@@ -70,8 +70,14 @@ async function verifyGitHubActionsToken(token: string): Promise<boolean> {
     if (!mainManualRun && !releaseBranchRun) return false;
 
     const expectedSubject = "repo:" + GITHUB_REPOSITORY + ":ref:" + ref;
+    // GitHub's immutable subject format includes owner and repository IDs.
+    const immutableSubject =
+      "repo:arturwarlord@69643781/face_video@1439900983:ref:" + ref;
     const expectedWorkflowRef = GITHUB_REPOSITORY + "/.github/workflows/release.yml@" + ref;
-    if (claims.sub !== expectedSubject || claims.workflow_ref !== expectedWorkflowRef) return false;
+    if (
+      (claims.sub !== expectedSubject && claims.sub !== immutableSubject) ||
+      claims.workflow_ref !== expectedWorkflowRef
+    ) return false;
 
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = Number(claims.exp);
