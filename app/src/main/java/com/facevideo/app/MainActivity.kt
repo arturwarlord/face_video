@@ -7008,20 +7008,21 @@ private fun MessageBubble(
                     }
                     if (reactions.isNotEmpty()) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                             horizontalArrangement = if (message.isMine) Arrangement.End else Arrangement.Start,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             reactions.forEach { reaction ->
                                 Surface(
-                                    modifier = Modifier.padding(end = 4.dp).clickable(
-                                        enabled = onReaction != null
-                                    ) {
-                                        onReaction?.invoke(
-                                            if (reaction.selectedByMe) null else reaction.reaction
-                                        )
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .padding(end = 3.dp)
+                                        .size(23.dp)
+                                        .clickable(enabled = onReaction != null) {
+                                            onReaction?.invoke(
+                                                if (reaction.selectedByMe) null else reaction.reaction
+                                            )
+                                        },
+                                    shape = CircleShape,
                                     color = when {
                                         appOrangeChocolateTheme.value && reaction.selectedByMe -> Color(0xFF633516)
                                         appOrangeChocolateTheme.value -> Color(0xFF3B2114)
@@ -7031,7 +7032,7 @@ private fun MessageBubble(
                                         else -> Color(0xFFF2F4FA)
                                     },
                                     border = BorderStroke(
-                                        1.dp,
+                                        0.7.dp,
                                         when {
                                             appOrangeChocolateTheme.value && reaction.selectedByMe -> Color(0xFFB36B2E)
                                             appOrangeChocolateTheme.value -> Color(0xFF674129)
@@ -7043,17 +7044,14 @@ private fun MessageBubble(
                                     ),
                                     shadowElevation = 0.dp
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    Box(
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Text(reaction.reaction, fontSize = 13.sp)
                                         Text(
-                                            reaction.count.toString(),
-                                            color = if (reaction.selectedByMe) AccentSlate else Muted,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            reaction.reaction,
+                                            fontSize = 12.sp,
+                                            lineHeight = 12.sp
                                         )
                                     }
                                 }
