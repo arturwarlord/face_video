@@ -1186,7 +1186,7 @@ private fun FaceVideoApp(
                     .onFailure { callError = it.message ?: "Не удалось начать звонок." }
             }
         } else if (!granted) {
-            callError = "Для аудиозвонка разреши ArturChat доступ к микрофону."
+            callError = "Для аудиозвонка разреши A-Chat доступ к микрофону."
         }
     }
 
@@ -1691,7 +1691,7 @@ private fun FaceVideoApp(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        if (incomingCall.mediaType == "video") "ArturChat · видеовызов" else "ArturChat · голосовой вызов",
+                        if (incomingCall.mediaType == "video") "A-Chat · видеовызов" else "A-Chat · голосовой вызов",
                         color = Muted,
                         fontSize = 12.sp
                     )
@@ -1826,7 +1826,7 @@ private fun LiveChatListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "ARTURCHAT",
+                "A-CHAT",
                 modifier = Modifier.weight(1f),
                 color = InboxAccentStrong.copy(alpha = 0.88f),
                 fontSize = 16.sp,
@@ -4360,7 +4360,7 @@ private fun LiveChatScreen(
                         onReply = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({ replyingTo = message }) else null,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
+                            clipboard.setPrimaryClip(ClipData.newPlainText("A-Chat", message.body))
                             Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
                         },
                         onForward = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({
@@ -4495,7 +4495,7 @@ private fun LiveChatScreen(
                     ) {
                         val selectedText = selectedRows.joinToString("\n") { it.body }
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", selectedText))
+                        clipboard.setPrimaryClip(ClipData.newPlainText("A-Chat", selectedText))
                         Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
                         selectedMessageIds = emptySet()
                     }
@@ -4546,7 +4546,7 @@ private fun LiveChatScreen(
                             .verticalScroll(rememberScrollState())
                     ) {
                         Text(
-                            "Сообщения отправляются автоматически в выбранное время, даже если ArturChat закрыт.",
+                            "Сообщения отправляются автоматически в выбранное время, даже если A-Chat закрыт.",
                             color = InboxSecondary,
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -4997,7 +4997,7 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text("Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
@@ -7270,7 +7270,7 @@ private fun ActiveCallMiniBar(
                 }
                 Spacer(Modifier.width(7.dp))
                 Text(
-                    "ARTURCHAT",
+                    "A-CHAT",
                     color = AccentSlate,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -7501,7 +7501,7 @@ private fun ActiveAudioCallScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "ARTURCHAT",
+                "A-CHAT",
                 color = AccentSlate,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
@@ -8078,7 +8078,7 @@ private fun CallsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(4.dp))
                 Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("История аудио- и видеовызовов", color = Muted, fontSize = 11.sp)
@@ -8314,12 +8314,12 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("A-CHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Войдите в аккаунт ArturChat, чтобы отправлять и принимать заявки в друзья.",
+            "Войдите в аккаунт A-Chat, чтобы отправлять и принимать заявки в друзья.",
             color = Muted, fontSize = 12.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
@@ -8387,7 +8387,7 @@ private fun FriendsScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(4.dp))
                 Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("Люди, с которыми вы взаимно подружились", color = Muted, fontSize = 11.sp)
@@ -8695,7 +8695,7 @@ private fun AddFriendDialog(
         title = { Text("Добавить друга", color = MainText, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Найди человека по уникальному псевдониму ArturChat.", color = Muted, fontSize = 12.sp)
+                Text("Найди человека по уникальному псевдониму в A-Chat.", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = username,
@@ -9129,7 +9129,7 @@ private fun ProfileScreen(
                 ) {
                     Column(Modifier.padding(18.dp)) {
                         Text(
-                            errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.",
+                            errorMessage ?: "Личный профиль доступен после входа в аккаунт A-Chat.",
                             color = Muted,
                             fontSize = 12.sp
                         )
@@ -9312,7 +9312,7 @@ private fun ProfileScreen(
                     ProfileReadOnlyRow(
                         title = "Электронная почта",
                         value = userEmail.orEmpty(),
-                        note = "Используется для входа в ArturChat"
+                        note = "Используется для входа в A-Chat"
                     )
                 }
                 1 -> {
@@ -9538,7 +9538,7 @@ private fun ProfileScreen(
                 }
             }
             Text(
-                "Изменения профиля синхронизируются с вашим аккаунтом ArturChat.",
+                "Изменения профиля синхронизируются с вашим аккаунтом A-Chat.",
                 color = Muted,
                 fontSize = 10.sp,
                 lineHeight = 14.sp,

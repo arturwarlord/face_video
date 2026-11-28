@@ -42,12 +42,12 @@ class AppNotificationManager(context: Context) {
             manager.createNotificationChannels(
                 listOf(
                     NotificationChannel(MESSAGE_CHANNEL_ID, "Сообщения", NotificationManager.IMPORTANCE_HIGH).apply {
-                        description = "Новые сообщения в ArturChat"
+                        description = "Новые сообщения в A-Chat"
                         enableVibration(true)
                         setShowBadge(true)
                     },
                     NotificationChannel(CALL_CHANNEL_ID, "Звонки", NotificationManager.IMPORTANCE_HIGH).apply {
-                        description = "Входящие звонки ArturChat"
+                        description = "Входящие звонки A-Chat"
                         enableVibration(true)
                         setShowBadge(true)
                     }
@@ -291,7 +291,7 @@ class AppNotificationManager(context: Context) {
         )
         val badgeNotification = Notification.Builder(appContext, MESSAGE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("ArturChat")
+            .setContentTitle("A-Chat")
             .setContentText(formatUnreadCount(safeCount))
             .setContentIntent(pendingIntent)
             .setNumber(safeCount)

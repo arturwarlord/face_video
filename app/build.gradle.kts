@@ -98,7 +98,7 @@ val generateLauncherIconResources = tasks.register("generateLauncherIconResource
                 String(imageBytes, 8, 4, Charsets.US_ASCII) == "WEBP" &&
                 String(imageBytes, 12, 4, Charsets.US_ASCII) in setOf("VP8 ", "VP8L", "VP8X") &&
                 imageBytes.size == (ByteBuffer.wrap(imageBytes, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int + 8)
-        ) { "ArturChat launcher artwork is not a complete WebP image." }
+        ) { "A-Chat launcher artwork is not a complete WebP image." }
 
         val mipmapDirectory = generatedLauncherIconResources.get().dir("mipmap-nodpi").asFile
         mipmapDirectory.mkdirs()

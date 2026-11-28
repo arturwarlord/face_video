@@ -414,7 +414,7 @@ private fun SupabaseSignInScreen(
                 verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
             ) {
                 Text(
-                    "ARTURCHAT",
+                    "A-CHAT",
                     color = palette.accent,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -533,7 +533,7 @@ private fun SupabaseSignInScreen(
                         )
                     } else {
                         Text(
-                            if (isRegistration) "Создать аккаунт" else "Войти в ArturChat",
+                            if (isRegistration) "Создать аккаунт" else "Войти в A-Chat",
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
