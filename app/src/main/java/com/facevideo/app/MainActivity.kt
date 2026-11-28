@@ -207,6 +207,8 @@ import com.facevideo.app.notifications.AppNotificationManager
 import com.facevideo.app.notifications.CallForegroundService
 import com.facevideo.app.notifications.CallNotificationIntents
 import com.facevideo.app.notifications.ReleaseNotificationIntents
+import com.facevideo.app.notifications.MessageNotificationAction
+import com.facevideo.app.notifications.MessageNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
@@ -572,6 +574,7 @@ private fun Modifier.arturChatGradientBackground(): Modifier =
 
 class MainActivity : ComponentActivity() {
     private val pendingCallNotificationAction = MutableStateFlow<CallNotificationAction?>(null)
+    private val pendingMessageNotificationAction = MutableStateFlow<MessageNotificationAction?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -596,7 +599,7 @@ class MainActivity : ComponentActivity() {
             isAppearanceLightNavigationBars = !isDarkAppearance
         }
 
-        captureCallNotificationAction(intent)
+        captureNotificationIntent(intent)
         setContent {
             val darkTheme = isDarkAppearance
             SideEffect {
@@ -665,6 +668,12 @@ class MainActivity : ComponentActivity() {
                                             if (pendingCallNotificationAction.value?.nonce == nonce) {
                                                 pendingCallNotificationAction.value = null
                                             }
+                                        },
+                                        messageNotificationActionFlow = pendingMessageNotificationAction,
+                                        onMessageNotificationActionHandled = { nonce ->
+                                            if (pendingMessageNotificationAction.value?.nonce == nonce) {
+                                                pendingMessageNotificationAction.value = null
+                                            }
                                         }
                                     )
                                 }
@@ -679,10 +688,20 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        captureCallNotificationAction(intent)
+        captureNotificationIntent(intent)
     }
 
-    private fun captureCallNotificationAction(intent: Intent?) {
+    private fun captureNotificationIntent(intent: Intent?) {
+        val chatId = intent?.getStringExtra(MessageNotificationIntents.EXTRA_CHAT_ID)
+            ?.takeIf { it.isNotBlank() }
+        if (chatId != null) {
+            pendingMessageNotificationAction.value = MessageNotificationAction(
+                chatId = chatId,
+                senderId = intent.getStringExtra(MessageNotificationIntents.EXTRA_SENDER_ID),
+                nonce = System.nanoTime()
+            )
+        }
+
         val releaseVersion = intent?.getStringExtra(ReleaseNotificationIntents.EXTRA_RELEASE_VERSION)
         if (!releaseVersion.isNullOrBlank() && Regex("^[0-9]+\\.[0-9]+\\.[0-9]+$").matches(releaseVersion)) {
             releaseUpdateCheckSignal.value += 1
@@ -718,9 +737,12 @@ private fun FaceVideoApp(
     userId: String?,
     onSignOut: () -> Unit,
     callNotificationActionFlow: StateFlow<CallNotificationAction?>,
-    onCallNotificationActionHandled: (Long) -> Unit
+    onCallNotificationActionHandled: (Long) -> Unit,
+    messageNotificationActionFlow: StateFlow<MessageNotificationAction?>,
+    onMessageNotificationActionHandled: (Long) -> Unit
 ) {
     val callNotificationAction by callNotificationActionFlow.collectAsState()
+    val messageNotificationAction by messageNotificationActionFlow.collectAsState()
 
     val context = LocalContext.current
     val localCache = remember(context) { ArturChatLocalCache(context) }
@@ -1017,6 +1039,34 @@ private fun FaceVideoApp(
         }
     }
 
+    LaunchedEffect(messageNotificationAction?.nonce, liveRepository, userId) {
+        val request = messageNotificationAction ?: return@LaunchedEffect
+        val currentUserId = userId ?: return@LaunchedEffect
+
+        selectedTab = MainTab.CHATS
+        openedProfileUserId = null
+        openedStoriesUserId = null
+        openedChat = null
+        openedDemoChatId = null
+
+        val cachedChat = localCache.readChats(currentUserId)
+            .firstOrNull { it.id == request.chatId }
+        if (cachedChat != null) {
+            setOpenedLiveChat(cachedChat)
+        } else {
+            // The existing restore effect resolves this exact ID from Supabase.
+            openedLiveChat = null
+            openedLiveChatId = request.chatId
+        }
+
+        unreadRefreshKey += 1
+        android.util.Log.i(
+            "ArturChatNotifications",
+            "Opening chat ${request.chatId} from a message notification."
+        )
+        onMessageNotificationActionHandled(request.nonce)
+    }
+
     // Unread summaries refresh independently from the long-lived realtime subscription.
     LaunchedEffect(liveRepository, userId, unreadRefreshKey) {
         val repository = liveRepository ?: return@LaunchedEffect
@@ -1080,7 +1130,9 @@ private fun FaceVideoApp(
                     appNotifications.showMessage(
                         notificationId = message.id,
                         title = chatTitles[message.chatId] ?: "Новое сообщение",
-                        body = message.body
+                        body = message.body,
+                        chatId = message.chatId,
+                        senderId = message.senderId
                     )
                 }
 

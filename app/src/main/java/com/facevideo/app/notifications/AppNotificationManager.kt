@@ -30,6 +30,17 @@ internal object ReleaseNotificationIntents {
     const val EXTRA_RELEASE_URL = "com.facevideo.app.EXTRA_RELEASE_NOTIFICATION_URL"
 }
 
+internal object MessageNotificationIntents {
+    const val EXTRA_CHAT_ID = "com.facevideo.app.EXTRA_MESSAGE_NOTIFICATION_CHAT_ID"
+    const val EXTRA_SENDER_ID = "com.facevideo.app.EXTRA_MESSAGE_NOTIFICATION_SENDER_ID"
+}
+
+internal data class MessageNotificationAction(
+    val chatId: String,
+    val senderId: String?,
+    val nonce: Long
+)
+
 
 /**
  * Displays local Realtime notifications and remote FCM notifications.
@@ -72,7 +83,9 @@ class AppNotificationManager(context: Context) {
         body: String,
         type: String,
         releaseVersion: String? = null,
-        releaseUrl: String? = null
+        releaseUrl: String? = null,
+        chatId: String? = null,
+        senderId: String? = null
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -87,10 +100,16 @@ class AppNotificationManager(context: Context) {
             else -> MESSAGE_CHANNEL_ID
         }
         val intent = Intent(appContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
             if (isRelease && !releaseVersion.isNullOrBlank()) {
                 putExtra(ReleaseNotificationIntents.EXTRA_RELEASE_VERSION, releaseVersion)
                 putExtra(ReleaseNotificationIntents.EXTRA_RELEASE_URL, releaseUrl)
+            }
+            if (!isCall && !isRelease && !chatId.isNullOrBlank()) {
+                putExtra(MessageNotificationIntents.EXTRA_CHAT_ID, chatId)
+                putExtra(MessageNotificationIntents.EXTRA_SENDER_ID, senderId)
             }
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -251,7 +270,13 @@ class AppNotificationManager(context: Context) {
         )
     }
 
-    fun showMessage(notificationId: String, title: String, body: String) {
+    fun showMessage(
+        notificationId: String,
+        title: String,
+        body: String,
+        chatId: String,
+        senderId: String
+    ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
             appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -260,7 +285,11 @@ class AppNotificationManager(context: Context) {
         }
 
         val intent = Intent(appContext, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MessageNotificationIntents.EXTRA_CHAT_ID, chatId)
+            putExtra(MessageNotificationIntents.EXTRA_SENDER_ID, senderId)
         }
         val pendingIntent = PendingIntent.getActivity(
             appContext,

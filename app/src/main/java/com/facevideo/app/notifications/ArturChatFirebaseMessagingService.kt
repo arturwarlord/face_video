@@ -42,7 +42,9 @@ class ArturChatFirebaseMessagingService : FirebaseMessagingService() {
             body = body,
             type = type,
             releaseVersion = releaseVersion,
-            releaseUrl = data["release_url"]
+            releaseUrl = data["release_url"],
+            chatId = data["chat_id"],
+            senderId = data["sender_id"]
         )
     }
 
