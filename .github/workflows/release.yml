@@ -16,6 +16,12 @@ on:
 permissions:
   contents: write
 
+# Release branches may receive several small commits in quick succession.
+# Keep only the newest build for a given ref to avoid publishing the same tag concurrently.
+concurrency:
+  group: arturchat-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     name: Build, sign and publish ArturChat
