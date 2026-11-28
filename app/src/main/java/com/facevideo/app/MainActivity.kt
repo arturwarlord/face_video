@@ -223,6 +223,7 @@ import com.facevideo.app.model.MessageReactionEntry
 import com.facevideo.app.model.summarizeMessageReactions
 import com.facevideo.app.model.StoryReactionSummary
 import com.facevideo.app.model.nextStoryReaction
+import com.facevideo.app.model.formatLastSeenAt
 import com.facevideo.app.audio.decodeVoiceWaveformFromFile
 import java.io.File
 import java.text.SimpleDateFormat
@@ -3437,6 +3438,21 @@ private fun LiveChatScreen(
     }
     var peerUserId by remember(repository, chat.id, userId) { mutableStateOf(chat.peerUserId) }
     var peerAvatarUrl by remember(repository, chat.id, userId) { mutableStateOf(chat.peerAvatarUrl) }
+    var peerLastSeenAt by remember(repository, chat.id, userId) {
+        mutableStateOf(chat.peerLastSeenAt)
+    }
+    LaunchedEffect(repository, peerUserId, chat.isGroup) {
+        val resolvedPeerId = peerUserId ?: return@LaunchedEffect
+        if (chat.isGroup) return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            runCatching { repository.listLastSeenAt(listOf(resolvedPeerId))[resolvedPeerId] }
+                .onSuccess { peerLastSeenAt = it }
+                .onFailure {
+                    android.util.Log.w("ArturChatPresence", "Could not refresh peer last-seen time", it)
+                }
+            delay(15_000L)
+        }
+    }
     LaunchedEffect(repository, chat.id, userId, chat.isGroup, chat.peerUserId, chat.peerAvatarUrl) {
         if (chat.isGroup) {
             peerUserId = null
@@ -4273,8 +4289,8 @@ private fun LiveChatScreen(
                                     chat.isGroup -> "Нажмите, чтобы открыть темы"
                                     peerUserId == null -> "Проверяем статус…"
                                     peerIsOnline -> "В сети"
-                                    !presenceAvailable -> "Статус обновляется…"
-                                    else -> "Не в сети"
+                                    !presenceAvailable && peerLastSeenAt == null -> "Статус обновляется…"
+                                    else -> formatLastSeenAt(peerLastSeenAt)
                                 },
                                 color = if (peerIsOnline) InboxOnline else InboxMuted,
                                 fontSize = 9.sp,
@@ -8509,7 +8525,26 @@ private fun FriendsScreen(
     var showAddFriend by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var busyUserId by remember { mutableStateOf<String?>(null) }
+    var lastSeenAtByUserId by remember(userId) { mutableStateOf<Map<String, String>>(emptyMap()) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, userId, relationships) {
+        val visibleUserIds = relationships.map { row ->
+            if (row.userLow == userId) row.userHigh else row.userLow
+        }.distinct()
+        if (visibleUserIds.isEmpty()) {
+            lastSeenAtByUserId = emptyMap()
+            return@LaunchedEffect
+        }
+        while (currentCoroutineContext().isActive) {
+            runCatching { repository.listLastSeenAt(visibleUserIds) }
+                .onSuccess { lastSeenAtByUserId = it }
+                .onFailure {
+                    android.util.Log.w("ArturChatFriends", "Could not refresh friend last-seen times", it)
+                }
+            delay(30_000L)
+        }
+    }
 
     LaunchedEffect(repository, userId, refreshKey, cache) {
         isLoading = relationships.isEmpty() && people.isEmpty()
@@ -8672,7 +8707,9 @@ private fun FriendsScreen(
                 friends.forEach { friend ->
                     FriendDirectoryRow(
                         profile = friend,
-                        status = if (friend.id in onlineUserIds) "В сети" else friend.statusText.ifBlank { "Не в сети" },
+                        status = if (friend.id in onlineUserIds) "В сети"
+                            else formatLastSeenAt(lastSeenAtByUserId[friend.id]),
+                        secondaryStatus = friend.statusText,
                         actionLabel = "Написать",
                         actionEnabled = busyUserId != friend.id,
                         onProfile = { onOpenProfile(friend.id) },
@@ -8785,7 +8822,8 @@ private fun FriendDirectoryRow(
     onProfile: () -> Unit,
     onAction: () -> Unit,
     secondaryActionLabel: String? = null,
-    onSecondaryAction: (() -> Unit)? = null
+    onSecondaryAction: (() -> Unit)? = null,
+    secondaryStatus: String? = null
 ) {
     Surface(
         color = ThemeSurfaceRaised,
@@ -8809,7 +8847,15 @@ private fun FriendDirectoryRow(
             Column(Modifier.weight(1f).clickable(onClick = onProfile)) {
                 Text(profile.displayName.ifBlank { profile.username }, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text("@${profile.username}", color = Muted, fontSize = 10.sp, maxLines = 1)
-                Text(status, color = AccentSlate, fontSize = 10.sp, maxLines = 1)
+                Text(
+                    status,
+                    color = if (status == "В сети") Color(0xFF31BD72) else Muted,
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+                if (!secondaryStatus.isNullOrBlank()) {
+                    Text(secondaryStatus, color = Muted, fontSize = 9.sp, maxLines = 1)
+                }
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Surface(
@@ -10463,7 +10509,19 @@ private fun UserProfileScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRemoveFriend by remember { mutableStateOf(false) }
     var showAvatarPreview by remember { mutableStateOf(false) }
+    var lastSeenAt by remember(userId) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(repository, userId) {
+        while (currentCoroutineContext().isActive) {
+            runCatching { repository.listLastSeenAt(listOf(userId))[userId] }
+                .onSuccess { lastSeenAt = it }
+                .onFailure {
+                    android.util.Log.w("ArturChatProfile", "Could not refresh profile last-seen time", it)
+                }
+            delay(15_000L)
+        }
+    }
 
     suspend fun refreshProfileStats() {
         runCatching { repository.getProfileStats(userId) }
@@ -10638,8 +10696,8 @@ private fun UserProfileScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            if (userId in onlineUserIds) "В сети" else "Не в сети",
-                            color = if (userId in onlineUserIds) AccentSlate else Muted,
+                            if (userId in onlineUserIds) "В сети" else formatLastSeenAt(lastSeenAt),
+                            color = if (userId in onlineUserIds) Color(0xFF41B88A) else Muted,
                             fontSize = 10.sp
                         )
                     }

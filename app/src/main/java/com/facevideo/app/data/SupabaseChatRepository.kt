@@ -889,6 +889,17 @@ class SupabaseChatRepository(
             .mapTo(mutableSetOf()) { it.userId }
     }
 
+    /** Returns the most recent heartbeat for a batch of visible users. */
+    suspend fun listLastSeenAt(userIds: Collection<String>): Map<String, String> {
+        val requestedIds = userIds.filter { it.isNotBlank() }.distinct()
+        if (requestedIds.isEmpty()) return emptyMap()
+
+        return client.from("face_video_online_presence").select {
+            filter { isIn("user_id", requestedIds) }
+        }.decodeList<FaceVideoOnlinePresenceRow>()
+            .associate { it.userId to it.lastSeenAt }
+    }
+
     suspend fun listMyChats(currentUserId: String): List<FaceVideoChatSummary> {
         val chats = client.from("face_video_chat_summaries")
             .select()
