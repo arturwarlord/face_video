@@ -1,4 +1,4 @@
-name: ArturChat release
+name: A-Chat release
 
 on:
   push:
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build, sign and publish ArturChat
+    name: Build, sign and publish A-Chat
     runs-on: ubuntu-latest
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -77,10 +77,10 @@ jobs:
           from pathlib import Path
           parts = sorted(Path("app/src/main/launcher-icon").glob("*.b64"))
           image = base64.b64decode("".join("".join(p.read_text().split()) for p in parts), validate=True)
-          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid ArturChat launcher image"
+          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid A-Chat launcher image"
           assert int.from_bytes(image[4:8], "little") + 8 == len(image), "Truncated WebP image"
           assert image[12:16] in (b"VP8 ", b"VP8L", b"VP8X"), "Unsupported WebP image chunk"
-          print(f"Validated ArturChat icon: {len(image)} bytes")
+          print(f"Validated A-Chat icon: {len(image)} bytes")
           PY
 
       - name: Set up Gradle
@@ -155,11 +155,11 @@ jobs:
               fi
 
               echo "::notice::Retargeting the unpublished v0.8.0 tag to the current main commit."
-              git tag -fa "$RELEASE_TAG" -m "ArturChat $RELEASE_TAG"
+              git tag -fa "$RELEASE_TAG" -m "A-Chat $RELEASE_TAG"
               git push --force origin "refs/tags/$RELEASE_TAG"
             fi
           else
-            git tag -a "$RELEASE_TAG" -m "ArturChat $RELEASE_TAG"
+            git tag -a "$RELEASE_TAG" -m "A-Chat $RELEASE_TAG"
             git push origin "$RELEASE_TAG"
           fi
 
@@ -194,8 +194,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk release/A-Chat.apk
+          # Preserve the old asset pair so installed pre-A-Chat versions can still update in-app.
           cp app/build/outputs/apk/release/app-release.apk release/ArturChat.apk
           cd release
+          sha256sum A-Chat.apk > A-Chat.apk.sha256
           sha256sum ArturChat.apk > ArturChat.apk.sha256
           cd ..
           python3 - <<'PY'
@@ -231,9 +234,11 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: ArturChat ${{ steps.version.outputs.name }}
+          name: A-Chat ${{ steps.version.outputs.name }}
           generate_release_notes: false
           body_path: release/release-notes.md
           files: |
+            release/A-Chat.apk
+            release/A-Chat.apk.sha256
             release/ArturChat.apk
             release/ArturChat.apk.sha256
