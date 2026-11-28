@@ -15,7 +15,8 @@ internal fun formatLastSeenAt(
     now: Instant = Instant.now(),
     zoneId: ZoneId = ZoneId.systemDefault()
 ): String {
-    val lastSeen = runCatching { Instant.parse(value) }.getOrNull()
+    val timestamp = value?.takeIf { it.isNotBlank() } ?: return "Не в сети"
+    val lastSeen = runCatching { Instant.parse(timestamp) }.getOrNull()
         ?: return "Не в сети"
     val localLastSeen = lastSeen.atZone(zoneId)
     val today = now.atZone(zoneId).toLocalDate()
@@ -25,7 +26,7 @@ internal fun formatLastSeenAt(
         else Duration.between(lastSeen, now).seconds
 
     return when {
-        ageSeconds in 0..59 -> "был(а) только что"
+        ageSeconds in 0L..59L -> "был(а) только что"
         lastSeenDate == today -> "был(а) сегодня в $time"
         lastSeenDate == today.minusDays(1) -> "был(а) вчера в $time"
         lastSeenDate.year == today.year -> {
