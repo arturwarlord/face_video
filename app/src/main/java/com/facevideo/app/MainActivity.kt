@@ -7714,7 +7714,7 @@ private fun ActiveVideoCallScreen(
             Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                 Text(
                     peerName,
-                    color = Color.White,
+                    color = MainText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -7732,7 +7732,7 @@ private fun ActiveVideoCallScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         duration,
-                        color = Color.White,
+                        color = MainText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp
@@ -7828,7 +7828,11 @@ private fun CallControlButton(
         else -> listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC))
     }
     val background = Brush.linearGradient(buttonColors)
-    val tint = if (active || destructive) Color.White else AccentSlate
+    val tint = when {
+        active && appOrangeChocolateTheme.value -> Color(0xFF3A1B0A)
+        active || destructive -> Color.White
+        else -> AccentSlate
+    }
 
     Column(
         modifier = Modifier.width(70.dp),
