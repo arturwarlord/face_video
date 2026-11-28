@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#eef1ff">
-  <meta name="description" content="ArturChat — пространство для личного общения: сообщения, фотографии, аудио- и видеозвонки, друзья, профили и фотоистории. Официальная загрузка Android APK.">
-  <meta property="og:title" content="ArturChat — общение ближе">
-  <meta property="og:description" content="Переписки, аудио- и видеозвонки, друзья и фотоистории — в одном приложении.">
+  <meta name="description" content="A-Chat — приложение для личных и групповых чатов, каналов, аудио- и видеозвонков, друзей и фотоисторий. Три темы оформления и официальный Android APK.">
+  <meta property="og:title" content="A-Chat — чаты, звонки и истории">
+  <meta property="og:description" content="Личные и групповые чаты, каналы, звонки, истории для друзей и три темы оформления.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://raw.githubusercontent.com/arturwarlord/face_video/main/docs/assets/concept-video-call.webp">
   <meta name="color-scheme" content="light">
-  <title>ArturChat — общение ближе</title>
-  <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp">
+  <title>A-Chat — общение ближе</title>
+  <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher_foreground.webp">
   <link rel="preconnect" href="https://api.github.com">
   <link rel="preconnect" href="https://raw.githubusercontent.com">
   <script>document.documentElement.classList.add("has-js");</script>
@@ -590,14 +590,49 @@
       *,*:before,*:after { scroll-behavior:auto !important;animation:none !important;transition:none !important; }
       .has-js .reveal { opacity:1;transform:none; }
     }
+
+    .updates-section { padding-top: 48px; padding-bottom: 30px; }
+    .update-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:15px; }
+    .update-card { min-width:0; padding:23px; border:1px solid rgba(255,255,255,.94); border-radius:24px; background:linear-gradient(145deg,rgba(255,255,255,.78),rgba(242,246,255,.60)); box-shadow:0 14px 42px rgba(83,104,170,.07),inset 0 1px 0 white; backdrop-filter:blur(18px); }
+    .update-version { display:inline-flex; align-items:center; border:1px solid rgba(255,255,255,.96); border-radius:999px; padding:6px 10px; color:#5b6fbd; background:rgba(255,255,255,.64); font-size:9px; font-weight:850; letter-spacing:.035em; }
+    .update-card h3 { margin:16px 0 7px; color:#2d3a5b; font-size:16px; letter-spacing:-.035em; }
+    .update-card p { margin:0; color:#75839f; font-size:11px; line-height:1.8; }
+    .theme-section { padding-top: 42px; }
+    .theme-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:15px; }
+    .theme-card { overflow:hidden; border:1px solid rgba(255,255,255,.96); border-radius:25px; padding:10px; background:rgba(255,255,255,.52); box-shadow:0 14px 36px rgba(83,104,170,.075); }
+    .theme-swatch { min-height:142px; display:flex; flex-direction:column; justify-content:space-between; gap:13px; border-radius:18px; padding:16px; overflow:hidden; }
+    .theme-pastel { color:#34415f; background:radial-gradient(170px 110px at 90% 0%,rgba(176,153,255,.32),transparent 72%),linear-gradient(145deg,#f8f7ff,#e8efff 58%,#f4f6ff); }
+    .theme-dark { color:#eef3ff; background:radial-gradient(180px 120px at 90% 0%,rgba(103,125,215,.22),transparent 70%),linear-gradient(145deg,#182334,#0d1420); }
+    .theme-orange { color:#fff0df; background:radial-gradient(180px 120px at 90% 0%,rgba(255,156,76,.21),transparent 70%),linear-gradient(145deg,#482513,#1a0b05); }
+    .theme-mini-top { display:flex; align-items:center; gap:8px; font-size:12px; }
+    .theme-mini-top span { width:25px; height:25px; display:grid; place-items:center; border-radius:9px; color:white; background:linear-gradient(135deg,#319af2,#5268df,#9461e8); font-size:11px; font-weight:900; }
+    .theme-orange .theme-mini-top span { background:linear-gradient(135deg,#ffd08a,#ff963d,#c85b20); }
+    .theme-mini-top b { font-size:12px; letter-spacing:-.03em; }
+    .theme-mini-top i { width:6px; height:6px; margin-left:auto; border-radius:50%; background:#4abf9a; box-shadow:0 0 0 4px rgba(74,191,154,.13); }
+    .theme-mini-bubble { align-self:flex-start; max-width:80%; border:1px solid rgba(255,255,255,.28); border-radius:13px 13px 13px 4px; padding:9px 12px; color:inherit; background:rgba(255,255,255,.26); font-size:10px; font-weight:700; }
+    .theme-pastel .theme-mini-bubble { border-color:rgba(255,255,255,.92); color:#53628a; background:rgba(255,255,255,.70); }
+    .theme-mini-dots { display:flex; gap:5px; }
+    .theme-mini-dots i { width:5px; height:5px; border-radius:50%; background:currentColor; opacity:.45; }
+    .theme-card-copy { padding:15px 10px 10px; }
+    .theme-card-copy h3 { margin:0 0 5px; color:#2d3a5b; font-size:14px; letter-spacing:-.025em; }
+    .theme-card-copy p { margin:0; color:#75839f; font-size:10px; line-height:1.7; }
+    @media (max-width: 900px) {
+      .update-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .theme-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    }
+    @media (max-width: 620px) {
+      .update-grid,.theme-grid { grid-template-columns:1fr; }
+      .theme-swatch { min-height:125px; }
+      .update-card { padding:20px; }
+    }
   </style>
 </head>
 <body>
   <div class="scroll-progress" aria-hidden="true"><span id="scroll-progress"></span></div>
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="ArturChat — на главную">
-      <img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp" alt="">
-      <span class="brand-name">Artur<span class="gradient">Chat</span></span>
+    <a class="brand" href="#top" aria-label="A-Chat — на главную">
+      <img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher_foreground.webp" alt="">
+      <span class="brand-name">A<span class="gradient">-Chat</span></span>
     </a>
     <nav class="nav" id="site-nav" aria-label="Главная навигация">
       <a href="#features">Возможности</a>
@@ -611,40 +646,40 @@
   <main id="top">
     <section class="wrap hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <div class="eyebrow"><span class="eyebrow-dot"></span> ArturChat · пространство для общения</div>
+        <div class="eyebrow"><span class="eyebrow-dot"></span> A-Chat · личное и групповое общение</div>
         <h1 id="hero-title">
           <span class="line">Будь ближе.</span>
           <span class="line gradient">Где бы ты ни был.</span>
         </h1>
-        <p class="lead">Сообщения, фотографии, голосовые и видеозвонки, друзья и фотоистории — в одном спокойном и красивом пространстве. ArturChat создан, чтобы важное общение всегда было под рукой.</p>
+        <p class="lead">Личные и групповые чаты, каналы, голосовые и видеозвонки, друзья и фотоистории. A-Chat собирает повседневное общение в одном приложении — с тремя темами оформления на выбор.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="#download"><span aria-hidden="true">↓</span> Скачать для Android</a>
           <a class="button button-secondary" href="#features">Открыть возможности <span aria-hidden="true">↗</span></a>
         </div>
         <div class="hero-meta">
-          <span>Текущая версия <strong id="current-version">0.8.4</strong></span>
+          <span>Текущая версия <strong id="current-version">0.9.11</strong></span>
           <span class="meta-separator"></span>
           <span>Android 8.0 и выше</span>
           <span class="meta-separator"></span>
           <span>Официальный APK</span>
         </div>
         <div class="hero-tags">
-          <span class="hero-tag">Личные переписки</span>
-          <span class="hero-tag">Аудио и видео</span>
+          <span class="hero-tag">Личные и групповые чаты</span>
+          <span class="hero-tag">Аудио и видеозвонки</span>
           <span class="hero-tag">Друзья и истории</span>
         </div>
       </div>
 
-      <div class="hero-visual" aria-label="Визуальный обзор интерфейса ArturChat">
+      <div class="hero-visual" aria-label="Визуальный обзор интерфейса A-Chat">
         <div class="hero-orb"></div>
         <span class="hero-spark a" aria-hidden="true"></span>
         <span class="hero-spark b" aria-hidden="true"></span>
         <div class="device device-main">
-          <div class="chat-screen" role="img" aria-label="Макет интерфейса главного экрана ArturChat с историями и недавними чатами">
+          <div class="chat-screen" role="img" aria-label="Макет интерфейса главного экрана A-Chat с историями и недавними чатами">
             <div class="chat-status"><span>11:38</span><span class="chat-status-icons"><i></i><i></i><i></i> 98%</span></div>
             <div class="chat-header">
               <span class="chat-brand-mark">A</span>
-              <span class="chat-brand-name">ArturChat</span>
+              <span class="chat-brand-name">A-Chat</span>
               <span class="chat-action-icon">⌕</span>
               <span class="chat-action-icon">♙</span>
             </div>
@@ -675,7 +710,7 @@
           </div>
         </div>
         <div class="device device-side">
-          <img src="assets/concept-video-call.webp" alt="Экран видеозвонка ArturChat" loading="eager">
+          <img src="assets/concept-video-call.webp" alt="Экран видеозвонка A-Chat" loading="eager">
         </div>
         <div class="hero-float one">
           <div class="float-top"><span class="float-dot"></span> На связи</div>
@@ -685,14 +720,14 @@
           <div class="float-top">Только для друзей</div>
           <div class="float-value">Личные фотоистории ✦</div>
         </div>
-        <div class="hero-caption">ЛИЧНОЕ ОБЩЕНИЕ · ARTURCHAT</div>
+        <div class="hero-caption">ЛИЧНОЕ ОБЩЕНИЕ · A-CHAT</div>
       </div>
     </section>
 
     <div class="wrap trust-strip" aria-label="Ключевые возможности">
-      <div class="trust-item"><span class="trust-icon">✉</span><span>Переписки и отправка фотографий</span></div>
-      <div class="trust-item"><span class="trust-icon">◖</span><span>Прямые аудио- и видеозвонки один на один</span></div>
-      <div class="trust-item"><span class="trust-icon">◎</span><span>Друзья, личные профили и фотоистории</span></div>
+      <div class="trust-item"><span class="trust-icon">✉</span><span>Личные и групповые переписки</span></div>
+      <div class="trust-item"><span class="trust-icon">◖</span><span>Аудио- и видеозвонки с историей в чате</span></div>
+      <div class="trust-item"><span class="trust-icon">◎</span><span>Фотоистории только для взаимных друзей</span></div>
     </div>
 
     <div class="ticker" aria-hidden="true">
@@ -702,59 +737,123 @@
       </div>
     </div>
 
+    <section class="wrap updates-section" aria-labelledby="updates-title">
+      <div class="section-head reveal">
+        <div>
+          <div class="kicker">Последние обновления</div>
+          <h2 id="updates-title">Новые детали.<br><span class="gradient">Тот же A-Chat.</span></h2>
+        </div>
+        <p class="section-copy">В версиях 0.9.9–0.9.11 мы последовательно привели экран историй, авторизацию и публичное имя приложения к единой системе.</p>
+      </div>
+      <div class="update-grid">
+        <article class="update-card reveal">
+          <span class="update-version">0.9.11 · 28 ноября</span>
+          <h3>Теперь A-Chat</h3>
+          <p>Обновлено имя приложения, системные подписи, уведомления, страницы загрузки и материалы проекта. Существующие установки сохраняют совместимость.</p>
+        </article>
+        <article class="update-card reveal delay-1">
+          <span class="update-version">0.9.10 · 28 ноября</span>
+          <h3>Авторизация в общей теме</h3>
+          <p>Экраны входа и регистрации адаптируются под пастельную, чёрную и Orange &amp; Chocolate темы приложения.</p>
+        </article>
+        <article class="update-card reveal delay-2">
+          <span class="update-version">0.9.9 · 28 ноября</span>
+          <h3>Истории без лишних плашек</h3>
+          <p>Векторные реакции, тематическое оформление и приватные счётчики: полную статистику видит только автор истории.</p>
+        </article>
+      </div>
+    </section>
+
     <section id="features" class="wrap">
       <div class="section-head reveal">
         <div>
-          <div class="kicker">Возможности ArturChat</div>
-          <h2>Всё для общения.<br><span class="gradient">Ничего лишнего.</span></h2>
+          <div class="kicker">Возможности A-Chat</div>
+          <h2>Всё для общения.<br><span class="gradient">В одном месте.</span></h2>
         </div>
-        <p class="section-copy">Мы собираем привычные способы быть на связи в одном приложении: от короткого сообщения до видеозвонка и личных историй для друзей.</p>
+        <p class="section-copy">A-Chat объединяет переписки, сообщества, звонки и личные истории. Основные сценарии работают вместе и сохраняют общий визуальный язык.</p>
       </div>
-
       <div class="feature-grid">
         <article class="feature wide soft-blue reveal">
           <span class="feature-status">Доступно сейчас</span>
           <div class="feature-icon">✉</div>
-          <h3>Переписки, которые не теряются</h3>
-          <p>Личные диалоги, фотографии, ответы на сообщения, пересылка и удаление. Отметки отправки, доставки и прочтения помогают понимать, что происходит с сообщением.</p>
-          <div class="feature-foot"><i></i> Сообщения и медиа в одном месте</div>
-          <div class="feature-art" aria-hidden="true"><span class="feature-art-bubble">ArturChat<br><b>Новые сообщения</b></span></div>
+          <h3>Сообщения и медиа</h3>
+          <p>Текст, фотографии, голосовые и круглые видеосообщения. Отвечай на конкретные сообщения, редактируй, пересылай, ставь реакции и возвращайся к сохранённым черновикам. Можно планировать отправку заранее.</p>
+          <div class="feature-foot"><i></i> Переписки, вложения и отложенная отправка</div>
+          <div class="feature-art" aria-hidden="true"><span class="feature-art-bubble">A-Chat<br><b>Новое сообщение</b></span></div>
         </article>
         <article class="feature wide soft-purple reveal delay-1">
           <span class="feature-status">Доступно сейчас</span>
           <div class="feature-icon">◖</div>
-          <h3>Слышать и видеть друг друга</h3>
-          <p>Запускай аудио- или видеозвонок прямо из личной переписки. Управляй микрофоном и камерой во время разговора.</p>
-          <div class="feature-foot"><i></i> Аудио и видео один на один</div>
+          <h3>Аудио- и видеозвонки</h3>
+          <p>Начинай звонок прямо из чата, управляй камерой и микрофоном, сворачивай активный разговор и возвращайся к нему без разрыва связи. Длительность и история вызовов сохраняются в переписке.</p>
+          <div class="feature-foot"><i></i> Личные вызовы и журнал в чате</div>
           <div class="feature-art"><img src="assets/concept-video-call.webp" alt="" loading="lazy"></div>
         </article>
         <article class="feature reveal">
           <span class="feature-status">Доступно сейчас</span>
-          <div class="feature-icon">♧</div>
-          <h3>Твой круг друзей</h3>
-          <p>Находи людей по псевдониму, отправляй заявки и управляй взаимными дружескими связями.</p>
-          <div class="feature-foot"><i></i> Заявки и подтверждённые друзья</div>
+          <div class="feature-icon">▦</div>
+          <h3>Группы и каналы</h3>
+          <p>Создавай группы, приглашай друзей, управляй участниками и правами администраторов. Публичные каналы можно находить, открывать и читать через подписку.</p>
+          <div class="feature-foot"><i></i> Сообщества и управление участниками</div>
         </article>
         <article class="feature soft-lilac reveal delay-1">
           <span class="feature-status">Доступно сейчас</span>
-          <div class="feature-icon">◎</div>
-          <h3>Личный профиль</h3>
-          <p>Фотография, имя, уникальный псевдоним, статус и информация о себе — твоя персональная страница.</p>
+          <div class="feature-icon">♧</div>
+          <h3>Друзья и личный профиль</h3>
+          <p>Находи людей по уникальному псевдониму, отправляй и принимай заявки. Добавляй фотографию, имя, статус и информацию о себе.</p>
+          <div class="feature-foot"><i></i> Личные страницы и взаимные связи</div>
           <div class="feature-art"><img src="assets/concept-profile.webp" alt="" loading="lazy"></div>
         </article>
         <article class="feature soft-blue reveal delay-2">
           <span class="feature-status">Доступно сейчас</span>
-          <div class="feature-icon">◌</div>
-          <h3>Фотоистории для своих</h3>
-          <p>Делись моментами с взаимными друзьями. Фотографии доступны 24 часа, затем исчезают автоматически.</p>
+          <div class="feature-icon">◎</div>
+          <h3>Фотоистории для друзей</h3>
+          <p>Публикуй моменты на 24 часа для взаимных друзей. Реагируй векторными иконками без emoji; счётчики и полная статистика доступны только автору истории.</p>
+          <div class="feature-foot"><i></i> Приватные истории и реакции</div>
           <div class="feature-art"><img src="assets/concept-stories.webp" alt="" loading="lazy"></div>
         </article>
         <article class="feature reveal delay-3">
-          <span class="feature-status">Доступно сейчас</span>
-          <div class="feature-icon">⟳</div>
-          <h3>Обновления внутри приложения</h3>
-          <p>Проверяй наличие новой официальной версии и переходи к установке обновления без ручного поиска APK.</p>
-          <div class="feature-foot"><i></i> Всегда можно проверить свежий релиз</div>
+          <span class="feature-status">3 темы</span>
+          <div class="feature-icon">✧</div>
+          <h3>Оформление под настроение</h3>
+          <p>Выбирай пастельную, чёрную или Orange &amp; Chocolate тему. Палитра применяется к чатам, группам, профилю, историям, экрану входа и регистрации.</p>
+          <div class="feature-foot"><i></i> Единая тема по всему приложению</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="themes" class="wrap theme-section">
+      <div class="section-head reveal">
+        <div>
+          <div class="kicker">Твой визуальный стиль</div>
+          <h2>Три темы.<br><span class="gradient">Один A-Chat.</span></h2>
+        </div>
+        <p class="section-copy">Меняй настроение приложения в настройках профиля. Выбранная тема согласованно оформляет не только главные экраны, но и истории, сообщества, авторизацию и регистрацию.</p>
+      </div>
+      <div class="theme-grid">
+        <article class="theme-card reveal">
+          <div class="theme-swatch theme-pastel">
+            <div class="theme-mini-top"><span>A</span><b>A-Chat</b><i></i></div>
+            <div class="theme-mini-bubble">Привет! Как дела?</div>
+            <div class="theme-mini-dots"><i></i><i></i><i></i></div>
+          </div>
+          <div class="theme-card-copy"><h3>Пастельная</h3><p>Светлая основная палитра, мягкие градиенты и воздушные поверхности.</p></div>
+        </article>
+        <article class="theme-card reveal delay-1">
+          <div class="theme-swatch theme-dark">
+            <div class="theme-mini-top"><span>A</span><b>A-Chat</b><i></i></div>
+            <div class="theme-mini-bubble">Привет! Как дела?</div>
+            <div class="theme-mini-dots"><i></i><i></i><i></i></div>
+          </div>
+          <div class="theme-card-copy"><h3>Чёрная</h3><p>Глубокий графит, спокойные голубые акценты и контрастная типографика.</p></div>
+        </article>
+        <article class="theme-card reveal delay-2">
+          <div class="theme-swatch theme-orange">
+            <div class="theme-mini-top"><span>A</span><b>A-Chat</b><i></i></div>
+            <div class="theme-mini-bubble">Привет! Как дела?</div>
+            <div class="theme-mini-dots"><i></i><i></i><i></i></div>
+          </div>
+          <div class="theme-card-copy"><h3>Orange &amp; Chocolate</h3><p>Шоколадные оттенки, тёплый янтарный акцент и фирменный фон.</p></div>
         </article>
       </div>
     </section>
@@ -766,15 +865,15 @@
             <div class="kicker">Визуальный язык</div>
             <h2>Лёгкость в каждой детали.</h2>
           </div>
-          <p class="section-copy">Современные градиенты, мягкие стеклянные поверхности и спокойная типографика. Интерфейс развивается в едином стиле — от авторизации до переписок.</p>
+          <p class="section-copy">Три согласованные палитры, аккуратные поверхности и читаемая типографика. A-Chat сохраняет общий стиль на экранах чатов, профиля, звонков, историй и авторизации.</p>
         </div>
-        <div class="gallery-note">Концептуальные экраны показывают направление дизайна; актуальность функций отмечена в карточках.</div>
+        <div class="gallery-note">Ниже — концептуальные макеты интерфейса. Они показывают визуальное направление, а не фотографии актуального экрана приложения.</div>
         <div class="gallery">
           <article class="shot-card">
             <div class="shot-image">
-              <div class="chat-screen chat-screen-gallery" role="img" aria-label="Макет главного экрана ArturChat">
+              <div class="chat-screen chat-screen-gallery" role="img" aria-label="Макет главного экрана A-Chat">
                 <div class="chat-status"><span>11:38</span><span>● ● ● 98%</span></div>
-                <div class="chat-header"><span class="chat-brand-mark">A</span><span class="chat-brand-name">ArturChat</span><span class="chat-action-icon">⌕</span></div>
+                <div class="chat-header"><span class="chat-brand-mark">A</span><span class="chat-brand-name">A-Chat</span><span class="chat-action-icon">⌕</span></div>
                 <div class="chat-story-heading"><span>Истории</span><small>Обновить</small></div>
                 <div class="chat-stories">
                   <div class="chat-story"><span class="chat-story-ring"><span>+</span></span><span class="chat-story-label">Моя</span></div>
@@ -794,22 +893,22 @@
             <p>Сообщения, фотографии, ответы и управление выбранными сообщениями.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-calls.webp" alt="Концепт аудиозвонка ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <div class="shot-image"><img src="assets/concept-calls.webp" alt="Концепт аудиозвонка A-Chat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
             <h3>Аудиозвонки</h3>
             <p>Личный вызов собеседника запускается прямо из чата.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-video-call.webp" alt="Концепт видеозвонка ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <div class="shot-image"><img src="assets/concept-video-call.webp" alt="Концепт видеозвонка A-Chat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
             <h3>Видеозвонки</h3>
             <p>Видеосвязь один на один с управлением камерой и микрофоном.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-profile.webp" alt="Концепт личного профиля ArturChat" loading="lazy"><span class="shot-tag">Раздел доступен</span></div>
+            <div class="shot-image"><img src="assets/concept-profile.webp" alt="Концепт личного профиля A-Chat" loading="lazy"><span class="shot-tag">Раздел доступен</span></div>
             <h3>Личный профиль</h3>
             <p>Фотография, имя, псевдоним, статус и информация о себе.</p>
           </article>
           <article class="shot-card">
-            <div class="shot-image"><img src="assets/concept-stories.webp" alt="Концепт фотоисторий ArturChat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
+            <div class="shot-image"><img src="assets/concept-stories.webp" alt="Концепт фотоисторий A-Chat" loading="lazy"><span class="shot-tag">Работает сейчас</span></div>
             <h3>Фотоистории</h3>
             <p>Публикации доступны взаимным друзьям в течение 24 часов.</p>
           </article>
@@ -821,19 +920,19 @@
       <div class="experience-copy reveal">
         <div class="kicker">Связь в твоём ритме</div>
         <h2>Не просто написать.<br><span class="gradient">Быть рядом.</span></h2>
-        <p>Начни с сообщения, продолжи фотографией или перейди к разговору. ArturChat объединяет разные форматы общения так, чтобы переключаться между ними было естественно.</p>
+        <p>Начни с личного сообщения, продолжи разговором в группе или перейди к звонку. A-Chat помогает сохранять нить общения между разными форматами.</p>
         <div class="experience-list">
-          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Личные чаты и фотографии</strong><span>Переписывайся, отвечай на конкретные сообщения и делись изображениями.</span></div></div>
-          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Голос и видео</strong><span>Вызывай собеседника напрямую из чата, не переключаясь на сторонние приложения.</span></div></div>
-          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Доверенный круг</strong><span>Истории доступны взаимным друзьям, а не всем подряд.</span></div></div>
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Переписки с продолжением</strong><span>Ответы, реакции, черновики, пересылка и сообщения по расписанию помогают не терять важное.</span></div></div>
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Звонки без потери разговора</strong><span>Сворачивай активный вызов, возвращайся к нему и смотри историю звонков в переписке.</span></div></div>
+          <div class="experience-item"><span class="experience-check">✓</span><div><strong>Пространство для своего круга</strong><span>Создавай группы и каналы, а фотоистории публикуй только для взаимных друзей.</span></div></div>
         </div>
         <div class="hero-actions">
-          <a class="button button-primary" href="#download">Попробовать ArturChat ↓</a>
+          <a class="button button-primary" href="#download">Попробовать A-Chat ↓</a>
         </div>
       </div>
       <div class="call-visual reveal delay-1" aria-label="Предпросмотр аудио и видеозвонков">
-        <div class="call-device audio"><img src="assets/concept-calls.webp" alt="Макет экрана аудиозвонка" loading="lazy"></div>
-        <div class="call-device video"><img src="assets/concept-video-call.webp" alt="Макет экрана видеозвонка" loading="lazy"></div>
+        <div class="call-device audio"><img src="assets/concept-calls.webp" alt="Концепт экрана аудиозвонка" loading="lazy"></div>
+        <div class="call-device video"><img src="assets/concept-video-call.webp" alt="Концепт экрана видеозвонка" loading="lazy"></div>
         <div class="call-chip"><i></i> Аудио и видео · один на один</div>
       </div>
     </section>
@@ -842,19 +941,14 @@
       <div class="roadmap reveal">
         <div class="roadmap-head">
           <div class="kicker">Что дальше</div>
-          <h2>Следующая глава<br><span class="gradient">ArturChat.</span></h2>
-          <p>Мы развиваем продукт последовательно: сначала укрепляем основу и повседневные сценарии, затем расширяем инструменты общения. Здесь — ближайшие направления, а не обещания точных дат.</p>
+          <h2>Следующая глава<br><span class="gradient">A-Chat.</span></h2>
+          <p>Мы развиваем приложение поэтапно. Здесь собраны направления, над которыми ещё предстоит поработать; точные сроки не обещаем.</p>
         </div>
         <div class="roadmap-grid">
           <article class="plan-card featured">
-            <div class="plan-top"><span class="plan-icon">◷</span><span class="plan-label">В разработке</span></div>
-            <h3>История звонков</h3>
-            <p>Единый журнал входящих и исходящих аудио- и видеовызовов с датой, статусом и длительностью разговора.</p>
-          </article>
-          <article class="plan-card">
             <div class="plan-top"><span class="plan-icon">▧</span><span class="plan-label">В планах</span></div>
             <h3>Видеоистории</h3>
-            <p>Добавить короткие видео в истории, сохранив доступ только для друзей и ограниченный срок публикации.</p>
+            <p>Короткие видео в историях с тем же принципом доступа для взаимных друзей и ограниченным сроком публикации.</p>
           </article>
           <article class="plan-card">
             <div class="plan-top"><span class="plan-icon">▤</span><span class="plan-label">В планах</span></div>
@@ -862,41 +956,36 @@
             <p>Расширить обмен фотографиями до документов и других типов файлов с удобным просмотром.</p>
           </article>
           <article class="plan-card">
-            <div class="plan-top"><span class="plan-icon">♡</span><span class="plan-label">В планах</span></div>
-            <h3>Реакции на истории</h3>
-            <p>Добавить быстрые реакции и ответы, чтобы друзьям было проще делиться впечатлениями.</p>
-          </article>
-          <article class="plan-card">
             <div class="plan-top"><span class="plan-icon">♧</span><span class="plan-label">Развитие</span></div>
-            <h3>Групповое общение</h3>
-            <p>Расширять управление участниками, настройки групп и инструменты для больших бесед.</p>
+            <h3>Инструменты сообществ</h3>
+            <p>Продолжить развивать групповые пространства, управление участниками и возможности администраторов.</p>
           </article>
           <article class="plan-card">
             <div class="plan-top"><span class="plan-icon">✧</span><span class="plan-label">Постоянно</span></div>
             <h3>Приватность и удобство</h3>
-            <p>Улучшать настройки видимости, скорость работы, доступность и визуальную систему приложения.</p>
+            <p>Улучшать настройки видимости, скорость работы, доступность и согласованность интерфейса во всех темах.</p>
           </article>
         </div>
-        <p class="roadmap-foot">Приоритеты могут меняться по результатам тестирования и обратной связи. Журнал звонков находится в разработке; функции со статусом «В планах» ещё не входят в публичную сборку.</p>
+        <p class="roadmap-foot">Приоритеты могут меняться по результатам тестирования и обратной связи. Функции со статусом «В планах» ещё не входят в публичную сборку.</p>
       </div>
     </section>
 
     <section id="download" class="wrap">
       <div class="section-head reveal">
-        <div><div class="kicker">Официальная загрузка</div><h2>Твой ArturChat.<br><span class="gradient">Уже рядом.</span></h2></div>
+        <div><div class="kicker">Официальная загрузка</div><h2>A-Chat для Android.<br><span class="gradient">Всегда актуальная версия.</span></h2></div>
         <p class="section-copy">Здесь всегда доступна последняя опубликованная версия. Сайт автоматически проверяет GitHub Releases и показывает только актуальный выпуск — без списка устаревших версий.</p>
       </div>
       <div class="release-panel reveal">
         <div class="release-main">
           <div class="release-label">Последняя опубликованная версия</div>
-          <div class="release-version" id="latest-version">0.8.0</div>
+          <div class="release-version" id="latest-version">0.9.11</div>
           <div class="release-date" id="latest-date">Проверяем дату публикации…</div>
           <div class="release-notes" id="latest-summary"><span class="loading">Загружаем описание последнего обновления…</span></div>
           <p class="release-status" id="release-status" aria-live="polite">Проверяем текущую опубликованную версию.</p>
         </div>
         <div class="release-actions">
-          <a id="release-download" class="button button-primary" href="https://github.com/arturwarlord/face_video/releases/latest/download/ArturChat.apk">↓ Скачать APK</a>
-          <a id="release-checksum" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest/download/ArturChat.apk.sha256">Проверить SHA-256 ↗</a>
+          <a id="release-download" class="button button-primary" href="https://github.com/arturwarlord/face_video/releases/latest/download/A-Chat.apk">↓ Скачать APK</a>
+          <a id="release-checksum" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest/download/A-Chat.apk.sha256">Проверить SHA-256 ↗</a>
           <a id="release-details" class="button button-secondary" href="https://github.com/arturwarlord/face_video/releases/latest">Открыть релиз ↗</a>
         </div>
       </div>
@@ -909,18 +998,18 @@
 
     <section class="wrap closing reveal">
       <div class="closing-orb">A</div>
-      <div class="kicker">ArturChat · Связь ближе</div>
+      <div class="kicker">A-Chat · Связь ближе</div>
       <h2>Больше живого общения.<br><span class="gradient">Меньше расстояний.</span></h2>
-      <p>Присоединяйся, пробуй возможности приложения и помогай нам делать ArturChat лучше с каждым обновлением.</p>
-      <a class="button button-primary" href="#download">Скачать ArturChat <span aria-hidden="true">↓</span></a>
+      <p>Присоединяйся, пробуй возможности приложения и помогай нам делать A-Chat лучше с каждым обновлением.</p>
+      <a class="button button-primary" href="#download">Скачать A-Chat <span aria-hidden="true">↓</span></a>
     </section>
   </main>
 
   <footer>
     <div class="wrap footer-inner">
       <div>
-        <div class="footer-brand"><img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher.webp" alt="">ArturChat</div>
-        <div class="footer-copy">© <span id="year">2026</span> ArturChat. Создаём пространство для общения.</div>
+        <div class="footer-brand"><img src="https://raw.githubusercontent.com/arturwarlord/face_video/main/app/src/main/res/mipmap-nodpi/ic_launcher_foreground.webp" alt="">A-Chat</div>
+        <div class="footer-copy">© <span id="year">2026</span> A-Chat. Создаём пространство для общения.</div>
       </div>
       <div class="footer-links">
         <a href="#features">Возможности</a>
@@ -937,11 +1026,11 @@
       "use strict";
       const owner = "arturwarlord";
       const repo = "face_video";
-      const currentAppVersion = "0.8.4";
+      const currentAppVersion = "0.9.11";
       const latestUrl = "https://api.github.com/repos/" + owner + "/" + repo + "/releases/latest";
       const changelogUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo + "/main/docs/CHANGELOG.md";
-      const fallbackApk = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/ArturChat.apk";
-      const fallbackChecksum = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/ArturChat.apk.sha256";
+      const fallbackApk = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/A-Chat.apk";
+      const fallbackChecksum = "https://github.com/" + owner + "/" + repo + "/releases/latest/download/A-Chat.apk.sha256";
 
       function byId(id) { return document.getElementById(id); }
       function formatDate(value) {
@@ -997,11 +1086,12 @@
           const markdown = responses[1].ok ? await responses[1].text() : "";
           const version = String(release.tag_name || currentAppVersion).replace(/^v/, "");
           const assets = Array.isArray(release.assets) ? release.assets : [];
-          const apk = assets.find(function (asset) { return asset.name === "ArturChat.apk"; });
-          const checksum = assets.find(function (asset) { return asset.name === "ArturChat.apk.sha256"; });
+          const apk = assets.find(function (asset) { return asset.name === "A-Chat.apk"; }) || assets.find(function (asset) { return asset.name === "ArturChat.apk"; });
+          const checksum = assets.find(function (asset) { return asset.name === "A-Chat.apk.sha256"; }) || assets.find(function (asset) { return asset.name === "ArturChat.apk.sha256"; });
           if (byId("latest-version")) byId("latest-version").textContent = version;
           if (byId("latest-date")) byId("latest-date").textContent = formatDate(release.published_at);
-          const notes = releaseNotesFor(markdown, version);
+          const changelogNotes = releaseNotesFor(markdown, version);
+          const notes = changelogNotes.length ? changelogNotes : String(release.body || "").split(/\r?\n/).filter(function (line) { return /^\s*-\s+/.test(line); }).map(function (line) { return line.replace(/^\s*-\s+/, "").trim(); }).slice(0, 5);
           const box = byId("latest-summary");
           if (box && notes.length) {
             const list = document.createElement("ul");
@@ -1012,7 +1102,7 @@
             });
             box.replaceChildren(list);
           } else if (box) {
-            box.textContent = "Опубликован официальный выпуск ArturChat. Открой страницу релиза, чтобы посмотреть подробности.";
+            box.textContent = "Опубликован официальный выпуск A-Chat. Открой страницу релиза, чтобы посмотреть подробности.";
           }
           const status = byId("release-status");
           if (status) {
@@ -1028,7 +1118,7 @@
             release.html_url
           );
         } catch (error) {
-          console.info("ArturChat release metadata is temporarily unavailable.", error);
+          console.info("A-Chat release metadata is temporarily unavailable.", error);
           if (byId("latest-summary")) byId("latest-summary").textContent = "Не удалось автоматически обновить сведения о релизе. Официальная страница загрузки GitHub остаётся доступна по кнопке ниже.";
           if (byId("latest-date")) byId("latest-date").textContent = "Дата публикации уточняется";
           if (byId("release-status")) byId("release-status").textContent = "Текущая версия проекта — " + currentAppVersion + ". Статус опубликованного релиза временно не удалось проверить.";
