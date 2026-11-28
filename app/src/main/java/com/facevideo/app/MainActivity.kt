@@ -1697,7 +1697,7 @@ private fun FaceVideoApp(
                     )
                     if (callError != null) {
                         Spacer(Modifier.height(8.dp))
-                        Text(callError.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
+                        Text(callError.orEmpty(), color = InboxDanger, fontSize = 11.sp)
                     }
                 }
             },
@@ -7213,34 +7213,27 @@ private fun ActiveCallMiniBar(
 ) {
     val callType = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
     val isConnected = duration != null || status == "Звонок активен"
-    val stateTint = if (isConnected) Color(0xFF279B70) else AccentSlate
+    val stateTint = if (isConnected) InboxOnline else AccentSlate
     val cardShape = RoundedCornerShape(21.dp)
-    val cardBrush = Brush.linearGradient(
-        listOf(
-            Color(0xFFF8FAFF),
-            Color(0xFFECEBFF),
-            Color(0xFFE5F1FF)
-        )
-    )
-    val brandBrush = Brush.linearGradient(
-        listOf(Color(0xFF38A6F6), Color(0xFF725FE6), Color(0xFF9460DC))
-    )
+    val cardColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xF02B160B), Color(0xF03A1D0D), Color(0xF02B160B))
+        appDarkTheme.value -> listOf(Color(0xF2192231), Color(0xF2202B3A), Color(0xF2192231))
+        else -> listOf(Color(0xFFF8FAFF), Color(0xFFECEBFF), Color(0xFFE5F1FF))
+    }
+    val brandColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFC27A), Color(0xFFFF8D2A), Color(0xFFA84512))
+        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+        else -> listOf(Color(0xFF38A6F6), Color(0xFF725FE6), Color(0xFF9460DC))
+    }
+    val cardBrush = Brush.linearGradient(cardColors)
+    val brandBrush = Brush.linearGradient(brandColors)
 
     Surface(
         modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 8.dp),
         color = Color.Transparent,
         shape = cardShape,
-        border = BorderStroke(
-            1.dp,
-            Brush.linearGradient(
-                listOf(
-                    Color(0xFF8EB9F5).copy(alpha = 0.72f),
-                    Color(0xFFB9A8F4).copy(alpha = 0.82f),
-                    Color(0xFF9CCDF3).copy(alpha = 0.72f)
-                )
-            )
-        ),
+        border = BorderStroke(1.dp, ThemeBorder.copy(alpha = 0.92f)),
         shadowElevation = 4.dp
     ) {
         Column(
@@ -7310,14 +7303,7 @@ private fun ActiveCallMiniBar(
                     Box(
                         Modifier.fillMaxSize()
                             .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color(0xFF45A6F3),
-                                        Color(0xFF795FE7),
-                                        Color(0xFFC17DD1),
-                                        Color(0xFF45A6F3)
-                                    )
-                                ),
+                                Brush.sweepGradient(brandColors + brandColors.first()),
                                 CircleShape
                             )
                             .padding(2.dp)
@@ -7331,7 +7317,7 @@ private fun ActiveCallMiniBar(
                     Box(
                         Modifier.align(Alignment.BottomEnd)
                             .size(19.dp)
-                            .background(Color(0xFFF3F5FF), CircleShape)
+                            .background(ThemeSurfaceRaised, CircleShape)
                             .padding(2.dp)
                             .background(brandBrush, CircleShape),
                         contentAlignment = Alignment.Center
@@ -7356,7 +7342,7 @@ private fun ActiveCallMiniBar(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         if (duration != null) "$callType  ·  $duration" else "$callType  ·  $status",
-                        color = if (isConnected) Color(0xFF328E70) else Muted,
+                        color = if (isConnected) InboxOnline else Muted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -7405,7 +7391,7 @@ private fun CallHistoryBubble(
         "cancelled" -> (if (isOutgoing) "Нет ответа" else "Пропущенный вызов") to true
         else -> "Звонок завершён" to false
     }
-    val accent = if (isMissed) Color(0xFFE47768) else AccentSlate
+    val accent = if (isMissed) InboxDanger else AccentSlate
     val cardBackground = when {
         appOrangeChocolateTheme.value && isMissed -> Color(0xFF421A13)
         appOrangeChocolateTheme.value -> Color(0xFF351A0C)
@@ -7485,13 +7471,34 @@ private fun ActiveAudioCallScreen(
     onMinimize: () -> Unit,
     onEnd: () -> Unit
 ) {
+    val avatarRingColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFD08A), Color(0xFFFF9B3D), Color(0xFFC75A19))
+        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+        else -> listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))
+    }
+    val avatarHaloColor = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFF9B3D)
+        appDarkTheme.value -> Color(0xFF8FA4FF)
+        else -> Color(0xFF9EBBFF)
+    }
+    val callErrorBackground = when {
+        appOrangeChocolateTheme.value -> Color(0xE53A1D0D)
+        appDarkTheme.value -> Color(0xE52C202B)
+        else -> Color(0xBFFFF0F2)
+    }
+    val callErrorBorder = when {
+        appOrangeChocolateTheme.value -> Color(0x885E351D)
+        appDarkTheme.value -> Color(0x887B4658)
+        else -> Color(0x44D77782)
+    }
+    val callErrorText = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFB59A)
+        appDarkTheme.value -> Color(0xFFFFC3CE)
+        else -> Color(0xFFA85F6E)
+    }
     Column(
         modifier = Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFFE4DEFF), Color(0xFFE5EDFF), Color(0xFFF4F6FF))
-                )
-            )
+            .arturChatGradientBackground()
             .padding(horizontal = 22.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -7515,8 +7522,8 @@ private fun ActiveAudioCallScreen(
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            Color(0xFF9EBBFF).copy(alpha = 0.62f),
-                            Color(0xFFC7BFFF).copy(alpha = 0.20f),
+                            avatarHaloColor.copy(alpha = 0.42f),
+                            avatarHaloColor.copy(alpha = 0.16f),
                             Color.Transparent
                         )
                     ),
@@ -7527,9 +7534,7 @@ private fun ActiveAudioCallScreen(
             Box(
                 modifier = Modifier.size(136.dp)
                     .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))
-                        ),
+                        Brush.linearGradient(avatarRingColors),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -7562,7 +7567,7 @@ private fun ActiveAudioCallScreen(
             ) {
                 Box(
                     Modifier.size(7.dp).clip(CircleShape)
-                        .background(if (error == null) Color(0xFF39A982) else Color(0xFFD77782))
+                        .background(if (error == null) InboxOnline else InboxDanger)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -7589,13 +7594,13 @@ private fun ActiveAudioCallScreen(
             Spacer(Modifier.height(12.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 190.dp),
-                color = Color(0xBFFFF0F2),
+                color = callErrorBackground,
                 shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0x44D77782))
+                border = BorderStroke(1.dp, callErrorBorder)
             ) {
                 Text(
                     error,
-                    color = Color(0xFFA85F6E),
+                    color = callErrorText,
                     fontSize = 10.sp,
                     lineHeight = 15.sp,
                     maxLines = 12,
@@ -7653,13 +7658,30 @@ private fun ActiveVideoCallScreen(
 ) {
     val remoteRenderer = client.remoteVideoRenderer
     val localRenderer = client.localVideoRenderer
+    val callOverlayColor = ThemeSurfaceRaised.copy(alpha = 0.93f)
+    val callOverlayBorder = ThemeBorder.copy(alpha = 0.90f)
+    val callErrorBackground = when {
+        appOrangeChocolateTheme.value -> Color(0xE53A1D0D)
+        appDarkTheme.value -> Color(0xE52C202B)
+        else -> Color(0xE5FFF0F2)
+    }
+    val callErrorBorder = when {
+        appOrangeChocolateTheme.value -> Color(0x885E351D)
+        appDarkTheme.value -> Color(0x887B4658)
+        else -> Color(0x55D77782)
+    }
+    val callErrorText = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFB59A)
+        appDarkTheme.value -> Color(0xFFFFC3CE)
+        else -> Color(0xFFA85F6E)
+    }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF111722))) {
+    Box(Modifier.fillMaxSize().arturChatGradientBackground()) {
         if (remoteRenderer != null) {
             AndroidView(factory = { remoteRenderer }, modifier = Modifier.fillMaxSize())
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Подготавливаем видеосвязь…", color = Color.White, fontSize = 14.sp)
+                Text("Подготавливаем видеосвязь…", color = MainText, fontSize = 14.sp)
             }
         }
 
@@ -7685,9 +7707,9 @@ private fun ActiveVideoCallScreen(
             modifier = Modifier.align(Alignment.TopStart)
                 .padding(start = 14.dp, top = 62.dp, end = 126.dp)
                 .widthIn(max = 230.dp),
-            color = Color(0xA91A2432),
+            color = callOverlayColor,
             shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+            border = BorderStroke(1.dp, callOverlayBorder)
         ) {
             Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                 Text(
@@ -7701,7 +7723,7 @@ private fun ActiveVideoCallScreen(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     status,
-                    color = Color.White.copy(alpha = 0.76f),
+                    color = Muted,
                     fontSize = 10.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -7724,13 +7746,13 @@ private fun ActiveVideoCallScreen(
                 modifier = Modifier.align(Alignment.TopStart)
                     .padding(start = 14.dp, top = 78.dp, end = 126.dp)
                     .widthIn(max = 230.dp),
-                color = Color(0xB34A202B),
+                color = callErrorBackground,
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Color(0x55FFC3CE))
+                border = BorderStroke(1.dp, callErrorBorder)
             ) {
                 Text(
                     error,
-                    color = Color(0xFFFFDDE2),
+                    color = callErrorText,
                     fontSize = 9.sp,
                     lineHeight = 13.sp,
                     maxLines = 5,
@@ -7740,34 +7762,42 @@ private fun ActiveVideoCallScreen(
             }
         }
 
-        Row(
+        Surface(
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+            color = callOverlayColor,
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, callOverlayBorder),
+            shadowElevation = 8.dp
         ) {
-            CallControlButton(
-                label = if (muted) "Микрофон выкл." else "Микрофон",
-                active = !muted,
-                onClick = onToggleMute
-            ) { tint -> ChatMicrophoneGlyph(tint = tint) }
-            CallControlButton(
-                label = if (cameraEnabled) "Камера" else "Камера выкл.",
-                active = cameraEnabled,
-                onClick = onToggleCamera
-            ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
-            CallControlButton(
-                label = "Сменить",
-                active = false,
-                onClick = onSwitchCamera
-            ) { tint -> CallSwitchGlyph(tint = tint) }
-            CallControlButton(
-                label = "Завершить",
-                destructive = true,
-                onClick = onEnd
-            ) { tint ->
-                Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CallControlButton(
+                    label = if (muted) "Микрофон выкл." else "Микрофон",
+                    active = !muted,
+                    onClick = onToggleMute
+                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+                CallControlButton(
+                    label = if (cameraEnabled) "Камера" else "Камера выкл.",
+                    active = cameraEnabled,
+                    onClick = onToggleCamera
+                ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
+                CallControlButton(
+                    label = "Сменить",
+                    active = false,
+                    onClick = onSwitchCamera
+                ) { tint -> CallSwitchGlyph(tint = tint) }
+                CallControlButton(
+                    label = "Завершить",
+                    destructive = true,
+                    onClick = onEnd
+                ) { tint ->
+                    Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
+                }
             }
         }
     }
@@ -7778,15 +7808,26 @@ private fun CallControlButton(
     label: String,
     active: Boolean = false,
     destructive: Boolean = false,
-    labelColor: Color = Color.White,
+    labelColor: Color = MainText,
     onClick: () -> Unit,
     content: @Composable (Color) -> Unit
 ) {
-    val background = when {
-        destructive -> Brush.linearGradient(listOf(Color(0xFFFF7B91), Color(0xFFD94770)))
-        active -> Brush.linearGradient(listOf(Color(0xFF35AEFF), Color(0xFF586BEA), Color(0xFF9262E8)))
-        else -> Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC)))
+    val buttonColors = when {
+        destructive -> when {
+            appOrangeChocolateTheme.value -> listOf(Color(0xFFE97861), Color(0xFFB94734))
+            appDarkTheme.value -> listOf(Color(0xFFC95E70), Color(0xFF943D55))
+            else -> listOf(Color(0xFFFF7B91), Color(0xFFD94770))
+        }
+        active -> when {
+            appOrangeChocolateTheme.value -> listOf(Color(0xFFFFC27A), Color(0xFFFF8D2A), Color(0xFFA84512))
+            appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+            else -> listOf(Color(0xFF35AEFF), Color(0xFF586BEA), Color(0xFF9262E8))
+        }
+        appOrangeChocolateTheme.value -> listOf(Color(0xFF52301D), Color(0xFF3A1D0D))
+        appDarkTheme.value -> listOf(Color(0xFF303E56), Color(0xFF202B3A))
+        else -> listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC))
     }
+    val background = Brush.linearGradient(buttonColors)
     val tint = if (active || destructive) Color.White else AccentSlate
 
     Column(
@@ -7799,7 +7840,7 @@ private fun CallControlButton(
                 .background(background)
                 .then(
                     if (active || destructive) Modifier
-                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.98f), CircleShape)
+                    else Modifier.border(1.dp, ThemeBorder.copy(alpha = 0.88f), CircleShape)
                 )
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
