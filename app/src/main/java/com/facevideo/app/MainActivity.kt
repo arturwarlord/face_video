@@ -241,8 +241,8 @@ import io.github.jan.supabase.realtime.realtime
 private const val ARTURCHAT_THEME_PREFERENCES = "arturchat_appearance"
 private const val ARTURCHAT_THEME_DARK_KEY = "black_theme_enabled"
 private const val ARTURCHAT_THEME_ORANGE_KEY = "orange_chocolate_theme_enabled"
-private val appDarkTheme = mutableStateOf(false)
-private val appOrangeChocolateTheme = mutableStateOf(false)
+internal val appDarkTheme = mutableStateOf(false)
+internal val appOrangeChocolateTheme = mutableStateOf(false)
 private val isDarkAppearance: Boolean
     get() = appDarkTheme.value || appOrangeChocolateTheme.value
 
