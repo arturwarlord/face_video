@@ -138,6 +138,203 @@ class ArturChatLocalCache(context: Context) {
             .apply()
     }
 
+
+    fun hasChatsSnapshot(userId: String): Boolean =
+        userPreferences(userId).contains(KEY_CHATS)
+
+    fun hasStoriesSnapshot(userId: String): Boolean =
+        userPreferences(userId).contains(KEY_STORIES)
+
+    fun hasFriendshipsSnapshot(userId: String): Boolean =
+        hasPageSnapshot(userId, "friends_relationships")
+
+    fun hasChannelsSnapshot(userId: String): Boolean =
+        hasPageSnapshot(userId, "community_channels")
+
+    fun hasCallsSnapshot(userId: String): Boolean =
+        hasPageSnapshot(userId, "calls_history")
+
+    fun hasChannelPostsSnapshot(userId: String, channelId: String): Boolean =
+        hasPageSnapshot(userId, "channel_posts_${safeKey(channelId)}")
+
+    fun hasChannelMembersSnapshot(userId: String, channelId: String): Boolean =
+        hasPageSnapshot(userId, "channel_members_${safeKey(channelId)}")
+
+    fun hasGroupSnapshot(userId: String, chatId: String): Boolean =
+        hasPageItem(userId, "group_details_${safeKey(chatId)}")
+
+    fun hasGroupMembersSnapshot(userId: String, chatId: String): Boolean =
+        hasPageSnapshot(userId, "group_members_${safeKey(chatId)}")
+
+    fun hasGroupTopicsSnapshot(userId: String, chatId: String): Boolean =
+        hasPageSnapshot(userId, "group_topics_${safeKey(chatId)}")
+
+    fun hasFriendshipSnapshot(userId: String, profileId: String): Boolean =
+        screenPreferences(userId, "friendship_${safeKey(profileId)}").contains(KEY_SCREEN_HAS_NULL)
+
+    fun hasScheduledMessagesSnapshot(userId: String, chatId: String): Boolean =
+        hasPageSnapshot(userId, "scheduled_${safeKey(chatId)}")
+
+    fun removeStoryReactionSummary(userId: String, storyId: String) {
+        screenPreferences(userId, "story_reactions_${safeKey(storyId)}")
+            .edit()
+            .remove(KEY_SCREEN_ITEM)
+            .apply()
+    }
+
+    private fun hasPageSnapshot(userId: String, scope: String): Boolean =
+        screenPreferences(userId, scope).contains(KEY_SCREEN_ITEMS)
+
+    private fun hasPageItem(userId: String, scope: String): Boolean =
+        screenPreferences(userId, scope).contains(KEY_SCREEN_ITEM)
+
+    /** Cached friends and pending relationship requests for this signed-in account. */
+    fun readFriendships(userId: String): List<FaceVideoFriendship> =
+        readPageList(userId, "friends_relationships")
+
+    fun saveFriendships(userId: String, rows: List<FaceVideoFriendship>) =
+        savePageList(userId, "friends_relationships", rows, MAX_CACHED_FRIENDSHIPS)
+
+    fun readFriendship(userId: String, profileId: String): FaceVideoFriendship? =
+        readPageItem(userId, "friendship_${safeKey(profileId)}")
+
+    fun saveFriendship(userId: String, profileId: String, friendship: FaceVideoFriendship?) {
+        val preferences = screenPreferences(userId, "friendship_${safeKey(profileId)}")
+        preferences.edit().putBoolean(KEY_SCREEN_HAS_NULL, friendship == null).apply()
+        if (friendship == null) preferences.edit().remove(KEY_SCREEN_ITEM).apply()
+        else savePageItem(userId, "friendship_${safeKey(profileId)}", friendship)
+    }
+
+    fun readFriendProfiles(userId: String): Map<String, FaceVideoProfile> =
+        readPageList<FaceVideoProfile>(userId, "friends_profiles").associateBy { it.id }
+
+    fun saveFriendProfiles(userId: String, profiles: Collection<FaceVideoProfile>) =
+        savePageList(userId, "friends_profiles", profiles.toList(), MAX_CACHED_PROFILES)
+
+    fun readChannels(userId: String): List<FaceVideoChannelEntry> =
+        readPageList(userId, "community_channels")
+
+    fun saveChannels(userId: String, channels: List<FaceVideoChannelEntry>) =
+        savePageList(userId, "community_channels", channels, MAX_CACHED_CHANNELS)
+
+    fun readChannelPosts(viewerUserId: String, channelId: String): List<FaceVideoChannelPost> =
+        readPageList(viewerUserId, "channel_posts_${safeKey(channelId)}")
+
+    fun saveChannelPosts(viewerUserId: String, channelId: String, posts: List<FaceVideoChannelPost>) =
+        savePageList(viewerUserId, "channel_posts_${safeKey(channelId)}", posts, MAX_CACHED_CHANNEL_POSTS)
+
+    fun readChannelMembers(viewerUserId: String, channelId: String): List<FaceVideoChannelMemberProfile> =
+        readPageList(viewerUserId, "channel_members_${safeKey(channelId)}")
+
+    fun saveChannelMembers(
+        viewerUserId: String,
+        channelId: String,
+        members: List<FaceVideoChannelMemberProfile>
+    ) = savePageList(
+        viewerUserId,
+        "channel_members_${safeKey(channelId)}",
+        members,
+        MAX_CACHED_MEMBERS
+    )
+
+    fun readGroup(viewerUserId: String, chatId: String): FaceVideoGroup? =
+        readPageItem(viewerUserId, "group_details_${safeKey(chatId)}")
+
+    fun saveGroup(viewerUserId: String, group: FaceVideoGroup) =
+        savePageItem(viewerUserId, "group_details_${safeKey(group.id)}", group)
+
+    fun readGroupMembers(viewerUserId: String, chatId: String): List<FaceVideoGroupMemberProfile> =
+        readPageList(viewerUserId, "group_members_${safeKey(chatId)}")
+
+    fun saveGroupMembers(
+        viewerUserId: String,
+        chatId: String,
+        members: List<FaceVideoGroupMemberProfile>
+    ) = savePageList(
+        viewerUserId,
+        "group_members_${safeKey(chatId)}",
+        members,
+        MAX_CACHED_MEMBERS
+    )
+
+    fun readGroupTopics(viewerUserId: String, chatId: String): List<FaceVideoGroupTopic> =
+        readPageList(viewerUserId, "group_topics_${safeKey(chatId)}")
+
+    fun saveGroupTopics(viewerUserId: String, chatId: String, topics: List<FaceVideoGroupTopic>) =
+        savePageList(viewerUserId, "group_topics_${safeKey(chatId)}", topics, MAX_CACHED_TOPICS)
+
+    fun readCalls(userId: String): List<FaceVideoCall> =
+        readPageList(userId, "calls_history")
+
+    fun saveCalls(userId: String, calls: List<FaceVideoCall>) =
+        savePageList(userId, "calls_history", calls, MAX_CACHED_CALLS)
+
+    fun readCallProfiles(userId: String): Map<String, FaceVideoProfile> =
+        readPageList<FaceVideoProfile>(userId, "calls_profiles").associateBy { it.id }
+
+    fun saveCallProfiles(userId: String, profiles: Collection<FaceVideoProfile>) =
+        savePageList(userId, "calls_profiles", profiles.toList(), MAX_CACHED_PROFILES)
+
+    fun readProfileStats(viewerUserId: String, profileId: String): FaceVideoProfileStats? =
+        readPageItem(viewerUserId, "profile_stats_${safeKey(profileId)}")
+
+    fun saveProfileStats(viewerUserId: String, profileId: String, stats: FaceVideoProfileStats) =
+        savePageItem(viewerUserId, "profile_stats_${safeKey(profileId)}", stats)
+
+    fun readChatCallHistory(userId: String, chatId: String): List<FaceVideoCallHistory> =
+        readPageList(userId, "chat_calls_${safeKey(chatId)}")
+
+    fun saveChatCallHistory(
+        userId: String,
+        chatId: String,
+        history: List<FaceVideoCallHistory>
+    ) = savePageList(userId, "chat_calls_${safeKey(chatId)}", history, MAX_CACHED_CALLS)
+
+    fun readScheduledMessages(userId: String, chatId: String): List<FaceVideoScheduledMessage> =
+        readPageList(userId, "scheduled_${safeKey(chatId)}")
+
+    fun saveScheduledMessages(
+        userId: String,
+        chatId: String,
+        messages: List<FaceVideoScheduledMessage>
+    ) = savePageList(userId, "scheduled_${safeKey(chatId)}", messages, MAX_CACHED_SCHEDULED_MESSAGES)
+
+    fun readMessageReactions(userId: String, chatId: String): List<FaceVideoMessageReaction> =
+        readPageList(userId, "message_reactions_${safeKey(chatId)}")
+
+    fun saveMessageReactions(
+        userId: String,
+        chatId: String,
+        reactions: List<FaceVideoMessageReaction>
+    ) = savePageList(userId, "message_reactions_${safeKey(chatId)}", reactions, MAX_CACHED_REACTIONS)
+
+    fun readMessageReceipts(userId: String, chatId: String): List<FaceVideoMessageReceipt> =
+        readPageList(userId, "message_receipts_${safeKey(chatId)}")
+
+    fun saveMessageReceipts(
+        userId: String,
+        chatId: String,
+        receipts: List<FaceVideoMessageReceipt>
+    ) = savePageList(userId, "message_receipts_${safeKey(chatId)}", receipts, MAX_CACHED_RECEIPTS)
+
+    fun readStoryReactionSummary(viewerUserId: String, storyId: String): com.facevideo.app.model.StoryReactionSummary? =
+        readPageItem(viewerUserId, "story_reactions_${safeKey(storyId)}")
+
+    fun saveStoryReactionSummary(
+        viewerUserId: String,
+        storyId: String,
+        summary: com.facevideo.app.model.StoryReactionSummary
+    ) = savePageItem(viewerUserId, "story_reactions_${safeKey(storyId)}", summary)
+
+    fun readMutedChatIds(userId: String): Set<String> =
+        userPreferences(userId).getStringSet(KEY_MUTED_CHAT_IDS, emptySet()).orEmpty().toSet()
+
+    fun saveMutedChatIds(userId: String, chatIds: Set<String>) {
+        userPreferences(userId).edit()
+            .putStringSet(KEY_MUTED_CHAT_IDS, chatIds.toSet())
+            .apply()
+    }
+
     @Synchronized
     fun readMessages(userId: String, chatId: String): List<FaceVideoMessage> {
         val preferences = chatPreferences(userId, chatId)
@@ -161,6 +358,43 @@ class ArturChatLocalCache(context: Context) {
             val recent = sortChatMessagesChronologically(messages).takeLast(MAX_CACHED_MESSAGES)
             preferences.edit().putString(KEY_MESSAGES, json.encodeToString(recent)).apply()
         }
+    }
+
+
+    /**
+     * Screen snapshots are isolated by account and destination so a long channel
+     * feed or busy call list cannot inflate the main account preferences XML.
+     * Snapshots are a first-paint cache only; each screen refreshes from Supabase.
+     */
+    private fun screenPreferences(userId: String, scope: String) =
+        appContext.getSharedPreferences(
+            "arturchat_cache_user_${safeKey(userId)}_screen_${safeKey(scope)}",
+            Context.MODE_PRIVATE
+        )
+
+    private inline fun <reified T> readPageList(userId: String, scope: String): List<T> =
+        readList(screenPreferences(userId, scope).getString(KEY_SCREEN_ITEMS, null))
+
+    private inline fun <reified T> savePageList(
+        userId: String,
+        scope: String,
+        items: List<T>,
+        maxItems: Int
+    ) {
+        val bounded = items.take(maxItems)
+        screenPreferences(userId, scope).edit()
+            .putString(KEY_SCREEN_ITEMS, json.encodeToString(bounded))
+            .apply()
+    }
+
+    private inline fun <reified T> readPageItem(userId: String, scope: String): T? =
+        screenPreferences(userId, scope).getString(KEY_SCREEN_ITEM, null)
+            ?.let { raw -> runCatching { json.decodeFromString<T>(raw) }.getOrNull() }
+
+    private inline fun <reified T> savePageItem(userId: String, scope: String, item: T) {
+        screenPreferences(userId, scope).edit()
+            .putString(KEY_SCREEN_ITEM, json.encodeToString(item))
+            .apply()
     }
 
     private inline fun <reified T> readList(raw: String?): List<T> {
@@ -202,7 +436,21 @@ class ArturChatLocalCache(context: Context) {
         const val KEY_NAV_STORIES = "navigation_stories_v1"
         const val KEY_NAV_DEMO_CHAT = "navigation_demo_chat_v1"
         const val KEY_DRAFT = "unsent_draft_v1"
+        const val KEY_MUTED_CHAT_IDS = "muted_chat_ids_v1"
+        const val KEY_SCREEN_ITEMS = "items_v1"
+        const val KEY_SCREEN_ITEM = "item_v1"
+        const val KEY_SCREEN_HAS_NULL = "has_snapshot_even_if_null_v1"
         const val MAX_CACHED_MESSAGES = 80
+        const val MAX_CACHED_FRIENDSHIPS = 500
+        const val MAX_CACHED_PROFILES = 500
+        const val MAX_CACHED_CHANNELS = 300
+        const val MAX_CACHED_CHANNEL_POSTS = 120
+        const val MAX_CACHED_MEMBERS = 500
+        const val MAX_CACHED_TOPICS = 200
+        const val MAX_CACHED_CALLS = 200
+        const val MAX_CACHED_SCHEDULED_MESSAGES = 100
+        const val MAX_CACHED_REACTIONS = 1500
+        const val MAX_CACHED_RECEIPTS = 2000
         const val MAX_CACHED_STORIES = 200
     }
 }

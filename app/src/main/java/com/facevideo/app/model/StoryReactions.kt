@@ -1,5 +1,7 @@
 package com.facevideo.app.model
 
+import kotlinx.serialization.Serializable
+
 /**
  * Quick reactions supported by story viewers.
  * The same list is used to validate client actions and render reaction chips.
@@ -11,6 +13,7 @@ data class StoryReactionEntry(
     val reaction: String
 )
 
+@Serializable
 data class StoryReactionSummary(
     val counts: Map<String, Int> = emptyMap(),
     val currentUserReaction: String? = null

@@ -55,8 +55,12 @@ import com.facevideo.app.data.FaceVideoGroup
 import com.facevideo.app.data.FaceVideoGroupMemberProfile
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatLocalCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withContext
 
 private val GroupPanelAccent = Color(0xFF5369DC)
@@ -70,15 +74,23 @@ private val GroupPanelDanger = Color(0xFFB45F6D)
 @Composable
 internal fun GroupManagementScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     chatId: String,
     onDismiss: () -> Unit,
     onGroupUpdated: (String) -> Unit,
     onGroupClosed: () -> Unit
 ) {
-    var group by remember(chatId) { mutableStateOf<FaceVideoGroup?>(null) }
-    var members by remember(chatId) { mutableStateOf<List<FaceVideoGroupMemberProfile>>(emptyList()) }
-    var isLoading by remember(chatId) { mutableStateOf(true) }
+    val cachedGroup = remember(cache, userId, chatId) { cache.readGroup(userId, chatId) }
+    val cachedMembers = remember(cache, userId, chatId) { cache.readGroupMembers(userId, chatId) }
+    var group by remember(chatId, cache) { mutableStateOf(cachedGroup) }
+    var members by remember(chatId, cache) { mutableStateOf(cachedMembers) }
+    var isLoading by remember(chatId, cache, userId) {
+        mutableStateOf(
+            !cache.hasGroupSnapshot(userId, chatId) &&
+                !cache.hasGroupMembersSnapshot(userId, chatId)
+        )
+    }
     var isBusy by remember { mutableStateOf(false) }
     var refreshKey by remember(chatId) { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -93,21 +105,40 @@ internal fun GroupManagementScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    LaunchedEffect(repository, chatId, refreshKey) {
-        isLoading = true
+    LaunchedEffect(repository, chatId, refreshKey, cache, userId) {
+        isLoading = group == null && members.isEmpty()
         errorMessage = null
-        runCatching {
-            val loadedGroup = repository.getGroupDetails(chatId)
-                ?: throw IllegalStateException("Группа не найдена.")
-            val loadedMembers = repository.listGroupMembers(chatId)
-            loadedGroup to loadedMembers
-        }.onSuccess { (loadedGroup, loadedMembers) ->
+        try {
+            val (loadedGroup, loadedMembers) = coroutineScope {
+                val groupRequest = async {
+                    repository.getGroupDetails(chatId)
+                        ?: throw IllegalStateException("Группа не найдена.")
+                }
+                val membersRequest = async { repository.listGroupMembers(chatId) }
+                groupRequest.await() to membersRequest.await()
+            }
             group = loadedGroup
             members = loadedMembers
-        }.onFailure {
-            errorMessage = it.message ?: "Не удалось загрузить информацию о группе."
+            withContext(Dispatchers.IO) {
+                cache.saveGroup(userId, loadedGroup)
+                cache.saveGroupMembers(userId, chatId, loadedMembers)
+            }
+        } catch (error: Exception) {
+            if (group == null && members.isEmpty()) {
+                errorMessage = error.message ?: "Не удалось загрузить информацию о группе."
+            } else {
+                android.util.Log.w("ArturChatGroups", "Could not refresh cached group details", error)
+            }
+        } finally {
+            isLoading = false
         }
-        isLoading = false
+    }
+    LaunchedEffect(cache, userId, chatId, group) {
+        val current = group ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) { cache.saveGroup(userId, current) }
+    }
+    LaunchedEffect(cache, userId, chatId, members) {
+        withContext(Dispatchers.IO) { cache.saveGroupMembers(userId, chatId, members) }
     }
 
     val myMembership = members.firstOrNull { it.member.userId == userId }?.member

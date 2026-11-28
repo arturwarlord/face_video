@@ -61,7 +61,10 @@ import com.facevideo.app.data.FaceVideoChatSummary
 import com.facevideo.app.data.FaceVideoFriendship
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatLocalCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -108,6 +111,7 @@ private enum class ChannelDirectoryFilter(val title: String) {
 @Composable
 internal fun GroupsScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     isOrangeChocolateTheme: Boolean,
     onOpenGroup: (FaceVideoChatSummary) -> Unit
@@ -115,10 +119,16 @@ internal fun GroupsScreen(
     SideEffect {
         communityOrangeChocolate.value = isOrangeChocolateTheme
     }
+    val cachedGroupChats = remember(cache, userId) {
+        cache.readChats(userId).filter { it.isGroup }
+    }
+    val cachedChannels = remember(cache, userId) { cache.readChannels(userId) }
     var section by remember { mutableStateOf(CommunitySection.GROUPS) }
-    var groupChats by remember(userId) { mutableStateOf<List<FaceVideoChatSummary>>(emptyList()) }
-    var channels by remember(userId) { mutableStateOf<List<FaceVideoChannelEntry>>(emptyList()) }
-    var isLoading by remember(userId) { mutableStateOf(true) }
+    var groupChats by remember(userId, cache) { mutableStateOf(cachedGroupChats) }
+    var channels by remember(userId, cache) { mutableStateOf(cachedChannels) }
+    var isLoading by remember(userId, cache) {
+        mutableStateOf(!cache.hasChatsSnapshot(userId) && !cache.hasChannelsSnapshot(userId))
+    }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
     var showCreateMenu by remember { mutableStateOf(false) }
@@ -133,15 +143,27 @@ internal fun GroupsScreen(
         selectedChannel = null
     }
 
-    LaunchedEffect(repository, userId, refreshKey) {
-        isLoading = true
+    LaunchedEffect(repository, userId, refreshKey, cache) {
+        isLoading = groupChats.isEmpty() && channels.isEmpty()
         errorMessage = null
         try {
-            val loadedChats = repository.listMyChats(userId)
+            val (loadedChats, loadedChannels) = coroutineScope {
+                val chatsRequest = async { repository.listMyChats(userId) }
+                val channelsRequest = async { repository.listChannels(userId) }
+                chatsRequest.await() to channelsRequest.await()
+            }
             groupChats = loadedChats.filter { it.isGroup }
-            channels = repository.listChannels(userId)
+            channels = loadedChannels
+            withContext(Dispatchers.IO) {
+                cache.saveChats(userId, loadedChats)
+                cache.saveChannels(userId, loadedChannels)
+            }
         } catch (error: Exception) {
-            errorMessage = error.message ?: "Не удалось загрузить сообщества."
+            if (groupChats.isEmpty() && channels.isEmpty()) {
+                errorMessage = error.message ?: "Не удалось загрузить сообщества."
+            } else {
+                android.util.Log.w("ArturChatCommunities", "Could not refresh local community cache", error)
+            }
         } finally {
             isLoading = false
         }
@@ -168,6 +190,7 @@ internal fun GroupsScreen(
     if (selectedChannel != null) {
         ChannelDetailsScreen(
             repository = repository,
+            cache = cache,
             userId = userId,
             channel = selectedChannel!!,
             isSubscribed = channels.firstOrNull { it.channel.id == selectedChannel!!.id }?.isSubscribed == true,
@@ -780,17 +803,25 @@ private fun CreateCommunityChannelDialog(
 @Composable
 private fun ChannelDetailsScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     channel: FaceVideoChannel,
     isSubscribed: Boolean,
     onBack: () -> Unit,
     onMembershipChanged: () -> Unit
 ) {
+    val cachedPosts = remember(cache, userId, channel.id) { cache.readChannelPosts(userId, channel.id) }
+    val cachedMembers = remember(cache, userId, channel.id) { cache.readChannelMembers(userId, channel.id) }
     var currentChannel by remember(channel.id) { mutableStateOf(channel) }
     var subscribed by remember(channel.id, isSubscribed) { mutableStateOf(isSubscribed) }
-    var posts by remember(channel.id) { mutableStateOf<List<FaceVideoChannelPost>>(emptyList()) }
-    var members by remember(channel.id) { mutableStateOf<List<FaceVideoChannelMemberProfile>>(emptyList()) }
-    var isLoading by remember(channel.id) { mutableStateOf(true) }
+    var posts by remember(channel.id, cache) { mutableStateOf(cachedPosts) }
+    var members by remember(channel.id, cache) { mutableStateOf(cachedMembers) }
+    var isLoading by remember(channel.id, cache) {
+        mutableStateOf(
+            !cache.hasChannelPostsSnapshot(userId, channel.id) &&
+                !cache.hasChannelMembersSnapshot(userId, channel.id)
+        )
+    }
     var isBusy by remember { mutableStateOf(false) }
     var draft by remember(channel.id) { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -836,16 +867,41 @@ private fun ChannelDetailsScreen(
         }
     }
 
-    LaunchedEffect(repository, currentChannel.id) {
-        isLoading = true
+    LaunchedEffect(repository, currentChannel.id, userId, cache) {
+        isLoading = posts.isEmpty() && members.isEmpty()
         errorMessage = null
-        runCatching { repository.listChannelPosts(currentChannel.id) }
-            .onSuccess { posts = it }
-            .onFailure { errorMessage = it.message ?: "Не удалось загрузить публикации." }
-        runCatching { repository.listChannelMembers(currentChannel.id) }
-            .onSuccess { members = it }
-            .onFailure { errorMessage = it.message ?: "Не удалось загрузить участников канала." }
-        isLoading = false
+        try {
+            val (loadedPosts, loadedMembers) = coroutineScope {
+                val postsRequest = async { repository.listChannelPosts(currentChannel.id) }
+                val membersRequest = async { repository.listChannelMembers(currentChannel.id) }
+                postsRequest.await() to membersRequest.await()
+            }
+            posts = loadedPosts
+            members = loadedMembers
+            withContext(Dispatchers.IO) {
+                cache.saveChannelPosts(userId, currentChannel.id, loadedPosts)
+                cache.saveChannelMembers(userId, currentChannel.id, loadedMembers)
+            }
+        } catch (error: Exception) {
+            if (posts.isEmpty() && members.isEmpty()) {
+                errorMessage = error.message ?: "Не удалось загрузить канал."
+            } else {
+                android.util.Log.w("ArturChatChannels", "Could not refresh cached channel content", error)
+            }
+        } finally {
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(cache, userId, currentChannel.id, posts) {
+        withContext(Dispatchers.IO) {
+            cache.saveChannelPosts(userId, currentChannel.id, posts)
+        }
+    }
+    LaunchedEffect(cache, userId, currentChannel.id, members) {
+        withContext(Dispatchers.IO) {
+            cache.saveChannelMembers(userId, currentChannel.id, members)
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -1252,6 +1308,7 @@ private fun ChannelDetailsScreen(
         ) {
             ChannelManagementScreen(
                 repository = repository,
+                cache = cache,
                 userId = userId,
                 channel = currentChannel,
                 onDismiss = { showChannelManagement = false },

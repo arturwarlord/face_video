@@ -231,6 +231,8 @@ import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CancellationException
@@ -794,7 +796,9 @@ private fun FaceVideoApp(
         mutableStateOf(userId?.let(localCache::readUnreadSummaries) ?: emptyMap())
     }
     var unreadRefreshKey by remember(userId) { mutableStateOf(0) }
-    var mutedChatIds by remember(userId) { mutableStateOf<Set<String>>(emptySet()) }
+    var mutedChatIds by remember(userId, localCache) {
+        mutableStateOf(userId?.let(localCache::readMutedChatIds) ?: emptySet())
+    }
     var showCallInfo by remember { mutableStateOf(false) }
     val callInfoMessage = "Открой личную переписку и нажми значок трубки для аудиозвонка или камеры для видеозвонка."
 
@@ -964,6 +968,9 @@ private fun FaceVideoApp(
         try {
             repository.observeMutedChatIds(currentUserId).collect { updatedMutedChatIds ->
                 mutedChatIds = updatedMutedChatIds
+                withContext(Dispatchers.IO) {
+                    localCache.saveMutedChatIds(currentUserId, updatedMutedChatIds)
+                }
             }
         } catch (error: CancellationException) {
             throw error
@@ -1609,6 +1616,7 @@ private fun FaceVideoApp(
                             if (liveRepository != null && userId != null) {
                                 GroupsScreen(
                                     repository = liveRepository,
+                                    cache = localCache,
                                     userId = userId,
                                     isOrangeChocolateTheme = appOrangeChocolateTheme.value,
                                     onOpenGroup = { setOpenedLiveChat(it) }
@@ -1626,6 +1634,7 @@ private fun FaceVideoApp(
                         MainTab.CALLS -> {
                             CallsScreen(
                                 repository = callRepository,
+                                cache = localCache,
                                 userId = userId,
                                 onOpenProfile = { openedProfileUserId = it }
                             )
@@ -1634,6 +1643,7 @@ private fun FaceVideoApp(
                             if (liveRepository != null && userId != null) {
                                 FriendsScreen(
                                     repository = liveRepository,
+                                    cache = localCache,
                                     userId = userId,
                                     onlineUserIds = onlineUserIds,
                                     onOpenChat = { setOpenedLiveChat(it) },
@@ -2459,7 +2469,9 @@ private fun StoryViewerScreen(
     }
     var stories by remember(storyOwnerId, currentUserId, cache) { mutableStateOf(cachedStories) }
     var index by remember(storyOwnerId) { mutableStateOf(0) }
-    var isLoading by remember(storyOwnerId) { mutableStateOf(cachedStories.isEmpty()) }
+    var isLoading by remember(storyOwnerId, cache, currentUserId) {
+        mutableStateOf(!cache.hasStoriesSnapshot(currentUserId))
+    }
     var errorMessage by remember(storyOwnerId) { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
@@ -2468,8 +2480,8 @@ private fun StoryViewerScreen(
     val context = LocalContext.current
     val mediaCache = remember(context) { ArturChatImageCache(context) }
 
-    LaunchedEffect(repository, storyOwnerId, currentUserId) {
-        isLoading = stories.isEmpty()
+    LaunchedEffect(repository, storyOwnerId, currentUserId, cache) {
+        isLoading = !cache.hasStoriesSnapshot(currentUserId)
         runCatching {
             val ownerStories = repository.listVisibleStories(storyOwnerId = storyOwnerId)
             stories = ownerStories.sortedBy { it.createdAt }
@@ -2490,24 +2502,34 @@ private fun StoryViewerScreen(
     val current = stories.getOrNull(index)
     val canDelete = current?.userId == currentUserId
     val canReact = current != null && current.userId != currentUserId
-    var reactionSummary by remember { mutableStateOf(StoryReactionSummary()) }
+    var reactionSummary by remember(current?.storyId, currentUserId, cache) {
+        mutableStateOf(
+            current?.storyId?.let { cache.readStoryReactionSummary(currentUserId, it) }
+                ?: StoryReactionSummary()
+        )
+    }
     var isLoadingReactions by remember { mutableStateOf(false) }
     var isSavingReaction by remember(current?.storyId) { mutableStateOf(false) }
     var reactionError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(current?.storyId, currentUserId) {
+    LaunchedEffect(current?.storyId, currentUserId, cache) {
         val storyId = current?.storyId
-        reactionSummary = StoryReactionSummary()
+        val cachedSummary = storyId?.let { cache.readStoryReactionSummary(currentUserId, it) }
+        reactionSummary = cachedSummary ?: StoryReactionSummary()
         reactionError = null
         if (storyId == null) {
             isLoadingReactions = false
             return@LaunchedEffect
         }
-        isLoadingReactions = true
+        // Cached reactions can be used instantly; only a cold cache blocks reaction taps.
+        isLoadingReactions = cachedSummary == null
         try {
             val summary = repository.getStoryReactionSummary(storyId, currentUserId)
             if (stories.getOrNull(index)?.storyId == storyId) {
                 reactionSummary = summary
+                withContext(Dispatchers.IO) {
+                    cache.saveStoryReactionSummary(currentUserId, storyId, summary)
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -2543,6 +2565,9 @@ private fun StoryViewerScreen(
                 )
                 if (stories.getOrNull(index)?.storyId == story.storyId) {
                     reactionSummary = updated
+                    withContext(Dispatchers.IO) {
+                        cache.saveStoryReactionSummary(currentUserId, story.storyId, updated)
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -2939,6 +2964,7 @@ private fun StoryViewerScreen(
                             withContext(Dispatchers.IO) {
                                 cache.saveStories(currentUserId, cache.readStories(currentUserId)
                                     .filterNot { it.storyId == current.storyId })
+                                cache.removeStoryReactionSummary(currentUserId, current.storyId)
                                 mediaCache.remove("stories", currentUserId, current.storyId)
                             }
                             index = (index - 1).coerceAtLeast(0)
@@ -3340,6 +3366,9 @@ private fun LiveChatScreen(
     }
     val messagesFlow = remember(repository, chat.id) { repository.observeMessages(chat.id) }
     val messages by messagesFlow.collectAsState(initial = cachedMessages)
+    val cachedCallHistory = remember(cache, userId, chat.id) {
+        cache.readChatCallHistory(userId, chat.id)
+    }
     val callHistoryFlow = remember(callRepository, chat.id, chat.isGroup) {
         if (callRepository != null && !chat.isGroup) {
             callRepository.observeChatCallHistory(chat.id)
@@ -3347,7 +3376,12 @@ private fun LiveChatScreen(
             flowOf(emptyList())
         }
     }
-    val callHistory by callHistoryFlow.collectAsState(initial = emptyList())
+    val callHistory by callHistoryFlow.collectAsState(initial = cachedCallHistory)
+    LaunchedEffect(cache, userId, chat.id, callHistory) {
+        withContext(Dispatchers.IO) {
+            cache.saveChatCallHistory(userId, chat.id, callHistory)
+        }
+    }
     var peerUserId by remember(repository, chat.id, userId) { mutableStateOf(chat.peerUserId) }
     var peerAvatarUrl by remember(repository, chat.id, userId) { mutableStateOf(chat.peerAvatarUrl) }
     LaunchedEffect(repository, chat.id, userId, chat.isGroup, chat.peerUserId, chat.peerAvatarUrl) {
@@ -3390,13 +3424,25 @@ private fun LiveChatScreen(
             }
         }
     }
+    val cachedReceipts = remember(cache, userId, chat.id) {
+        cache.readMessageReceipts(userId, chat.id)
+    }
     val receiptsFlow = remember(repository, chat.id) { repository.observeMessageReceipts(chat.id) }
-    val receipts by receiptsFlow.collectAsState(initial = emptyList())
+    val receipts by receiptsFlow.collectAsState(initial = cachedReceipts)
+    LaunchedEffect(cache, userId, chat.id, receipts) {
+        withContext(Dispatchers.IO) { cache.saveMessageReceipts(userId, chat.id, receipts) }
+    }
 
+    val cachedMessageReactions = remember(cache, userId, chat.id) {
+        cache.readMessageReactions(userId, chat.id)
+    }
     val messageReactionsFlow = remember(repository, chat.id) {
         repository.observeMessageReactions(chat.id)
     }
-    val messageReactionRows by messageReactionsFlow.collectAsState(initial = emptyList())
+    val messageReactionRows by messageReactionsFlow.collectAsState(initial = cachedMessageReactions)
+    LaunchedEffect(cache, userId, chat.id, messageReactionRows) {
+        withContext(Dispatchers.IO) { cache.saveMessageReactions(userId, chat.id, messageReactionRows) }
+    }
     val reactionSummaries = remember(messageReactionRows, userId) {
         summarizeMessageReactions(
             messageReactionRows.map { row ->
@@ -3536,13 +3582,17 @@ private fun LiveChatScreen(
     var notificationMuteBusy by remember(chat.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var scheduledMessages by remember(chat.id) {
-        mutableStateOf<List<FaceVideoScheduledMessage>>(emptyList())
+    var scheduledMessages by remember(chat.id, cache, userId) {
+        mutableStateOf(cache.readScheduledMessages(userId, chat.id))
     }
     var showScheduledMessages by remember(chat.id) { mutableStateOf(false) }
 
     suspend fun reloadScheduledMessages() {
-        scheduledMessages = repository.listScheduledMessages(chat.id)
+        val loaded = repository.listScheduledMessages(chat.id)
+        scheduledMessages = loaded
+        withContext(Dispatchers.IO) {
+            cache.saveScheduledMessages(userId, chat.id, loaded)
+        }
     }
 
     fun openScheduledMessages() {
@@ -3550,12 +3600,10 @@ private fun LiveChatScreen(
             Toast.makeText(context, "Отложенные сообщения пока доступны в «Общих».", Toast.LENGTH_SHORT).show()
             return
         }
+        showScheduledMessages = true
         scope.launch {
-            runCatching { repository.listScheduledMessages(chat.id) }
-                .onSuccess {
-                    scheduledMessages = it
-                    showScheduledMessages = true
-                }
+            runCatching { reloadScheduledMessages() }
+                .onSuccess { showScheduledMessages = true }
                 .onFailure {
                     Toast.makeText(
                         context,
@@ -3677,11 +3725,10 @@ private fun LiveChatScreen(
         }
     }
 
-    LaunchedEffect(repository, chat.id) {
-        runCatching { repository.listScheduledMessages(chat.id) }
-            .onSuccess { scheduledMessages = it }
+    LaunchedEffect(repository, chat.id, userId, cache) {
+        runCatching { reloadScheduledMessages() }
             .onFailure {
-                android.util.Log.w("ArturChatScheduled", "Could not load scheduled messages", it)
+                android.util.Log.w("ArturChatScheduled", "Could not refresh scheduled messages", it)
             }
     }
     val voiceRecorder = remember(chat.id) { ChatVoiceRecorder(context.cacheDir) }
@@ -4027,6 +4074,7 @@ private fun LiveChatScreen(
     if (chat.isGroup && showGroupManagement) {
         GroupManagementScreen(
             repository = repository,
+            cache = cache,
             userId = userId,
             chatId = chat.id,
             onDismiss = { showGroupManagement = false },
@@ -4036,6 +4084,7 @@ private fun LiveChatScreen(
     } else if (chat.isGroup && showGroupTopics) {
         GroupTopicsScreen(
             repository = repository,
+            cache = cache,
             userId = userId,
             chatId = chat.id,
             groupTitle = chat.title,
@@ -8057,17 +8106,22 @@ private fun CallHistoryFilterTab(
 @Composable
 private fun CallsScreen(
     repository: SupabaseCallRepository?,
+    cache: ArturChatLocalCache,
     userId: String?,
     onOpenProfile: (String) -> Unit
 ) {
-    var calls by remember(userId) { mutableStateOf<List<FaceVideoCall>>(emptyList()) }
-    var profiles by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
-    var isLoading by remember(userId) { mutableStateOf(repository != null && userId != null) }
+    val cachedCalls = remember(cache, userId) { userId?.let(cache::readCalls).orEmpty() }
+    val cachedProfiles = remember(cache, userId) { userId?.let(cache::readCallProfiles).orEmpty() }
+    var calls by remember(userId, cache) { mutableStateOf(cachedCalls) }
+    var profiles by remember(userId, cache) { mutableStateOf(cachedProfiles) }
+    var isLoading by remember(userId, cache) {
+        mutableStateOf(repository != null && userId != null && !cache.hasCallsSnapshot(userId))
+    }
     var selectedFilter by remember(userId) { mutableStateOf(CallHistoryFilter.ALL) }
     var errorMessage by remember(userId) { mutableStateOf<String?>(null) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
 
-    LaunchedEffect(repository, userId, refreshKey) {
+    LaunchedEffect(repository, userId, refreshKey, cache) {
         val currentRepository = repository
         val currentUserId = userId
         if (currentRepository == null || currentUserId == null) {
@@ -8088,9 +8142,13 @@ private fun CallsScreen(
             val loadedProfiles = currentRepository.getProfiles(peerIds)
             calls = loadedCalls
             profiles = loadedProfiles
+            withContext(Dispatchers.IO) {
+                cache.saveCalls(currentUserId, loadedCalls)
+                cache.saveCallProfiles(currentUserId, loadedProfiles.values)
+            }
         }.onFailure {
-            errorMessage = it.message ?: "Не удалось загрузить историю звонков."
-            android.util.Log.w("ArturChatCalls", "Could not load call history", it)
+            if (calls.isEmpty()) errorMessage = it.message ?: "Не удалось загрузить историю звонков."
+            android.util.Log.w("ArturChatCalls", "Could not refresh call history; keeping local cache", it)
         }
         isLoading = false
     }
@@ -8383,14 +8441,17 @@ private enum class FriendsSection { FRIENDS, REQUESTS }
 @Composable
 private fun FriendsScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     onlineUserIds: Set<String>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     onOpenProfile: (String) -> Unit
 ) {
-    var relationships by remember(userId) { mutableStateOf<List<com.facevideo.app.data.FaceVideoFriendship>>(emptyList()) }
-    var people by remember(userId) { mutableStateOf<Map<String, FaceVideoProfile>>(emptyMap()) }
-    var isLoading by remember(userId) { mutableStateOf(true) }
+    val cachedRelationships = remember(cache, userId) { cache.readFriendships(userId) }
+    val cachedPeople = remember(cache, userId) { cache.readFriendProfiles(userId) }
+    var relationships by remember(userId, cache) { mutableStateOf(cachedRelationships) }
+    var people by remember(userId, cache) { mutableStateOf(cachedPeople) }
+    var isLoading by remember(userId, cache) { mutableStateOf(!cache.hasFriendshipsSnapshot(userId)) }
     var refreshKey by remember(userId) { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
     var selectedSection by remember { mutableStateOf(FriendsSection.FRIENDS) }
@@ -8399,22 +8460,27 @@ private fun FriendsScreen(
     var busyUserId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(repository, userId, refreshKey) {
-        isLoading = true
+    LaunchedEffect(repository, userId, refreshKey, cache) {
+        isLoading = relationships.isEmpty() && people.isEmpty()
         errorMessage = null
         runCatching {
             val loaded = repository.listMyFriendships(userId)
             val relatedIds = loaded.map { row ->
                 if (row.userLow == userId) row.userHigh else row.userLow
             }.distinct()
-            val loadedProfiles = mutableMapOf<String, FaceVideoProfile>()
-            relatedIds.forEach { id ->
-                repository.getProfile(id)?.let { loadedProfiles[id] = it }
-            }
+            val loadedProfiles = repository.listProfiles(relatedIds).associateBy { it.id }
             relationships = loaded
             people = loadedProfiles
+            withContext(Dispatchers.IO) {
+                cache.saveFriendships(userId, loaded)
+                cache.saveFriendProfiles(userId, loadedProfiles.values)
+            }
         }.onFailure {
-            errorMessage = it.message ?: "Не удалось загрузить друзей."
+            if (relationships.isEmpty() && people.isEmpty()) {
+                errorMessage = it.message ?: "Не удалось загрузить друзей."
+            } else {
+                android.util.Log.w("ArturChatFriends", "Could not refresh friends cache", it)
+            }
         }
         isLoading = false
     }
@@ -8858,9 +8924,10 @@ private fun ProfileScreen(
     var showPrivacyInfo by remember { mutableStateOf(false) }
     var showAppearanceInfo by remember { mutableStateOf(false) }
     var showDevicesInfo by remember { mutableStateOf(false) }
-    var friendCount by remember(userId) { mutableStateOf<Int?>(null) }
-    var storyCount by remember(userId) { mutableStateOf<Int?>(null) }
-    var groupCount by remember(userId) { mutableStateOf<Int?>(null) }
+    val cachedOwnStats = remember(cache, userId) { userId?.let { cache.readProfileStats(it, it) } }
+    var friendCount by remember(userId, cache) { mutableStateOf(cachedOwnStats?.friendCount) }
+    var storyCount by remember(userId, cache) { mutableStateOf(cachedOwnStats?.storyCount) }
+    var groupCount by remember(userId, cache) { mutableStateOf(cachedOwnStats?.groupCount) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val profileScrollState = rememberScrollState()
@@ -8870,42 +8937,35 @@ private fun ProfileScreen(
         val currentUserId = userId
         if (currentRepository != null && currentUserId != null) {
             isLoading = profile == null
-            runCatching { currentRepository.getMyProfile(currentUserId) }
-                .onSuccess { loaded ->
-                    profile = loaded
-                    if (loaded != null) cache.saveProfile(currentUserId, loaded)
-                    if (loaded != null) {
-                        username = loaded.username
-                        displayName = loaded.displayName
-                        statusText = loaded.statusText
-                        about = loaded.about
-                    }
-                    if (loaded == null && profile == null) errorMessage = "Профиль пока не найден."
+            val (profileResult, statsResult) = coroutineScope {
+                val profileRequest = async { runCatching { currentRepository.getMyProfile(currentUserId) } }
+                val statsRequest = async { runCatching { currentRepository.getProfileStats(currentUserId) } }
+                profileRequest.await() to statsRequest.await()
+            }
+            profileResult.onSuccess { loaded ->
+                profile = loaded
+                if (loaded != null) cache.saveProfile(currentUserId, loaded)
+                if (loaded != null) {
+                    username = loaded.username
+                    displayName = loaded.displayName
+                    statusText = loaded.statusText
+                    about = loaded.about
                 }
-                .onFailure {
-                    errorMessage = it.message ?: "Не удалось обновить профиль."
-                    android.util.Log.w("ArturChatProfile", "Could not refresh own profile", it)
-                }
-            // Show the profile as soon as its own data is ready; social counters refresh independently.
+                if (loaded == null && profile == null) errorMessage = "Профиль пока не найден."
+            }.onFailure {
+                errorMessage = it.message ?: "Не удалось обновить профиль."
+                android.util.Log.w("ArturChatProfile", "Could not refresh own profile", it)
+            }
             isLoading = false
-            runCatching {
-                friendCount = currentRepository.listMyFriendships(currentUserId)
-                    .count { it.status == "accepted" }
+            statsResult.onSuccess { stats ->
+                friendCount = stats.friendCount
+                storyCount = stats.storyCount
+                groupCount = stats.groupCount
+                withContext(Dispatchers.IO) {
+                    cache.saveProfileStats(currentUserId, currentUserId, stats)
+                }
             }.onFailure {
-                android.util.Log.w("ArturChatProfile", "Could not load profile friend count", it)
-            }
-            runCatching {
-                storyCount = currentRepository.listVisibleStories(
-                    storyOwnerId = currentUserId,
-                    includeMediaUrls = false
-                ).size
-            }.onFailure {
-                android.util.Log.w("ArturChatProfile", "Could not load profile story count", it)
-            }
-            runCatching {
-                groupCount = currentRepository.listMyChats(currentUserId).count { it.isGroup }
-            }.onFailure {
-                android.util.Log.w("ArturChatProfile", "Could not load profile group count", it)
+                android.util.Log.w("ArturChatProfile", "Could not refresh profile counters", it)
             }
         }
     }
@@ -10170,9 +10230,11 @@ private fun UserProfileScreen(
     onOpenChat: (FaceVideoChatSummary) -> Unit
 ) {
     val cachedProfile = remember(cache, userId, currentUserId) { cache.readProfile(currentUserId, userId) }
+    val cachedFriendship = remember(cache, userId, currentUserId) { cache.readFriendship(currentUserId, userId) }
+    val cachedProfileStats = remember(cache, userId, currentUserId) { cache.readProfileStats(currentUserId, userId) }
     var profile by remember(userId, currentUserId, cache) { mutableStateOf(cachedProfile) }
-    var friendship by remember(userId, currentUserId) { mutableStateOf<com.facevideo.app.data.FaceVideoFriendship?>(null) }
-    var profileStats by remember(userId, currentUserId) { mutableStateOf<FaceVideoProfileStats?>(null) }
+    var friendship by remember(userId, currentUserId, cache) { mutableStateOf(cachedFriendship) }
+    var profileStats by remember(userId, currentUserId, cache) { mutableStateOf(cachedProfileStats) }
     var isLoading by remember(userId) { mutableStateOf(cachedProfile == null) }
     var isBusy by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -10182,7 +10244,12 @@ private fun UserProfileScreen(
 
     suspend fun refreshProfileStats() {
         runCatching { repository.getProfileStats(userId) }
-            .onSuccess { profileStats = it }
+            .onSuccess {
+                profileStats = it
+                withContext(Dispatchers.IO) {
+                    cache.saveProfileStats(currentUserId, userId, it)
+                }
+            }
             .onFailure {
                 android.util.Log.w("ArturChatProfile", "Could not load public profile counters", it)
             }
@@ -10190,18 +10257,40 @@ private fun UserProfileScreen(
 
     LaunchedEffect(repository, userId, currentUserId, cache) {
         isLoading = profile == null
-        runCatching {
-            val loadedProfile = repository.getProfile(userId)
+        val (profileResult, friendshipResult, statsResult) = coroutineScope {
+            val profileRequest = async { runCatching { repository.getProfile(userId) } }
+            val friendshipRequest = async { runCatching { repository.getFriendshipWith(currentUserId, userId) } }
+            val statsRequest = async { runCatching { repository.getProfileStats(userId) } }
+            Triple(profileRequest.await(), friendshipRequest.await(), statsRequest.await())
+        }
+        profileResult.onSuccess { loadedProfile ->
             if (loadedProfile != null) {
                 profile = loadedProfile
-                cache.saveProfile(currentUserId, loadedProfile)
+                withContext(Dispatchers.IO) {
+                    cache.saveProfile(currentUserId, loadedProfile)
+                }
             }
-            friendship = repository.getFriendshipWith(currentUserId, userId)
         }.onFailure {
             errorMessage = it.message ?: "Не удалось загрузить профиль."
             android.util.Log.w("ArturChatProfile", "Could not refresh user profile; keeping local cache", it)
         }
-        refreshProfileStats()
+        friendshipResult.onSuccess { loadedFriendship ->
+            friendship = loadedFriendship
+            withContext(Dispatchers.IO) {
+                cache.saveFriendship(currentUserId, userId, loadedFriendship)
+            }
+        }.onFailure {
+            errorMessage = it.message ?: "Не удалось обновить статус дружбы."
+            android.util.Log.w("ArturChatProfile", "Could not refresh friendship state", it)
+        }
+        statsResult.onSuccess { stats ->
+            profileStats = stats
+            withContext(Dispatchers.IO) {
+                cache.saveProfileStats(currentUserId, userId, stats)
+            }
+        }.onFailure {
+            android.util.Log.w("ArturChatProfile", "Could not load public profile counters", it)
+        }
         isLoading = false
     }
 
@@ -10211,6 +10300,9 @@ private fun UserProfileScreen(
             runCatching { repository.getFriendshipWith(currentUserId, userId) }
                 .onSuccess {
                     friendship = it
+                    withContext(Dispatchers.IO) {
+                        cache.saveFriendship(currentUserId, userId, it)
+                    }
                     refreshProfileStats()
                 }
                 .onFailure { errorMessage = it.message ?: "Не удалось обновить статус дружбы." }

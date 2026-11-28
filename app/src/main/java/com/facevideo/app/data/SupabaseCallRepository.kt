@@ -8,6 +8,8 @@ import io.github.jan.supabase.functions.functions
 import io.ktor.client.call.body
 import io.github.jan.supabase.realtime.selectAsFlow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -159,19 +161,25 @@ class SupabaseCallRepository(private val client: SupabaseClient) {
             .decodeList<FaceVideoCall>()
             .firstOrNull()
 
-    suspend fun listMyCalls(userId: String): List<FaceVideoCall> {
-        val outgoing = client.from("face_video_calls").select {
-            filter { eq("caller_id", userId) }
-            order("created_at", Order.DESCENDING)
-        }.decodeList<FaceVideoCall>()
-        val incoming = client.from("face_video_calls").select {
-            filter { eq("callee_id", userId) }
-            order("created_at", Order.DESCENDING)
-        }.decodeList<FaceVideoCall>()
+    suspend fun listMyCalls(userId: String): List<FaceVideoCall> = coroutineScope {
+        // Both participant queries are independent and authorized by calls-table RLS.
+        // Fetch them concurrently so the history screen waits for one network round trip.
+        val outgoingRequest = async {
+            client.from("face_video_calls").select {
+                filter { eq("caller_id", userId) }
+                order("created_at", Order.DESCENDING)
+            }.decodeList<FaceVideoCall>()
+        }
+        val incomingRequest = async {
+            client.from("face_video_calls").select {
+                filter { eq("callee_id", userId) }
+                order("created_at", Order.DESCENDING)
+            }.decodeList<FaceVideoCall>()
+        }
+        val outgoing = outgoingRequest.await()
+        val incoming = incomingRequest.await()
 
-        // Both participant queries are authorized by the calls table RLS.
-        // Merge them by id and keep the newest history entries first.
-        return (outgoing + incoming)
+        (outgoing + incoming)
             .distinctBy { it.id }
             .sortedByDescending { it.createdAt }
             .take(100)

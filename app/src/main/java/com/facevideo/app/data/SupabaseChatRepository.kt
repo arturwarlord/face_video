@@ -90,6 +90,7 @@ data class FaceVideoChannel(
     @SerialName("updated_at") val updatedAt: String? = null
 )
 
+@Serializable
 data class FaceVideoChannelEntry(
     val channel: FaceVideoChannel,
     val isSubscribed: Boolean
@@ -107,6 +108,7 @@ data class FaceVideoChannelMember(
     @SerialName("can_publish_posts") val canPublishPosts: Boolean = false
 )
 
+@Serializable
 data class FaceVideoChannelMemberProfile(
     val member: FaceVideoChannelMember,
     val profile: FaceVideoProfile?
@@ -316,6 +318,7 @@ data class FaceVideoGroupMember(
     @SerialName("can_remove_users") val canRemoveUsers: Boolean = false
 )
 
+@Serializable
 data class FaceVideoGroupMemberProfile(
     val member: FaceVideoGroupMember,
     val profile: FaceVideoProfile?

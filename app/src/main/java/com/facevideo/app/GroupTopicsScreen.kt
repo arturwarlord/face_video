@@ -46,8 +46,13 @@ import androidx.compose.ui.unit.sp
 import com.facevideo.app.data.FaceVideoGroupTopic
 import com.facevideo.app.data.GroupTopicDestination
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatLocalCache
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val TopicAccent = Color(0xFF5369DC)
 private val TopicText = Color(0xFF202936)
@@ -57,16 +62,28 @@ private val TopicBorder = Color(0xFFE2E7F0)
 @Composable
 internal fun GroupTopicsScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     chatId: String,
     groupTitle: String,
     onDismiss: () -> Unit,
     onOpenTopic: (GroupTopicDestination) -> Unit
 ) {
-    var topics by remember(chatId) { mutableStateOf<List<FaceVideoGroupTopic>>(emptyList()) }
-    var isLoading by remember(chatId) { mutableStateOf(true) }
+    val cachedTopics = remember(cache, userId, chatId) { cache.readGroupTopics(userId, chatId) }
+    val cachedMyMembership = remember(cache, userId, chatId) {
+        cache.readGroupMembers(userId, chatId).firstOrNull { it.member.userId == userId }?.member
+    }
+    var topics by remember(chatId, cache) { mutableStateOf(cachedTopics) }
+    var isLoading by remember(chatId, cache, userId) {
+        mutableStateOf(!cache.hasGroupTopicsSnapshot(userId, chatId))
+    }
     var isBusy by remember { mutableStateOf(false) }
-    var canManageTopics by remember(chatId, userId) { mutableStateOf(false) }
+    var canManageTopics by remember(chatId, userId) {
+        mutableStateOf(
+            cachedMyMembership?.role == "owner" ||
+                (cachedMyMembership?.role == "admin" && cachedMyMembership.canChangeInfo)
+        )
+    }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var editingTopic by remember { mutableStateOf<FaceVideoGroupTopic?>(null) }
@@ -78,27 +95,42 @@ internal fun GroupTopicsScreen(
         topics = repository.listGroupTopics(chatId)
     }
 
-    LaunchedEffect(repository, chatId, userId) {
-        isLoading = true
+    LaunchedEffect(repository, chatId, userId, cache) {
+        isLoading = topics.isEmpty()
         errorMessage = null
-        runCatching {
-            val loadedTopics = repository.listGroupTopics(chatId)
-            val membership = repository.listGroupMembers(chatId)
-                .firstOrNull { it.member.userId == userId }?.member
+        try {
+            val (loadedTopics, loadedMembers) = coroutineScope {
+                val topicsRequest = async { repository.listGroupTopics(chatId) }
+                val membersRequest = async { repository.listGroupMembers(chatId) }
+                topicsRequest.await() to membersRequest.await()
+            }
+            val membership = loadedMembers.firstOrNull { it.member.userId == userId }?.member
             canManageTopics = membership?.role == "owner" ||
                 (membership?.role == "admin" && membership.canChangeInfo)
-            loadedTopics
-        }.onSuccess {
-            topics = it
-        }.onFailure {
-            errorMessage = it.message ?: "Не удалось загрузить темы группы."
+            topics = loadedTopics
+            withContext(Dispatchers.IO) {
+                cache.saveGroupTopics(userId, chatId, loadedTopics)
+                cache.saveGroupMembers(userId, chatId, loadedMembers)
+            }
+        } catch (error: Exception) {
+            if (topics.isEmpty()) errorMessage = error.message ?: "Не удалось загрузить темы группы."
+            else android.util.Log.w("ArturChatGroupTopics", "Could not refresh cached topics", error)
+        } finally {
+            isLoading = false
         }
-        isLoading = false
+    }
+    LaunchedEffect(cache, userId, chatId, topics) {
+        withContext(Dispatchers.IO) { cache.saveGroupTopics(userId, chatId, topics) }
     }
 
     val topicUpdates = remember(repository, chatId) { repository.observeGroupTopics(chatId) }
-    LaunchedEffect(topicUpdates) {
-        topicUpdates.collect { topics = it }
+    LaunchedEffect(topicUpdates, cache, userId, chatId) {
+        topicUpdates.collect { updatedTopics ->
+            topics = updatedTopics
+            withContext(Dispatchers.IO) {
+                cache.saveGroupTopics(userId, chatId, updatedTopics)
+            }
+        }
     }
 
     Column(

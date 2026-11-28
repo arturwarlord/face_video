@@ -51,7 +51,10 @@ import com.facevideo.app.data.FaceVideoChannel
 import com.facevideo.app.data.FaceVideoChannelMemberProfile
 import com.facevideo.app.data.FaceVideoProfile
 import com.facevideo.app.data.SupabaseChatRepository
+import com.facevideo.app.data.ArturChatLocalCache
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val ChannelPanelAccent = Color(0xFF5369DC)
 private val ChannelPanelAccentDark = Color(0xFF4054C5)
@@ -64,14 +67,20 @@ private val ChannelPanelDanger = Color(0xFFB45F6D)
 @Composable
 internal fun ChannelManagementScreen(
     repository: SupabaseChatRepository,
+    cache: ArturChatLocalCache,
     userId: String,
     channel: FaceVideoChannel,
     onDismiss: () -> Unit,
     onEditChannel: () -> Unit,
     onChannelChanged: () -> Unit
 ) {
-    var members by remember(channel.id) { mutableStateOf<List<FaceVideoChannelMemberProfile>>(emptyList()) }
-    var isLoading by remember(channel.id) { mutableStateOf(true) }
+    val cachedMembers = remember(cache, userId, channel.id) {
+        cache.readChannelMembers(userId, channel.id)
+    }
+    var members by remember(channel.id, cache) { mutableStateOf(cachedMembers) }
+    var isLoading by remember(channel.id, cache, userId) {
+        mutableStateOf(!cache.hasChannelMembersSnapshot(userId, channel.id))
+    }
     var isBusy by remember { mutableStateOf(false) }
     var refreshKey by remember(channel.id) { mutableStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -82,13 +91,22 @@ internal fun ChannelManagementScreen(
     var avatarPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(repository, channel.id, refreshKey) {
-        isLoading = true
+    LaunchedEffect(repository, channel.id, refreshKey, cache, userId) {
+        isLoading = members.isEmpty()
         errorMessage = null
         runCatching { repository.listChannelMembers(channel.id) }
-            .onSuccess { members = it }
-            .onFailure { errorMessage = it.message ?: "Не удалось загрузить участников канала." }
+            .onSuccess {
+                members = it
+                withContext(Dispatchers.IO) { cache.saveChannelMembers(userId, channel.id, it) }
+            }
+            .onFailure {
+                if (members.isEmpty()) errorMessage = it.message ?: "Не удалось загрузить участников канала."
+                else android.util.Log.w("ArturChatChannels", "Could not refresh cached channel members", it)
+            }
         isLoading = false
+    }
+    LaunchedEffect(cache, userId, channel.id, members) {
+        withContext(Dispatchers.IO) { cache.saveChannelMembers(userId, channel.id, members) }
     }
 
     val myMembership = members.firstOrNull { it.member.userId == userId }?.member
