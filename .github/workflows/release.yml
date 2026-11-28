@@ -213,7 +213,7 @@ jobs:
                   break
           if selected is None:
               selected = (
-                  f"Технический выпуск A-Chat {version}.\\n\\n"
+                  f"Технический выпуск A-Chat {version}.\n\n"
                   "Сборка обновлена; подробности изменений доступны в истории коммитов репозитория."
               )
           fixed = (
