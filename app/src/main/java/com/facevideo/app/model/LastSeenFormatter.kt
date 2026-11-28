@@ -21,7 +21,7 @@ internal fun formatLastSeenAt(
     val localLastSeen = lastSeen.atZone(zoneId)
     val today = now.atZone(zoneId).toLocalDate()
     val lastSeenDate = localLastSeen.toLocalDate()
-    val time = DateTimeFormatter.ofPattern("HH:mm", Locale("ru")).format(localLastSeen)
+    val time = DateTimeFormatter.ofPattern("HH:mm", Locale.forLanguageTag("ru")).format(localLastSeen)
     val ageSeconds = if (lastSeen.isAfter(now)) Long.MAX_VALUE
         else Duration.between(lastSeen, now).seconds
 
@@ -30,11 +30,11 @@ internal fun formatLastSeenAt(
         lastSeenDate == today -> "был(а) сегодня в $time"
         lastSeenDate == today.minusDays(1) -> "был(а) вчера в $time"
         lastSeenDate.year == today.year -> {
-            val date = DateTimeFormatter.ofPattern("d MMMM", Locale("ru")).format(localLastSeen)
+            val date = DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru")).format(localLastSeen)
             "был(а) $date в $time"
         }
         else -> {
-            val date = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale("ru")).format(localLastSeen)
+            val date = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.forLanguageTag("ru")).format(localLastSeen)
             "был(а) $date в $time"
         }
     }

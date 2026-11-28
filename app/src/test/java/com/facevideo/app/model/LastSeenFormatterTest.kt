@@ -36,7 +36,7 @@ class LastSeenFormatterTest {
     @Test
     fun olderHeartbeatIncludesCalendarDateAndTime() {
         assertEquals(
-            "был(а) 22.11.2026 в 14:05",
+            "был(а) 22 ноября в 14:05",
             formatLastSeenAt("2026-11-22T14:05:00Z", now, utc)
         )
     }
