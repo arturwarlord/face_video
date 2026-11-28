@@ -77,11 +77,110 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-private val AuthBackground = Color(0xFFF0F3FF)
-private val AuthAccent = Color(0xFF485DD4)
-private val AuthAccentDeep = Color(0xFF3549BE)
-private val AuthMuted = Color(0xFF66749A)
-private val AuthText = Color(0xFF20294F)
+private data class AuthPalette(
+    val primaryText: Color,
+    val secondaryText: Color,
+    val labelText: Color,
+    val inputText: Color,
+    val placeholderText: Color,
+    val accent: Color,
+    val icon: Color,
+    val fieldGradient: List<Color>,
+    val fieldBorder: Color,
+    val buttonGradient: List<Color>,
+    val buttonBorder: Color,
+    val buttonShadow: Color,
+    val switchBackground: Color,
+    val switchBorder: Color,
+    val divider: Color,
+    val successBackground: Color,
+    val successBorder: Color,
+    val successText: Color,
+    val errorBackground: Color,
+    val errorBorder: Color,
+    val errorText: Color,
+    val securityText: Color
+)
+
+@Composable
+private fun currentAuthPalette(): AuthPalette = when {
+    appOrangeChocolateTheme.value -> AuthPalette(
+        primaryText = Color(0xFFFFF1E6),
+        secondaryText = Color(0xFFD8B89F),
+        labelText = Color(0xFFFFD4AF),
+        inputText = Color(0xFFFFF2E7),
+        placeholderText = Color(0xFFC7A58C),
+        accent = Color(0xFFFFA347),
+        icon = Color(0xFFFFBD83),
+        fieldGradient = listOf(Color(0xE6381E10), Color(0xD92A150B), Color(0xE6381E10)),
+        fieldBorder = Color(0xFF81502F),
+        buttonGradient = listOf(Color(0xFFFFB45F), Color(0xFFFF913B), Color(0xFFC85B20)),
+        buttonBorder = Color(0x99FFE0BE),
+        buttonShadow = Color(0x995C260D),
+        switchBackground = Color(0x9B29150B),
+        switchBorder = Color(0xBB9E6843),
+        divider = Color(0xB8E6B994),
+        successBackground = Color(0xD52B4A35),
+        successBorder = Color(0xFF6CB58E),
+        successText = Color(0xFFD8F5E4),
+        errorBackground = Color(0xD553251E),
+        errorBorder = Color(0xFFB86B58),
+        errorText = Color(0xFFFFD8CF),
+        securityText = Color(0xFFD8B89F)
+    )
+    appDarkTheme.value -> AuthPalette(
+        primaryText = Color(0xFFF1F4FB),
+        secondaryText = Color(0xFFB5C1D3),
+        labelText = Color(0xFFD3DDF0),
+        inputText = Color(0xFFF1F4FB),
+        placeholderText = Color(0xFF9AA8BC),
+        accent = Color(0xFFA7B6FF),
+        icon = Color(0xFFA7B6FF),
+        fieldGradient = listOf(Color(0xE9212D40), Color(0xD9182231), Color(0xE9212D40)),
+        fieldBorder = Color(0xFF485873),
+        buttonGradient = listOf(Color(0xFF7187ED), Color(0xFF5269D6), Color(0xFF3E55B8)),
+        buttonBorder = Color(0x997F94D8),
+        buttonShadow = Color(0x883B4C91),
+        switchBackground = Color(0xA51A2535),
+        switchBorder = Color(0xBB53627E),
+        divider = Color(0xB4AAB8D5),
+        successBackground = Color(0xD51D3B33),
+        successBorder = Color(0xFF427F6A),
+        successText = Color(0xFFD1F0E2),
+        errorBackground = Color(0xD5472731),
+        errorBorder = Color(0xFF925465),
+        errorText = Color(0xFFFFD9E0),
+        securityText = Color(0xFFAEBBD0)
+    )
+    else -> AuthPalette(
+        primaryText = Color(0xFF20294F),
+        secondaryText = Color(0xFF56658E),
+        labelText = Color(0xFF263355),
+        inputText = Color(0xFF20294F),
+        placeholderText = Color(0xFF66749A),
+        accent = Color(0xFF485DD4),
+        icon = Color(0xFF2A365F),
+        fieldGradient = listOf(
+            Color.White.copy(alpha = 0.48f),
+            Color(0xFFEAF0FF).copy(alpha = 0.30f),
+            Color.White.copy(alpha = 0.40f)
+        ),
+        fieldBorder = Color.White.copy(alpha = 0.96f),
+        buttonGradient = listOf(Color(0xFF20A8F8), Color(0xFF4E5BE9), Color(0xFF913CF0)),
+        buttonBorder = Color.White.copy(alpha = 0.72f),
+        buttonShadow = Color(0x66485DD4),
+        switchBackground = Color.White.copy(alpha = 0.18f),
+        switchBorder = Color.White.copy(alpha = 0.94f),
+        divider = Color.White.copy(alpha = 0.88f),
+        successBackground = Color(0xCFF0FFF7),
+        successBorder = Color(0xFF9AD7BA),
+        successText = Color(0xFF247B59),
+        errorBackground = Color(0xDDFDF0F4),
+        errorBorder = Color(0xFFE5AAB9),
+        errorText = Color(0xFFAD4C5B),
+        securityText = Color(0xFF52618B)
+    )
+}
 
 @Composable
 fun SupabaseAuthGate(
@@ -101,9 +200,10 @@ fun SupabaseAuthGate(
 
     when (val status = sessionStatus) {
         SessionStatus.Initializing -> {
+            val palette = currentAuthPalette()
             AuthBackdrop {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AuthAccent)
+                    CircularProgressIndicator(color = palette.accent)
                 }
             }
         }
@@ -152,6 +252,8 @@ private fun AuthBackdrop(
 ) {
     val context = LocalContext.current
     val window = remember(context) { context.findActivity()?.window }
+    val isOrange = appOrangeChocolateTheme.value
+    val isBlack = appDarkTheme.value
 
     DisposableEffect(window) {
         val oldSoftInputMode = window?.attributes?.softInputMode
@@ -174,21 +276,71 @@ private fun AuthBackdrop(
     }
 
     Box(Modifier.fillMaxSize()) {
-        if (artwork != null) {
-            Image(
-                bitmap = artwork,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFFB3C8FF), Color(0xFF8975E8), Color(0xFFE2C6F8))
+        when {
+            isOrange -> {
+                // MainActivity already draws the original Orange & Chocolate wallpaper.
+                // Use only a warm translucent scrim so the shared wallpaper stays visible.
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0x66140702),
+                                Color(0x22140702),
+                                Color(0x55140702),
+                                Color(0xAA140702)
+                            )
+                        )
                     )
                 )
-            )
+            }
+            isBlack -> {
+                Box(
+                    Modifier.fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+                            )
+                        )
+                        .drawBehind {
+                            val radius = size.width * 0.92f
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    listOf(Color(0x334F65B7), Color.Transparent),
+                                    center = Offset(size.width * 0.04f, size.height * 0.12f),
+                                    radius = radius
+                                ),
+                                radius = radius,
+                                center = Offset(size.width * 0.04f, size.height * 0.12f)
+                            )
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    listOf(Color(0x22477C9C), Color.Transparent),
+                                    center = Offset(size.width * 0.96f, size.height * 0.82f),
+                                    radius = radius * 0.82f
+                                ),
+                                radius = radius * 0.82f,
+                                center = Offset(size.width * 0.96f, size.height * 0.82f)
+                            )
+                        }
+                )
+            }
+            artwork != null -> {
+                Image(
+                    bitmap = artwork,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+            else -> {
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.linearGradient(
+                            listOf(Color(0xFFB3C8FF), Color(0xFF8975E8), Color(0xFFE2C6F8))
+                        )
+                    )
+                )
+            }
         }
         content()
     }
@@ -245,27 +397,35 @@ private fun SupabaseSignInScreen(
         }
     }
 
+    val palette = currentAuthPalette()
+
     AuthBackdrop {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val screenWidth = maxWidth
-            val screenHeight = maxHeight
-
-            // Wallpaper contains only branding, gradients and wave artwork.
-            // All fields and buttons below are independent live Compose controls; no enclosing card is drawn.
+            val compact = maxHeight < 700.dp
             Column(
                 modifier = Modifier
-                    .offset(x = screenWidth * 0.09f, y = screenHeight * 0.265f)
-                    .size(width = screenWidth * 0.82f, height = screenHeight * 0.68f)
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .widthIn(max = 440.dp)
+                    .padding(horizontal = 28.dp)
                     .imePadding()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = if (compact) 16.dp else 30.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp)
             ) {
                 Text(
-                    if (isRegistration) "Создание аккаунта" else "С возвращением",
-                    color = Color(0xFF20294F),
-                    fontSize = 25.sp,
+                    "A-CHAT",
+                    color = palette.accent,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.ExtraBold,
-                    letterSpacing = (-0.75).sp
+                    letterSpacing = 2.4.sp
+                )
+                Text(
+                    if (isRegistration) "Создание аккаунта" else "С возвращением",
+                    color = palette.primaryText,
+                    fontSize = 27.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.8).sp
                 )
                 Text(
                     if (isRegistration) {
@@ -273,23 +433,24 @@ private fun SupabaseSignInScreen(
                     } else {
                         "Войди, чтобы продолжить общение"
                     },
-                    color = Color(0xFF56658E),
+                    color = palette.secondaryText,
                     fontSize = 13.sp,
-                    lineHeight = 17.sp
+                    lineHeight = 18.sp
                 )
 
-                Spacer(Modifier.height(7.dp))
-                AuthFieldLabel("ЭЛЕКТРОННАЯ ПОЧТА", "mail")
+                Spacer(Modifier.height(5.dp))
+                AuthFieldLabel("ЭЛЕКТРОННАЯ ПОЧТА", "mail", palette)
                 AuthInputField(
                     value = email,
                     onValueChange = { email = it; message = null },
                     placeholder = "name@example.com",
                     keyboardType = KeyboardType.Email,
-                    imeAction = if (isRegistration) ImeAction.Next else ImeAction.Next
+                    imeAction = ImeAction.Next,
+                    palette = palette
                 )
 
                 if (isRegistration) {
-                    AuthFieldLabel("ПСЕВДОНИМ", "user")
+                    AuthFieldLabel("ПСЕВДОНИМ", "user", palette)
                     AuthInputField(
                         value = username,
                         onValueChange = {
@@ -300,7 +461,8 @@ private fun SupabaseSignInScreen(
                         },
                         placeholder = "например, artur_01",
                         keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Next
+                        imeAction = ImeAction.Next,
+                        palette = palette
                     )
                 }
 
@@ -308,13 +470,13 @@ private fun SupabaseSignInScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AuthFieldLabel("ПАРОЛЬ", "lock")
+                    AuthFieldLabel("ПАРОЛЬ", "lock", palette)
                     Spacer(Modifier.weight(1f))
                     Text(
                         if (passwordVisible) "Скрыть" else "Показать",
                         modifier = Modifier.clickable { passwordVisible = !passwordVisible }
                             .padding(horizontal = 5.dp, vertical = 4.dp),
-                        color = Color(0xFF3549BE),
+                        color = palette.accent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -329,44 +491,37 @@ private fun SupabaseSignInScreen(
                         VisualTransformation.None
                     } else {
                         PasswordVisualTransformation()
-                    }
+                    },
+                    palette = palette
                 )
 
                 if (message != null) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (messageIsSuccess) Color(0xCFF0FFF7) else Color(0xDDFDF0F4),
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (messageIsSuccess) palette.successBackground else palette.errorBackground,
                         border = BorderStroke(
                             1.dp,
-                            if (messageIsSuccess) Color(0xFF9AD7BA) else Color(0xFFE5AAB9)
+                            if (messageIsSuccess) palette.successBorder else palette.errorBorder
                         )
                     ) {
                         Text(
                             message.orEmpty(),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                            color = if (messageIsSuccess) Color(0xFF247B59) else Color(0xFFAD4C5B),
-                            fontSize = 10.sp,
-                            lineHeight = 13.sp
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            color = if (messageIsSuccess) palette.successText else palette.errorText,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
                         )
                     }
                 }
 
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(3.dp))
                 Box(
-                    Modifier.fillMaxWidth().height(52.dp)
-                        .shadow(15.dp, RoundedCornerShape(18.dp))
+                    Modifier.fillMaxWidth().height(54.dp)
+                        .shadow(15.dp, RoundedCornerShape(18.dp), ambientColor = palette.buttonShadow, spotColor = palette.buttonShadow)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFF20A8F8), Color(0xFF4E5BE9), Color(0xFF913CF0))
-                            )
-                        )
-                        .border(
-                            1.dp,
-                            Color.White.copy(alpha = 0.66f),
-                            RoundedCornerShape(17.dp)
-                        )
+                        .background(Brush.horizontalGradient(palette.buttonGradient))
+                        .border(1.dp, palette.buttonBorder, RoundedCornerShape(18.dp))
                         .clickable(enabled = !isBusy) { submit() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -378,7 +533,7 @@ private fun SupabaseSignInScreen(
                         )
                     } else {
                         Text(
-                            if (isRegistration) "Создать аккаунт" else "Войти в ArturChat",
+                            if (isRegistration) "Создать аккаунт" else "Войти в A-Chat",
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
@@ -387,36 +542,32 @@ private fun SupabaseSignInScreen(
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         Modifier.weight(1f).height(1.dp)
-                            .background(Color.White.copy(alpha = 0.82f))
+                            .background(palette.divider.copy(alpha = 0.78f))
                     )
                     Text(
                         "ИЛИ",
                         modifier = Modifier.padding(horizontal = 12.dp),
-                        color = Color.White.copy(alpha = 0.96f),
-                        fontSize = 11.sp,
+                        color = palette.secondaryText,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp
+                        letterSpacing = 1.4.sp
                     )
                     Box(
                         Modifier.weight(1f).height(1.dp)
-                            .background(Color.White.copy(alpha = 0.82f))
+                            .background(palette.divider.copy(alpha = 0.78f))
                     )
                 }
 
                 Box(
-                    Modifier.fillMaxWidth().height(47.dp)
+                    Modifier.fillMaxWidth().height(48.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.13f))
-                        .border(
-                            1.2.dp,
-                            Color.White.copy(alpha = 0.94f),
-                            RoundedCornerShape(16.dp)
-                        )
+                        .background(palette.switchBackground)
+                        .border(1.2.dp, palette.switchBorder, RoundedCornerShape(16.dp))
                         .clickable {
                             isRegistration = !isRegistration
                             passwordVisible = false
@@ -426,17 +577,17 @@ private fun SupabaseSignInScreen(
                 ) {
                     Text(
                         if (isRegistration) "Уже есть аккаунт? Войти" else "Создать новый аккаунт",
-                        color = Color.White,
+                        color = palette.primaryText,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AuthLineIcon("shield", Modifier.size(19.dp))
+                    AuthLineIcon("shield", Modifier.size(19.dp), palette.icon)
                     Spacer(Modifier.width(9.dp))
                     Text(
                         if (isRegistration) {
@@ -445,7 +596,7 @@ private fun SupabaseSignInScreen(
                             "Регистрация по email. Номер телефона и платные SMS не используются."
                         },
                         modifier = Modifier.weight(1f),
-                        color = Color(0xFF52618B),
+                        color = palette.securityText,
                         fontSize = 10.sp,
                         lineHeight = 14.sp
                     )
@@ -462,23 +613,16 @@ private fun AuthInputField(
     placeholder: String,
     keyboardType: KeyboardType,
     imeAction: ImeAction,
+    palette: AuthPalette,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = Modifier.fillMaxWidth()
             .height(56.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.30f),
-                        Color(0xFFEAF0FF).copy(alpha = 0.17f),
-                        Color.White.copy(alpha = 0.25f)
-                    )
-                )
-            )
-            .border(1.2.dp, Color.White.copy(alpha = 0.96f), RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(17.dp))
+            .background(Brush.linearGradient(palette.fieldGradient))
+            .border(1.2.dp, palette.fieldBorder, RoundedCornerShape(17.dp))
             .padding(start = 16.dp, end = 12.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -489,18 +633,18 @@ private fun AuthInputField(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 textStyle = TextStyle(
-                    color = AuthText,
+                    color = palette.inputText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 ),
                 keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
                 visualTransformation = visualTransformation,
-                cursorBrush = Brush.verticalGradient(listOf(AuthAccent, Color(0xFF8A63E8))),
+                cursorBrush = Brush.verticalGradient(listOf(palette.accent, palette.accent.copy(alpha = 0.52f))),
                 decorationBox = { innerTextField ->
                     if (value.isEmpty()) {
                         Text(
                             placeholder,
-                            color = Color(0xFF66749A).copy(alpha = 0.92f),
+                            color = palette.placeholderText.copy(alpha = 0.92f),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal
                         )
@@ -517,15 +661,15 @@ private fun AuthInputField(
 }
 
 @Composable
-private fun AuthFieldLabel(value: String, icon: String) {
+private fun AuthFieldLabel(value: String, icon: String, palette: AuthPalette) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        AuthLineIcon(icon, Modifier.size(19.dp))
+        AuthLineIcon(icon, Modifier.size(19.dp), palette.icon)
         Text(
             value,
-            color = Color(0xFF263355),
+            color = palette.labelText,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.15.sp
@@ -534,8 +678,7 @@ private fun AuthFieldLabel(value: String, icon: String) {
 }
 
 @Composable
-private fun AuthLineIcon(kind: String, modifier: Modifier = Modifier) {
-    val iconColor = Color(0xFF2A365F)
+private fun AuthLineIcon(kind: String, modifier: Modifier = Modifier, iconColor: Color = Color(0xFF2A365F)) {
     Canvas(modifier) {
         val stroke = Stroke(width = 1.7.dp.toPx(), cap = StrokeCap.Round)
         val w = size.width

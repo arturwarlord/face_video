@@ -50,7 +50,7 @@ Deno.serve(async (request: Request) => {
   // Supabase Edge Gateway verifies the signed-in user's JWT (verify_jwt=true).
   const authorization = request.headers.get("Authorization") ?? "";
   if (!authorization.startsWith("Bearer ") || authorization.length < 40) {
-    return jsonResponse(401, { error: "A signed-in ArturChat session is required." });
+    return jsonResponse(401, { error: "A signed-in A-Chat session is required." });
   }
 
   try {

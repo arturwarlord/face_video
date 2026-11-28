@@ -49,8 +49,10 @@ internal data class AvailableRelease(
 internal object ReleaseUpdater {
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/arturwarlord/face_video/releases/latest"
-    private const val APK_ASSET_NAME = "ArturChat.apk"
-    private const val CHECKSUM_ASSET_NAME = "ArturChat.apk.sha256"
+    private const val APK_ASSET_NAME = "A-Chat.apk"
+    private const val CHECKSUM_ASSET_NAME = "A-Chat.apk.sha256"
+    private const val LEGACY_APK_ASSET_NAME = "ArturChat.apk"
+    private const val LEGACY_CHECKSUM_ASSET_NAME = "ArturChat.apk.sha256"
 
     suspend fun findUpdate(): AvailableRelease? = withContext(Dispatchers.IO) {
         val response = getText(LATEST_RELEASE_URL)
@@ -68,6 +70,8 @@ internal object ReleaseUpdater {
             when (asset.optString("name")) {
                 APK_ASSET_NAME -> apkUrl = asset.optString("browser_download_url")
                 CHECKSUM_ASSET_NAME -> checksumUrl = asset.optString("browser_download_url")
+                LEGACY_APK_ASSET_NAME -> if (apkUrl.isNullOrBlank()) apkUrl = asset.optString("browser_download_url")
+                LEGACY_CHECKSUM_ASSET_NAME -> if (checksumUrl.isNullOrBlank()) checksumUrl = asset.optString("browser_download_url")
             }
         }
 
@@ -97,7 +101,7 @@ internal object ReleaseUpdater {
         if (!updateDirectory.exists() && !updateDirectory.mkdirs()) {
             throw IOException("Не удалось подготовить папку для обновления.")
         }
-        val apkFile = File(updateDirectory, "ArturChat-update.apk")
+        val apkFile = File(updateDirectory, "A-Chat-update.apk")
         downloadFile(release.apkUrl, apkFile, onProgress)
 
         val actualHash = sha256(apkFile)
@@ -141,7 +145,7 @@ internal object ReleaseUpdater {
             connectTimeout = 15_000
             readTimeout = 30_000
             requestMethod = "GET"
-            setRequestProperty("User-Agent", "ArturChat-Android")
+            setRequestProperty("User-Agent", "A-Chat-Android")
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
         }
@@ -164,7 +168,7 @@ internal object ReleaseUpdater {
                 connectTimeout = 15_000
                 readTimeout = 60_000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "ArturChat-Android")
+                setRequestProperty("User-Agent", "A-Chat-Android")
             }
             try {
                 val status = connection.responseCode
@@ -235,7 +239,7 @@ internal object ReleaseUpdater {
 }
 
 internal class InstallPermissionRequiredException : IOException(
-    "Нужно разрешить ArturChat устанавливать обновления из этого источника."
+    "Нужно разрешить A-Chat устанавливать обновления из этого источника."
 )
 
 private const val ARTURCHAT_OFFICIAL_SITE = "https://arturwarlord.github.io/face_video/"
@@ -324,7 +328,7 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                     onClick = {
                         scope.launch {
                             if (!context.packageManager.canRequestPackageInstalls()) {
-                                errorMessage = "Разреши установку для ArturChat в системных настройках, вернись в приложение и нажми «Обновить» ещё раз."
+                                errorMessage = "Разреши установку для A-Chat в системных настройках, вернись в приложение и нажми «Обновить» ещё раз."
                                 ReleaseUpdater.openInstallPermissionSettings(context)
                                 return@launch
                             }

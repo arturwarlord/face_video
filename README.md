@@ -1,4 +1,4 @@
-# ArturChat
+# A-Chat
 
 **Official website:** https://arturwarlord.github.io/face_video/  
 **Latest Android release:** https://github.com/arturwarlord/face_video/releases/latest
@@ -23,11 +23,11 @@ Android-first internet messenger built with Kotlin, Jetpack Compose and Supabase
 
 ## Supabase project isolation
 
-The legacy NASTOLKA database objects have been removed from the connected Supabase project. The remaining application schema belongs to ArturChat and uses the `face_video_` prefix plus its `face_video_private` helper schema.
+The legacy NASTOLKA database objects have been removed from the connected Supabase project. The remaining application schema belongs to A-Chat and uses the `face_video_` prefix plus its `face_video_private` helper schema.
 
 ## Current backend status
 
-The Android code now targets Supabase. The ArturChat schema is applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`). All NASTOLKA-specific tables, functions, policies, and Realtime publication entries have been removed. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
+The Android code now targets Supabase. The A-Chat schema is applied to the connected Supabase project. Its tables and database functions are namespaced (`face_video_*` and `face_video_private`). All NASTOLKA-specific tables, functions, policies, and Realtime publication entries have been removed. GitHub Actions confirms that `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are available to the build.
 
 The configured chat list and conversation screen use the live repository. Two-account registration, live message exchange, unread counters and read receipts are implemented. The call tables and signaling permissions are applied; audio calls remain available.
 
@@ -43,13 +43,13 @@ The configured chat list and conversation screen use the live repository. Two-ac
 
 ## Connect your Supabase project
 
-1. Open the Supabase project connected to ArturChat.
+1. Open the Supabase project connected to A-Chat.
 2. In **Project Settings → API Keys**, copy the Project URL and the **publishable key** (the key beginning with `sb_publishable_`, or the legacy anon key if your project still uses it).
 3. In GitHub, open **Settings → Secrets and variables → Actions → New repository secret**.
 4. Create:
    - `SUPABASE_URL` — your project URL, e.g. `https://your-project-ref.supabase.co`
    - `SUPABASE_PUBLISHABLE_KEY` — the project's publishable key.
-5. The initial ArturChat schema and foreign-key indexes have already been applied. Keep migration files in sync with the versions `20261031070255` and `20261031070449`.
+5. The initial A-Chat schema and foreign-key indexes have already been applied. Keep migration files in sync with the versions `20261031070255` and `20261031070449`.
 6. In Supabase **Authentication → Providers**, leave Email enabled. Confirm whether email verification should be required before first login.
 7. Realtime is enabled for `public.face_video_messages`; no manual table selection is needed.
 
@@ -70,7 +70,7 @@ The configured chat list and conversation screen use the live repository. Two-ac
 
 ## Push notifications (Firebase Cloud Messaging)
 
-ArturChat contains an Android FCM receiver, per-account device-token registration, and the deployed Supabase Edge Function `send-arturchat-push`. The push delivery path is not active until a Firebase Android config, server FCM key, and two Supabase Database Webhooks are configured.
+A-Chat contains an Android FCM receiver, per-account device-token registration, and the deployed Supabase Edge Function `send-arturchat-push`. The push delivery path is not active until a Firebase Android config, server FCM key, and two Supabase Database Webhooks are configured.
 
 **Current verified status (2026-11-02):** the Supabase push-token table has zero registered devices, and there are no Database Webhooks/trigger calls configured for `face_video_messages` or `face_video_calls`. The Android build previously did not receive `google-services.json`, so it compiled with FCM registration disabled.
 
@@ -78,7 +78,7 @@ Follow [docs/PUSH_NOTIFICATIONS_SETUP.md](docs/PUSH_NOTIFICATIONS_SETUP.md) for 
 
 The Firebase service-account JSON and webhook secret belong only in Supabase Edge Function Secrets. Never store the service-account private key in GitHub, Android, or the repository. Supabase provides the legacy `SUPABASE_SERVICE_ROLE_KEY` environment variable to hosted Edge Functions; it must never be put in the Android app.
 
-The Edge Function sends new-message notifications to the other members of a chat and incoming-call notifications only to the callee. After setup, open ArturChat on each phone once and sign in so each FCM token is registered. On Android 13+, allow notification permission. Test incoming messages and calls with the app backgrounded (not force-stopped), then test after locking the screen.
+The Edge Function sends new-message notifications to the other members of a chat and incoming-call notifications only to the callee. After setup, open A-Chat on each phone once and sign in so each FCM token is registered. On Android 13+, allow notification permission. Test incoming messages and calls with the app backgrounded (not force-stopped), then test after locking the screen.
 
 **Provider note:** Android push transport uses Google Firebase Cloud Messaging. It does not carry call audio; voice remains direct WebRTC peer-to-peer. If a strict no-Google requirement applies to push too, this provider must be replaced and the compatibility/coverage of an alternative must be assessed separately.
 
@@ -87,36 +87,36 @@ The Edge Function sends new-message notifications to the other members of a chat
 
 The workflow reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` from repository Actions secrets and passes them into Gradle at build time. When these secrets are absent, the app builds in demo mode instead of failing. Never use `service_role` or `sb_secret_...` keys in the mobile app.
 
-Open **Actions → Android build**. On success, download the `arturchat-debug-apk` artifact.
+Open **Actions → Android build**. On success, download the `a-chat-debug-apk` artifact.
 
 Minimum supported Android version: Android 8.0 (API 26).
 
 
-## ArturChat in-app updates
+## A-Chat in-app updates
 
 - The app checks the public GitHub Releases endpoint when it starts.
-- When a newer release exists, ArturChat offers an update inside the app.
+- When a newer release exists, A-Chat offers an update inside the app.
 - The APK is downloaded in the background, SHA-256 checked, then passed to Android Package Installer.
-- Android displays its own final confirmation screen. On first use, the user must allow ArturChat to install updates from this source in Android settings.
+- Android displays its own final confirmation screen. On first use, the user must allow A-Chat to install updates from this source in Android settings.
 - The application ID intentionally remains `com.facevideo.app` to preserve Android installation identity.
 
 ### One-time release signing setup
 
 The release workflow reads the following repository Actions secrets from the private signing setup archive:
 
-- `ARTURCHAT_KEYSTORE_BASE64`
-- `ARTURCHAT_KEYSTORE_PASSWORD`
-- `ARTURCHAT_KEY_ALIAS`
-- `ARTURCHAT_KEY_PASSWORD`
+- `A-CHAT_KEYSTORE_BASE64`
+- `A-CHAT_KEYSTORE_PASSWORD`
+- `A-CHAT_KEY_ALIAS`
+- `A-CHAT_KEY_PASSWORD`
 
 Keep the keystore and passwords backed up privately. Never commit them or include them in an APK.
 
-The first stable release, `v0.4.0`, has already been published. To publish a later release, open **Actions → ArturChat release → Run workflow**, choose the `main` branch, and enter the next semantic version in `release_tag`. The workflow creates the tag, tests the app, verifies the APK signature, calculates its SHA-256 checksum and publishes both assets. The current stable release is `v0.4.3`; the next fix release is planned as `v0.4.4` after Android Actions verification and the two-device call test. Tag pushes also trigger the workflow automatically.
+The first stable release, `v0.4.0`, has already been published. To publish a later release, open **Actions → A-Chat release → Run workflow**, choose the `main` branch, and enter the next semantic version in `release_tag`. The workflow creates the tag, tests the app, verifies the APK signature, calculates its SHA-256 checksum and publishes both assets. The current stable release is `v0.4.3`; the next fix release is planned as `v0.4.4` after Android Actions verification and the two-device call test. Tag pushes also trigger the workflow automatically.
 
 The current GitHub Actions debug APK is for testing only. It is not the signed release channel used by the updater.
 
-**Important:** the first release signed with the new permanent key cannot update an already-installed APK signed with a different temporary debug key. Install the first signed ArturChat release once; all later releases can update over it without manually downloading APK files. Supabase messages are stored online, so they remain on the server, but you may need to sign in again after that one-time change of signing key.
+**Important:** the first release signed with the new permanent key cannot update an already-installed APK signed with a different temporary debug key. Install the first signed A-Chat release once; all later releases can update over it without manually downloading APK files. Supabase messages are stored online, so they remain on the server, but you may need to sign in again after that one-time change of signing key.
 
 The current published stable release is v0.4.3. Release v0.4.4 contains the ICE gathering and Android message-notification fixes; it must still be verified on two physical phones.
 
-The self-hosted updater is intended for direct APK distribution. If ArturChat is later published on Google Play, switch to the Play Core in-app update flow and remove the sideload-only install permission.
+The self-hosted updater is intended for direct APK distribution. If A-Chat is later published on Google Play, switch to the Play Core in-app update flow and remove the sideload-only install permission.

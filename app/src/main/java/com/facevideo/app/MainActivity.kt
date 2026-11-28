@@ -141,12 +141,14 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -236,36 +238,148 @@ import io.github.jan.supabase.realtime.presenceDataFlow
 import io.github.jan.supabase.realtime.track
 import io.github.jan.supabase.realtime.realtime
 
-// ArturChat palette inspired by the supplied pastel sky reference.
-private val AppBackground = Color(0xFFF0F3FF)
-private val Panel = Color(0xFFFAFBFF)
-private val PanelLight = Color(0xFFEDF1FF)
-private val IncomingMessage = Color(0xFFE5EAF6)
-private val AccentSlate = Color(0xFF5266D8)
-private val MainText = Color(0xFF253047)
-private val Muted = Color(0xFF77839A)
-private val PaletteBlush = Color(0xFFE6DFFF)
-private val PaletteSlate = Color(0xFFC8D7F2)
-private val PaletteBlueGray = Color(0xFFD2E3F8)
-private val PaletteMist = Color(0xFFE0E7F6)
-private val AvatarColors = listOf(
-    PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist
-)
+private const val ARTURCHAT_THEME_PREFERENCES = "arturchat_appearance"
+private const val ARTURCHAT_THEME_DARK_KEY = "black_theme_enabled"
+private const val ARTURCHAT_THEME_ORANGE_KEY = "orange_chocolate_theme_enabled"
+internal val appDarkTheme = mutableStateOf(false)
+internal val appOrangeChocolateTheme = mutableStateOf(false)
+private val isDarkAppearance: Boolean
+    get() = appDarkTheme.value || appOrangeChocolateTheme.value
 
-// Inbox-only design tokens. Kept separate from the call/chat surfaces so this
-// visual pass cannot unintentionally restyle the already-working call screens.
-private val InboxBackground = Color(0xFFF2F4FF)
-private val InboxSurface = Color(0xFFFFFFFF)
-private val InboxSurfaceSoft = Color(0xFFE8EBFF)
-private val InboxMessageIncoming = Color(0xFFDDE3EA)
-private val InboxAccent = Color(0xFF5267DB)
-private val InboxAccentStrong = Color(0xFF3F50C9)
-private val InboxPrimary = Color(0xFF202936)
-private val InboxSecondary = Color(0xFF485464)
-private val InboxMuted = Color(0xFF788493)
-private val InboxBorder = Color(0xFFE1E6EC)
-private val InboxOnline = Color(0xFF2F9A72)
-private val InboxDanger = Color(0xFFBE5E67)
+// Three coordinated ArturChat palettes: pastel default, graphite black, and Orange & Chocolate.
+private val AppBackground: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF160802)
+    appDarkTheme.value -> Color(0xFF090D14)
+    else -> Color(0xFFF0F3FF)
+}
+private val Panel: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF281307)
+    appDarkTheme.value -> Color(0xFF151C28)
+    else -> Color(0xFFFAFBFF)
+}
+private val PanelLight: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF3A1C0C)
+    appDarkTheme.value -> Color(0xFF202B3B)
+    else -> Color(0xFFEDF1FF)
+}
+private val IncomingMessage: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF422515)
+    appDarkTheme.value -> Color(0xFF273246)
+    else -> Color(0xFFE5EAF6)
+}
+private val AccentSlate: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFF9B3D)
+    appDarkTheme.value -> Color(0xFF91A4FF)
+    else -> Color(0xFF5266D8)
+}
+private val MainText: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFFF1E6)
+    appDarkTheme.value -> Color(0xFFF1F4FB)
+    else -> Color(0xFF253047)
+}
+private val Muted: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFC7A58C)
+    appDarkTheme.value -> Color(0xFF9AA8BC)
+    else -> Color(0xFF77839A)
+}
+private val PaletteBlush: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF472313)
+    appDarkTheme.value -> Color(0xFF3A304C)
+    else -> Color(0xFFE6DFFF)
+}
+private val PaletteSlate: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF57301A)
+    appDarkTheme.value -> Color(0xFF293B59)
+    else -> Color(0xFFC8D7F2)
+}
+private val PaletteBlueGray: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF673718)
+    appDarkTheme.value -> Color(0xFF263C50)
+    else -> Color(0xFFD2E3F8)
+}
+private val PaletteMist: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF382015)
+    appDarkTheme.value -> Color(0xFF283347)
+    else -> Color(0xFFE0E7F6)
+}
+private val AvatarColors: List<Color> get() = listOf(PaletteBlush, PaletteSlate, PaletteBlueGray, PaletteMist)
+private val ThemeSurface: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF2B160B)
+    appDarkTheme.value -> Color(0xFF192231)
+    else -> Color.White
+}
+private val ThemeSurfaceRaised: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF3A1D0D)
+    appDarkTheme.value -> Color(0xFF202B3A)
+    else -> Color(0xFFFDFEFF)
+}
+private val ThemeBorder: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF654024)
+    appDarkTheme.value -> Color(0xFF344155)
+    else -> Color(0xFFE1E6EC)
+}
+
+// Inbox tokens share the selected appearance and keep the same warm accent hierarchy.
+private val InboxBackground: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF160802)
+    appDarkTheme.value -> Color(0xFF090D14)
+    else -> Color(0xFFF2F4FF)
+}
+private val InboxSurface: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF2B160B)
+    appDarkTheme.value -> Color(0xFF151E2B)
+    else -> Color(0xFFFFFFFF)
+}
+private val InboxSurfaceSoft: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF41200F)
+    appDarkTheme.value -> Color(0xFF222D3F)
+    else -> Color(0xFFE8EBFF)
+}
+private val InboxMessageIncoming: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF3E2416)
+    appDarkTheme.value -> Color(0xFF293548)
+    else -> Color(0xFFDDE3EA)
+}
+private val InboxAccent: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFF9837)
+    appDarkTheme.value -> Color(0xFF8FA4FF)
+    else -> Color(0xFF5267DB)
+}
+private val InboxAccentStrong: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFFB15C)
+    appDarkTheme.value -> Color(0xFFADB9FF)
+    else -> Color(0xFF3F50C9)
+}
+private val InboxPrimary: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFFF1E6)
+    appDarkTheme.value -> Color(0xFFF1F4FB)
+    else -> Color(0xFF202936)
+}
+private val InboxSecondary: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFD8B89F)
+    appDarkTheme.value -> Color(0xFFC3CCDA)
+    else -> Color(0xFF485464)
+}
+private val InboxMuted: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFB7957C)
+    appDarkTheme.value -> Color(0xFF929FB2)
+    else -> Color(0xFF788493)
+}
+private val InboxBorder: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF603A22)
+    appDarkTheme.value -> Color(0xFF303B4E)
+    else -> Color(0xFFE1E6EC)
+}
+private val InboxOnline: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFF75D59A)
+    appDarkTheme.value -> Color(0xFF62C99D)
+    else -> Color(0xFF2F9A72)
+}
+private val InboxDanger: Color get() = when {
+    appOrangeChocolateTheme.value -> Color(0xFFFF8171)
+    appDarkTheme.value -> Color(0xFFF08D98)
+    else -> Color(0xFFBE5E67)
+}
 
 private enum class MainTab(val title: String) {
     CHATS("Чаты"),
@@ -383,21 +497,26 @@ data class CallNotificationAction(
     val nonce: Long
 )
 
-private fun Modifier.arturChatGradientBackground(): Modifier = this
+private fun Modifier.arturChatGradientBackground(): Modifier =
+    if (appOrangeChocolateTheme.value) {
+        // The Orange & Chocolate theme uses the supplied full-screen wallpaper.
+        // Keep section containers transparent so the image remains visible beneath UI.
+        this
+    } else this
     .background(
         Brush.verticalGradient(
-            listOf(
-                Color(0xFFE2DCFF),
-                Color(0xFFE2E9FF),
-                Color(0xFFE8F0FF),
-                Color(0xFFF2F5FF),
-                Color(0xFFE8E9FF)
-            )
+            if (appDarkTheme.value) {
+                listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+            } else {
+                listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF), Color(0xFFE8E9FF))
+            }
         )
     )
     .drawBehind {
         val w = size.width
         val h = size.height
+        val orange = appOrangeChocolateTheme.value
+        val dark = isDarkAppearance
         val glowTopLeft = Offset(-w * 0.10f, h * 0.10f)
         val glowTopRight = Offset(w * 1.02f, h * 0.22f)
         val glowCenter = Offset(w * 0.46f, h * 0.56f)
@@ -406,52 +525,42 @@ private fun Modifier.arturChatGradientBackground(): Modifier = this
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFB49BFF).copy(alpha = 0.58f),
-                    Color(0xFFC9BFFF).copy(alpha = 0.22f),
+                    (when { orange -> Color(0xFFFF842A); dark -> Color(0xFF6660A8); else -> Color(0xFFB49BFF) })
+                        .copy(alpha = when { orange -> 0.22f; dark -> 0.12f; else -> 0.58f }),
+                    (when { orange -> Color(0xFFB84E18); dark -> Color(0xFF4D5E85); else -> Color(0xFFC9BFFF) })
+                        .copy(alpha = when { orange -> 0.08f; dark -> 0.05f; else -> 0.22f }),
                     Color.Transparent
-                ),
-                center = glowTopLeft,
-                radius = w * 0.90f
-            ),
-            radius = w * 0.90f,
-            center = glowTopLeft
+                ), center = glowTopLeft, radius = w * 0.90f
+            ), radius = w * 0.90f, center = glowTopLeft
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFF9BCBFF).copy(alpha = 0.56f),
-                    Color(0xFFB8D9FF).copy(alpha = 0.18f),
+                    (when { orange -> Color(0xFFFFA044); dark -> Color(0xFF3E6388); else -> Color(0xFF9BCBFF) })
+                        .copy(alpha = when { orange -> 0.20f; dark -> 0.10f; else -> 0.56f }),
+                    (when { orange -> Color(0xFF9D4316); dark -> Color(0xFF334967); else -> Color(0xFFB8D9FF) })
+                        .copy(alpha = when { orange -> 0.07f; dark -> 0.04f; else -> 0.18f }),
                     Color.Transparent
-                ),
-                center = glowTopRight,
-                radius = w * 0.82f
-            ),
-            radius = w * 0.82f,
-            center = glowTopRight
+                ), center = glowTopRight, radius = w * 0.82f
+            ), radius = w * 0.82f, center = glowTopRight
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFD0B8FF).copy(alpha = 0.30f),
+                    (when { orange -> Color(0xFF9E4719); dark -> Color(0xFF514274); else -> Color(0xFFD0B8FF) })
+                        .copy(alpha = when { orange -> 0.12f; dark -> 0.08f; else -> 0.30f }),
                     Color.Transparent
-                ),
-                center = glowCenter,
-                radius = w * 0.78f
-            ),
-            radius = w * 0.78f,
-            center = glowCenter
+                ), center = glowCenter, radius = w * 0.78f
+            ), radius = w * 0.78f, center = glowCenter
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    Color(0xFFB8D8FF).copy(alpha = 0.30f),
+                    (when { orange -> Color(0xFF7D310E); dark -> Color(0xFF35516E); else -> Color(0xFFB8D8FF) })
+                        .copy(alpha = when { orange -> 0.10f; dark -> 0.08f; else -> 0.30f }),
                     Color.Transparent
-                ),
-                center = glowBottomLeft,
-                radius = w * 0.70f
-            ),
-            radius = w * 0.70f,
-            center = glowBottomLeft
+                ), center = glowBottomLeft, radius = w * 0.70f
+            ), radius = w * 0.70f, center = glowBottomLeft
         )
     }
 
@@ -460,6 +569,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val appearancePreferences = getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+        appOrangeChocolateTheme.value = appearancePreferences
+            .getBoolean(ARTURCHAT_THEME_ORANGE_KEY, false)
+        appDarkTheme.value = appearancePreferences
+            .getBoolean(ARTURCHAT_THEME_DARK_KEY, false) && !appOrangeChocolateTheme.value
 
         // Android 15+ enforces edge-to-edge for targetSdk 35+. Enable it
         // consistently on older Android versions and let Compose apply safe insets.
@@ -471,21 +586,41 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = !isDarkAppearance
+            isAppearanceLightNavigationBars = !isDarkAppearance
         }
 
         captureCallNotificationAction(intent)
         setContent {
+            val darkTheme = isDarkAppearance
+            SideEffect {
+                WindowInsetsControllerCompat(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
             MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = AccentSlate,
-                    background = AppBackground,
-                    surface = Panel,
-                    onPrimary = Color.White,
-                    onBackground = MainText,
-                    onSurface = MainText
-                )
+                colorScheme = if (darkTheme) {
+                    androidx.compose.material3.darkColorScheme(
+                        primary = AccentSlate,
+                        background = AppBackground,
+                        surface = Panel,
+                        surfaceVariant = PanelLight,
+                        onPrimary = Color.White,
+                        onBackground = MainText,
+                        onSurface = MainText,
+                        onSurfaceVariant = Muted
+                    )
+                } else {
+                    lightColorScheme(
+                        primary = AccentSlate,
+                        background = AppBackground,
+                        surface = Panel,
+                        onPrimary = Color.White,
+                        onBackground = MainText,
+                        onSurface = MainText
+                    )
+                }
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -495,31 +630,38 @@ class MainActivity : ComponentActivity() {
                         Modifier.fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(
-                                        Color(0xFFE2DCFF),
-                                        Color(0xFFE2E9FF),
-                                        Color(0xFFE8F0FF),
-                                        Color(0xFFF2F5FF)
-                                    )
-                                )
-                            )
-                            // Keep the gradient edge-to-edge, but keep all app
-                            // content clear of status/navigation bars and cutouts.
-                            .windowInsetsPadding(WindowInsets.safeDrawing)
-                    ) {
-                        ArturChatUpdateHost {
-                            SupabaseAuthGate { userEmail, userId, onSignOut ->
-                                FaceVideoApp(
-                                    userEmail = userEmail,
-                                    userId = userId,
-                                    onSignOut = onSignOut,
-                                    callNotificationActionFlow = pendingCallNotificationAction,
-                                    onCallNotificationActionHandled = { nonce ->
-                                        if (pendingCallNotificationAction.value?.nonce == nonce) {
-                                            pendingCallNotificationAction.value = null
-                                        }
+                                    when {
+                                        appOrangeChocolateTheme.value -> listOf(Color(0xFF2D1004), Color(0xFF210B03), Color(0xFF130602))
+                                        darkTheme -> listOf(Color(0xFF111827), Color(0xFF0D1420), Color(0xFF090D14))
+                                        else -> listOf(Color(0xFFE2DCFF), Color(0xFFE2E9FF), Color(0xFFE8F0FF), Color(0xFFF2F5FF))
                                     }
                                 )
+                            )
+                    ) {
+                        if (appOrangeChocolateTheme.value) {
+                            Image(
+                                painter = painterResource(id = R.drawable.orange_chocolate_wallpaper),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        // Keep the wallpaper edge-to-edge; only app content respects system insets.
+                        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                            ArturChatUpdateHost {
+                                SupabaseAuthGate { userEmail, userId, onSignOut ->
+                                    FaceVideoApp(
+                                        userEmail = userEmail,
+                                        userId = userId,
+                                        onSignOut = onSignOut,
+                                        callNotificationActionFlow = pendingCallNotificationAction,
+                                        onCallNotificationActionHandled = { nonce ->
+                                            if (pendingCallNotificationAction.value?.nonce == nonce) {
+                                                pendingCallNotificationAction.value = null
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -1044,7 +1186,7 @@ private fun FaceVideoApp(
                     .onFailure { callError = it.message ?: "Не удалось начать звонок." }
             }
         } else if (!granted) {
-            callError = "Для аудиозвонка разреши ArturChat доступ к микрофону."
+            callError = "Для аудиозвонка разреши A-Chat доступ к микрофону."
         }
     }
 
@@ -1281,8 +1423,22 @@ private fun FaceVideoApp(
     }
 
     Column(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(listOf(AppBackground, Color(0xFFE5EAF0), AppBackground))
+        Modifier.fillMaxSize().then(
+            if (appOrangeChocolateTheme.value) {
+                // Let the exact Orange & Chocolate wallpaper from MainActivity
+                // remain visible underneath every tab and the bottom navigation.
+                Modifier
+            } else {
+                Modifier.background(
+                    Brush.verticalGradient(
+                        if (appDarkTheme.value) {
+                            listOf(Color(0xFF0E1520), Color(0xFF090D14), Color(0xFF0E1520))
+                        } else {
+                            listOf(AppBackground, Color(0xFFE5EAF0), AppBackground)
+                        }
+                    )
+                )
+            }
         )
     ) {
         if (activeCall != null && !showActiveCallScreen) {
@@ -1430,7 +1586,13 @@ private fun FaceVideoApp(
                                     userId = userId,
                                     unreadSummaries = unreadSummaries,
                                     onOpenChat = { setOpenedLiveChat(it) },
-                                    onOpenStories = { openedStoriesUserId = it }
+                                    onOpenStories = { openedStoriesUserId = it },
+                                    mutedChatIds = mutedChatIds,
+                                    onNotificationMuteChanged = { chatId, muted ->
+                                        mutedChatIds = if (muted) mutedChatIds + chatId
+                                        else mutedChatIds - chatId
+                                    },
+                                    onOpenProfile = { openedProfileUserId = it }
                                 )
                             } else {
                                 ChatListScreen(onOpenChat = { setOpenedDemoChat(it) })
@@ -1441,6 +1603,7 @@ private fun FaceVideoApp(
                                 GroupsScreen(
                                     repository = liveRepository,
                                     userId = userId,
+                                    isOrangeChocolateTheme = appOrangeChocolateTheme.value,
                                     onOpenGroup = { setOpenedLiveChat(it) }
                                 )
                             } else {
@@ -1528,13 +1691,13 @@ private fun FaceVideoApp(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        if (incomingCall.mediaType == "video") "ArturChat · видеовызов" else "ArturChat · голосовой вызов",
+                        if (incomingCall.mediaType == "video") "A-Chat · видеовызов" else "A-Chat · голосовой вызов",
                         color = Muted,
                         fontSize = 12.sp
                     )
                     if (callError != null) {
                         Spacer(Modifier.height(8.dp))
-                        Text(callError.orEmpty(), color = Color(0xFFA85F6E), fontSize = 11.sp)
+                        Text(callError.orEmpty(), color = InboxDanger, fontSize = 11.sp)
                     }
                 }
             },
@@ -1577,6 +1740,9 @@ private fun LiveChatListScreen(
     unreadSummaries: Map<String, FaceVideoChatUnreadSummary>,
     onOpenChat: (FaceVideoChatSummary) -> Unit,
     onOpenStories: (String) -> Unit,
+    mutedChatIds: Set<String>,
+    onNotificationMuteChanged: (String, Boolean) -> Unit,
+    onOpenProfile: (String) -> Unit,
     contactsMode: Boolean = false
 ) {
     val cachedChats = remember(cache, userId) { cache.readChats(userId) }
@@ -1589,6 +1755,7 @@ private fun LiveChatListScreen(
     var reloadKey by remember { mutableStateOf(0) }
     var revealedChatId by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val latestChats by rememberUpdatedState(chats)
 
     LaunchedEffect(repository, userId) {
@@ -1659,7 +1826,7 @@ private fun LiveChatListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "ARTURCHAT",
+                "A-CHAT",
                 modifier = Modifier.weight(1f),
                 color = InboxAccentStrong.copy(alpha = 0.88f),
                 fontSize = 16.sp,
@@ -1776,7 +1943,7 @@ private fun LiveChatListScreen(
                         }
                         LazyColumn(
                             Modifier.weight(1f),
-                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 16.dp),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 1.dp, bottom = 88.dp),
                             verticalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             items(visibleChats, key = { it.id }) { chat ->
@@ -1785,9 +1952,36 @@ private fun LiveChatListScreen(
                                         chat = chat,
                                         unreadSummary = unreadSummaries[chat.id],
                                         isDeleteRevealed = revealedChatId == chat.id,
+                                        isNotificationsMuted = chat.id in mutedChatIds,
                                         onRevealDelete = { revealedChatId = chat.id },
                                         onHideDelete = { if (revealedChatId == chat.id) revealedChatId = null },
                                         onClick = { openCachedChat(chat) },
+                                        onOpenProfile = { peerId -> onOpenProfile(peerId) },
+                                        onToggleNotifications = { muted ->
+                                            scope.launch {
+                                                runCatching {
+                                                    repository.setChatNotificationsMuted(chat.id, muted)
+                                                }.onSuccess {
+                                                    onNotificationMuteChanged(chat.id, muted)
+                                                    Toast.makeText(
+                                                        context,
+                                                        if (muted) "Уведомления отключены" else "Уведомления включены",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }.onFailure { error ->
+                                                    android.util.Log.w(
+                                                        "ArturChatNotifications",
+                                                        "Could not update chat mute setting from inbox",
+                                                        error
+                                                    )
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Не удалось изменить уведомления",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
                                         onDelete = {
                                             revealedChatId = null
                                             scope.launch {
@@ -1807,8 +2001,8 @@ private fun LiveChatListScreen(
                                             Brush.horizontalGradient(
                                                 listOf(
                                                     Color.Transparent,
-                                                    Color.White.copy(alpha = 0.78f),
-                                                    Color(0xFFD6DDF0).copy(alpha = 0.58f),
+                                                    if (appOrangeChocolateTheme.value) Color(0xFFFFB36B).copy(alpha = 0.44f) else Color.White.copy(alpha = 0.78f),
+                                                    if (appOrangeChocolateTheme.value) Color(0xFF8A4C27).copy(alpha = 0.38f) else Color(0xFFD6DDF0).copy(alpha = 0.58f),
                                                     Color.Transparent
                                                 )
                                             )
@@ -1822,31 +2016,32 @@ private fun LiveChatListScreen(
                 }
             }
 
-        }
-        Surface(
-            color = Color.Transparent,
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 6.dp,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(vertical = 8.dp)
-                .height(50.dp)
-                .clickable { showNewChat = true }
-        ) {
-            Row(
-                Modifier
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
-                        )
-                    )
-                    .padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            Surface(
+                color = Color.Transparent,
+                shape = RoundedCornerShape(28.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp)
+                    .height(50.dp)
+                    .clickable { showNewChat = true }
             ) {
-                NewChatGlyph()
-                Spacer(Modifier.width(10.dp))
-                Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFA33D), Color(0xFFFF8527), Color(0xFFC85A16)) else listOf(Color(0xFF28A8FF), Color(0xFF4E63F0), Color(0xFF9562ED))
+                            )
+                        )
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    NewChatGlyph()
+                    Spacer(Modifier.width(10.dp))
+                    Text("Начать диалог", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -2105,14 +2300,11 @@ private fun StoryAvatarItem(
                     .background(
                         brush = if (hasStory) {
                             Brush.sweepGradient(
-                                listOf(
-                                    Color(0xFFFEDA75),
-                                    Color(0xFFFA7E1E),
-                                    Color(0xFFD62976),
-                                    Color(0xFF962FBF),
-                                    Color(0xFF4F5BD5),
-                                    Color(0xFFFEDA75)
-                                )
+                                if (appOrangeChocolateTheme.value) {
+                                    listOf(Color(0xFFFFD08A), Color(0xFFFF9B3D), Color(0xFFC75A19), Color(0xFFFFB04F), Color(0xFFFFD08A))
+                                } else {
+                                    listOf(Color(0xFFFEDA75), Color(0xFFFA7E1E), Color(0xFFD62976), Color(0xFF962FBF), Color(0xFF4F5BD5), Color(0xFFFEDA75))
+                                }
                             )
                         } else {
                             Brush.linearGradient(listOf(Color(0xFFD4DCE8), Color(0xFFE7EBF4)))
@@ -2121,7 +2313,7 @@ private fun StoryAvatarItem(
                     )
                     .clickable(onClick = onOpen)
                     .padding(3.dp)
-                    .background(Color.White, CircleShape)
+                    .background(if (appOrangeChocolateTheme.value) Color(0xFF2B1408) else Color.White, CircleShape)
                     .padding(2.dp)
             ) {
                 Avatar(
@@ -2207,7 +2399,15 @@ private fun StoryImage(
                     modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.54f),
                     contentScale = ContentScale.Crop
                 )
-                Box(Modifier.fillMaxSize().background(Color(0x66101928)))
+                Box(
+                    Modifier.fillMaxSize().background(
+                        when {
+                            appOrangeChocolateTheme.value -> Color(0x66371A0A)
+                            appDarkTheme.value -> Color(0x66090D14)
+                            else -> Color(0x66405070)
+                        }
+                    )
+                )
             }
             Image(
                 bitmap = loaded.asImageBitmap(),
@@ -2354,14 +2554,30 @@ private fun StoryViewerScreen(
 
     val ownerName = current?.let { it.displayName.ifBlank { it.username } } ?: "История"
     val ownerInitial = ownerName.trim().take(1).uppercase().ifBlank { "?" }
+    val storyAccent = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFA347)
+        appDarkTheme.value -> Color(0xFFA7B6FF)
+        else -> Color(0xFFBFD0FF)
+    }
+    val storyTopGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xF0180903), Color(0xB01A0A04), Color.Transparent)
+        appDarkTheme.value -> listOf(Color(0xF0090D14), Color(0xB0090D14), Color.Transparent)
+        else -> listOf(Color(0xDB26334D), Color(0x9926334D), Color.Transparent)
+    }
+    val storyBottomGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color.Transparent, Color(0xAA1A0A04), Color(0xF0180903))
+        appDarkTheme.value -> listOf(Color.Transparent, Color(0xAA090D14), Color(0xF0090D14))
+        else -> listOf(Color.Transparent, Color(0x9926334D), Color(0xDB26334D))
+    }
+    val storyScreenGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFF160802), Color(0xFF281307), Color(0xFF160802))
+        appDarkTheme.value -> listOf(Color(0xFF090D14), Color(0xFF151E2B), Color(0xFF090D14))
+        else -> listOf(Color(0xFF253047), Color(0xFF354766), Color(0xFF253047))
+    }
 
     Box(
         Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF111B2A), Color(0xFF202E42), Color(0xFF111A29))
-                )
-            )
+            .background(Brush.verticalGradient(storyScreenGradient))
     ) {
         // One decoded story image renders both the fitted foreground and the blurred ambient backdrop.
         if (current != null) {
@@ -2389,7 +2605,7 @@ private fun StoryViewerScreen(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xE8101928), Color(0xAA101928), Color.Transparent)
+                            storyTopGradient
                         )
                     )
                     .padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 18.dp)
@@ -2442,7 +2658,11 @@ private fun StoryViewerScreen(
                         Modifier.size(40.dp)
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF39B4FF), Color(0xFF626FEF), Color(0xFFB276F0))
+                                    when {
+                                        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFD08A), Color(0xFFFF9B3D), Color(0xFFC75A19))
+                                        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+                                        else -> listOf(Color(0xFF8EA4F0), Color(0xFFB8C7FF), Color(0xFF7C8FE0))
+                                    }
                                 ),
                                 CircleShape
                             )
@@ -2480,8 +2700,8 @@ private fun StoryViewerScreen(
                                 onClick = { showStoryMoreMenu = true },
                                 enabled = !deleting,
                                 shape = CircleShape,
-                                color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                                color = Color.Transparent,
+                                border = null,
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -2585,67 +2805,85 @@ private fun StoryViewerScreen(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0x99101928), Color(0xE8101928))
+                            storyBottomGradient
                         )
                     )
                     .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 12.dp)
             ) {
                 if (current?.caption?.isNotBlank() == true) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            current.caption,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
-                        )
-                    }
+                    Text(
+                        current.caption,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp)
+                    )
                     Spacer(Modifier.height(12.dp))
                 }
 
                 if (current != null) {
                     if (canReact) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color.White.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(26.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            STORY_REACTION_OPTIONS.forEach { reaction ->
+                                val selected = reactionSummary.currentUserReaction == reaction
+                                Box(
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                        .clip(CircleShape)
+                                        .then(
+                                            if (selected) {
+                                                Modifier.background(storyAccent.copy(alpha = 0.20f))
+                                                    .border(1.dp, storyAccent.copy(alpha = 0.82f), CircleShape)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .clickable(
+                                            enabled = !isLoadingReactions && !isSavingReaction,
+                                            interactionSource = null,
+                                            indication = null
+                                        ) { onStoryReactionTapped(reaction) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    StoryReactionGlyph(
+                                        reaction = reaction,
+                                        tint = if (selected) storyAccent else Color.White.copy(alpha = 0.94f),
+                                        modifier = Modifier.size(if (selected) 24.dp else 22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (canDelete) {
+                        val ownerReactionCounts = STORY_REACTION_OPTIONS.mapNotNull { reaction ->
+                            val count = reactionSummary.counts[reaction] ?: 0
+                            if (count > 0) reaction to count else null
+                        }
+                        if (ownerReactionCounts.isNotEmpty()) {
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                STORY_REACTION_OPTIONS.forEach { emoji ->
-                                    val count = reactionSummary.counts[emoji] ?: 0
-                                    val selected = reactionSummary.currentUserReaction == emoji
-                                    Surface(
-                                        onClick = { onStoryReactionTapped(emoji) },
-                                        enabled = !isLoadingReactions && !isSavingReaction,
-                                        shape = CircleShape,
-                                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.Transparent,
-                                        border = if (selected) BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null,
-                                        modifier = Modifier.weight(1f).height(42.dp)
+                                ownerReactionCounts.forEach { (reaction, count) ->
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(emoji, fontSize = if (selected) 21.sp else 19.sp, lineHeight = 22.sp)
-                                            if (count > 0) {
-                                                Text(
-                                                    count.toString(),
-                                                    color = Color.White.copy(alpha = 0.92f),
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
+                                        StoryReactionGlyph(
+                                            reaction = reaction,
+                                            tint = storyAccent,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            count.toString(),
+                                            color = Color.White.copy(alpha = 0.96f),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                 }
                             }
@@ -2742,16 +2980,20 @@ private fun LiveChatRow(
     chat: FaceVideoChatSummary,
     unreadSummary: FaceVideoChatUnreadSummary?,
     isDeleteRevealed: Boolean,
+    isNotificationsMuted: Boolean,
     onRevealDelete: () -> Unit,
     onHideDelete: () -> Unit,
     onClick: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+    onToggleNotifications: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
     var showMenu by remember(chat.id) { mutableStateOf(false) }
     var confirmDelete by remember(chat.id) { mutableStateOf(false) }
     var showGroupAvatarPreview by remember(chat.id) { mutableStateOf(false) }
     val deleteActionWidth = 84.dp
-    val deleteActionWidthPx = with(LocalDensity.current) { deleteActionWidth.toPx() }
+    val density = LocalDensity.current
+    val deleteActionWidthPx = with(density) { deleteActionWidth.toPx() }
     var dragOffset by remember(chat.id) { mutableFloatStateOf(0f) }
     var isDragging by remember(chat.id) { mutableStateOf(false) }
     val animatedRowOffset by animateFloatAsState(
@@ -2760,37 +3002,45 @@ private fun LiveChatRow(
         label = "chat-row-delete-reveal"
     )
     val latestAnimatedRowOffset by rememberUpdatedState(animatedRowOffset)
+    val visibleRowOffset = if (isDragging) dragOffset else animatedRowOffset
+    val revealedWidthPx = (-visibleRowOffset).coerceIn(0f, deleteActionWidthPx)
+    val revealedWidth = with(density) { revealedWidthPx.toDp() }
+    val revealProgress = (revealedWidthPx / deleteActionWidthPx).coerceIn(0f, 1f)
     val unreadCount = unreadSummary?.unreadCount?.coerceAtLeast(0)?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0
     val preview = buildChatInboxPreview(chat.lastMessagePreview, chat.lastMessageAt, unreadSummary)
     val activityTimestamp = latestChatActivityLabelTime(chat) ?: preview.timestamp
     val initials = chat.title.trim().take(2).uppercase().ifBlank { "FV" }
     Box(
         modifier = Modifier.fillMaxWidth().height(80.dp)
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RectangleShape)
     ) {
-        if (isDeleteRevealed || (isDragging && dragOffset < 0f)) {
+        if (revealedWidthPx > 0.5f) {
             Column(
                 modifier = Modifier.align(Alignment.CenterEnd)
                     .fillMaxHeight()
-                    .width(deleteActionWidth)
+                    .width(revealedWidth)
                     .padding(vertical = 5.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                    .clip(RectangleShape)
                     .background(Color(0xFFE66F80))
-                    .clickable {
+                    .clickable(enabled = !isDragging && revealProgress >= 0.98f) {
                         onHideDelete()
                         confirmDelete = true
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                InboxDeleteGlyph()
-                Spacer(Modifier.height(3.dp))
-                Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                // The action itself grows with the drag; its contents appear only
+                // when there is enough room, so the label never pops out early.
+                if (revealProgress >= 0.68f) {
+                    InboxDeleteGlyph()
+                    Spacer(Modifier.height(3.dp))
+                    Text("Удалить", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Surface(
             modifier = Modifier.fillMaxSize()
-                .offset { IntOffset((if (isDragging) dragOffset else animatedRowOffset).roundToInt(), 0) }
+                .offset { IntOffset(visibleRowOffset.roundToInt(), 0) }
                 .pointerInput(chat.id, deleteActionWidthPx) {
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -2816,7 +3066,7 @@ private fun LiveChatRow(
                 }
                 .combinedClickable(
                     onClick = { if (isDeleteRevealed) onHideDelete() else onClick() },
-                    onLongClick = { showMenu = true }
+                    onLongClick = { onHideDelete(); showMenu = true }
                 ),
             color = Color.Transparent,
             shape = RoundedCornerShape(22.dp),
@@ -2892,7 +3142,7 @@ private fun LiveChatRow(
             }
         }
             ChatChromeActionButton(
-                onClick = { showMenu = true },
+                onClick = { onHideDelete(); showMenu = true },
                 size = 34.dp,
                 transparent = true
             ) {
@@ -2904,15 +3154,43 @@ private fun LiveChatRow(
     DropdownMenu(
         expanded = showMenu,
         onDismissRequest = { showMenu = false },
-        containerColor = Color.Transparent,
+        containerColor = InboxSurface,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        shadowElevation = 9.dp,
+        shape = RoundedCornerShape(18.dp)
     ) {
+        if (!chat.peerUserId.isNullOrBlank()) {
+            DropdownMenuItem(
+                text = { Text("Открыть профиль", color = InboxPrimary, fontSize = 13.sp) },
+                leadingIcon = { ProfileMenuGlyph("person", InboxAccentStrong) },
+                onClick = {
+                    showMenu = false
+                    onOpenProfile(chat.peerUserId!!)
+                },
+                colors = androidx.compose.material3.MenuDefaults.itemColors(textColor = InboxPrimary)
+            )
+        }
         DropdownMenuItem(
-            text = { Text("Удалить чат", color = InboxPrimary) },
+            text = {
+                Text(
+                    if (isNotificationsMuted) "Включить уведомления" else "Отключить уведомления",
+                    color = InboxPrimary,
+                    fontSize = 13.sp
+                )
+            },
+            leadingIcon = { ProfileMenuGlyph("bell", InboxAccentStrong) },
+            onClick = {
+                showMenu = false
+                onToggleNotifications(!isNotificationsMuted)
+            },
+            colors = androidx.compose.material3.MenuDefaults.itemColors(textColor = InboxPrimary)
+        )
+        DropdownMenuItem(
+            text = { Text("Удалить чат", color = Color(0xFFB85E69), fontSize = 13.sp) },
+            leadingIcon = { InboxDeleteGlyph() },
             onClick = { showMenu = false; confirmDelete = true },
             colors = androidx.compose.material3.MenuDefaults.itemColors(
-                textColor = InboxPrimary
+                textColor = Color(0xFFB85E69)
             )
         )
     }
@@ -3766,54 +4044,10 @@ private fun LiveChatScreen(
         )
     } else {
         Column(
-        Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFE2DCFF),
-                        Color(0xFFE2E9FF),
-                        Color(0xFFE8F0FF),
-                        Color(0xFFF2F5FF),
-                        Color(0xFFE8E9FF)
-                    )
-                )
-            )
-            .drawBehind {
-                val w = size.width
-                val h = size.height
-                val topLeft = Offset(-w * 0.12f, h * 0.08f)
-                val topRight = Offset(w * 1.04f, h * 0.22f)
-                val center = Offset(w * 0.48f, h * 0.62f)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFB49BFF).copy(alpha = 0.42f), Color.Transparent),
-                        center = topLeft,
-                        radius = w * 0.86f
-                    ),
-                    radius = w * 0.86f,
-                    center = topLeft
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFF9BCBFF).copy(alpha = 0.40f), Color.Transparent),
-                        center = topRight,
-                        radius = w * 0.78f
-                    ),
-                    radius = w * 0.78f,
-                    center = topRight
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        listOf(Color(0xFFD0B8FF).copy(alpha = 0.24f), Color.Transparent),
-                        center = center,
-                        radius = w * 0.78f
-                    ),
-                    radius = w * 0.78f,
-                    center = center
-                )
-            }
-            .imePadding()
-    ) {
+            Modifier.fillMaxSize()
+                .arturChatGradientBackground()
+                .imePadding()
+        ) {
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             color = Color.Transparent,
@@ -3863,7 +4097,7 @@ private fun LiveChatScreen(
                         Modifier.size(48.dp)
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF32ADFF), Color(0xFF596BE8), Color(0xFF9A68E9))
+                                    if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFC27A), Color(0xFFFF8D2A), Color(0xFFA84512)) else listOf(Color(0xFF32ADFF), Color(0xFF596BE8), Color(0xFF9A68E9))
                                 ),
                                 CircleShape
                             )
@@ -4126,7 +4360,7 @@ private fun LiveChatScreen(
                         onReply = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({ replyingTo = message }) else null,
                         onCopy = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", message.body))
+                            clipboard.setPrimaryClip(ClipData.newPlainText("A-Chat", message.body))
                             Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
                         },
                         onForward = if (message.deletedAt == null && selectedMessageIds.isEmpty()) ({
@@ -4231,9 +4465,9 @@ private fun LiveChatScreen(
         if (selectedMessageIds.isNotEmpty()) {
             val selectedRows = orderedMessages.filter { it.id in selectedMessageIds }
             Surface(
-                color = Color.White.copy(alpha = 0.90f),
+                color = ThemeSurface.copy(alpha = if (isDarkAppearance) 0.98f else 0.90f),
                 shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 5.dp,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
@@ -4261,7 +4495,7 @@ private fun LiveChatScreen(
                     ) {
                         val selectedText = selectedRows.joinToString("\n") { it.body }
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("ArturChat", selectedText))
+                        clipboard.setPrimaryClip(ClipData.newPlainText("A-Chat", selectedText))
                         Toast.makeText(context, "Текст скопирован", Toast.LENGTH_SHORT).show()
                         selectedMessageIds = emptySet()
                     }
@@ -4312,7 +4546,7 @@ private fun LiveChatScreen(
                             .verticalScroll(rememberScrollState())
                     ) {
                         Text(
-                            "Сообщения отправляются автоматически в выбранное время, даже если ArturChat закрыт.",
+                            "Сообщения отправляются автоматически в выбранное время, даже если A-Chat закрыт.",
                             color = InboxSecondary,
                             fontSize = 12.sp,
                             lineHeight = 17.sp
@@ -4329,7 +4563,7 @@ private fun LiveChatScreen(
                         scheduledMessages.forEach { item ->
                             Surface(
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
-                                color = Color.White.copy(alpha = 0.78f),
+                                color = ThemeSurface.copy(alpha = if (isDarkAppearance) 0.98f else 0.78f),
                                 shape = RoundedCornerShape(15.dp),
                                 border = BorderStroke(1.dp, InboxBorder)
                             ) {
@@ -4516,16 +4750,16 @@ private fun LiveChatScreen(
         if (isVoiceRecording) {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.58f),
+                color = ThemeSurface.copy(alpha = if (isDarkAppearance) 0.98f else 0.58f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 8.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF))
+                                when { appOrangeChocolateTheme.value -> listOf(Color(0xFF4A2410), Color(0xFF35180B), Color(0xFF4A2410)); appDarkTheme.value -> listOf(Color(0xFF263247), Color(0xFF1D293B), Color(0xFF263247)); else -> listOf(Color(0xFFFDFEFF), Color(0xFFE7EDFF), Color(0xFFF3EAFF)) }
                             )
                         )
                         .padding(9.dp),
@@ -4571,16 +4805,16 @@ private fun LiveChatScreen(
         } else {
             Surface(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
-                color = Color.White.copy(alpha = 0.60f),
+                color = ThemeSurface.copy(alpha = if (isDarkAppearance) 0.98f else 0.60f),
                 shape = RoundedCornerShape(28.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.90f)),
+                border = BorderStroke(1.dp, ThemeBorder),
                 shadowElevation = 4.dp
             ) {
                 Row(
                     Modifier.fillMaxWidth()
                         .background(
                             Brush.verticalGradient(
-                                listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                                when { appOrangeChocolateTheme.value -> listOf(Color(0xF2381B0B), Color(0xED2A1308), Color(0xF2381B0B)); appDarkTheme.value -> listOf(Color(0xF21D2736), Color(0xE91A2432), Color(0xF21D2736)); else -> listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8)) }
                             )
                         )
                         .padding(horizontal = 8.dp, vertical = 8.dp),
@@ -4599,9 +4833,9 @@ private fun LiveChatScreen(
                     }
                     Surface(
                         modifier = Modifier.weight(1f),
-                        color = Color.White.copy(alpha = 0.88f),
+                        color = ThemeSurfaceRaised,
                         shape = RoundedCornerShape(23.dp),
-                        border = BorderStroke(1.dp, Color.White)
+                        border = BorderStroke(1.dp, ThemeBorder)
                     ) {
                         BasicTextField(
                             value = draft,
@@ -4763,7 +4997,7 @@ private fun ChatListScreen(onOpenChat: (ChatSummary) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(5.dp))
                 Text("Сообщения", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
             }
@@ -5470,8 +5704,8 @@ private fun VoiceWaveformBars(
         val strokeWidth = (step * 0.58f).coerceIn(1.0.dp.toPx(), 1.7.dp.toPx())
         val minBarHeight = 2.4.dp.toPx()
         val maxBarHeight = size.height * 0.96f
-        val playedColor = Color(0xFF5266DE)
-        val futureColor = Color(0xFF9EAECE)
+        val playedColor = if (appOrangeChocolateTheme.value) Color(0xFFFF9B3D) else Color(0xFF5266DE)
+        val futureColor = if (appOrangeChocolateTheme.value) Color(0xFF825638) else Color(0xFF9EAECE)
         bars.forEachIndexed { index, level ->
             val amplitude = ((level - 8) / 92f).coerceIn(0f, 1f)
             val barHeight = minBarHeight + amplitude * (maxBarHeight - minBarHeight)
@@ -6318,14 +6552,14 @@ private fun ChatDateDivider(label: String) {
         horizontalArrangement = Arrangement.Center
     ) {
         Surface(
-            color = Color(0xDDE7ECF8),
+            color = if (isDarkAppearance) PanelLight else Color(0xDDE7ECF8),
             shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            border = BorderStroke(1.dp, ThemeBorder),
             shadowElevation = 0.dp
         ) {
             Text(
                 text = label,
-                color = Color(0xFF65718A),
+                color = if (isDarkAppearance) InboxSecondary else Color(0xFF65718A),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.15.sp,
@@ -6380,7 +6614,7 @@ private fun MessageBubble(
         when (message.deliveryStatus) {
             MessageDeliveryStatus.SENT -> 1 to Muted
             MessageDeliveryStatus.DELIVERED -> 2 to Muted
-            MessageDeliveryStatus.READ -> 2 to Color(0xFF5D6C84)
+            MessageDeliveryStatus.READ -> 2 to if (appOrangeChocolateTheme.value) Color(0xFFFFB35C) else Color(0xFF5D6C84)
             null -> null
         }
     } else null
@@ -6480,7 +6714,7 @@ private fun MessageBubble(
                             scaleY = hintScale
                         }
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.96f)),
+                        .background(ThemeSurfaceRaised),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("↩", color = AccentSlate, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -6520,15 +6754,23 @@ private fun MessageBubble(
                         }
                     ),
                 color = when {
-                    selected -> Color(0xFF879BCB)
+                    selected -> when { appOrangeChocolateTheme.value -> Color(0xFF89501E); appDarkTheme.value -> Color(0xFF40577D); else -> Color(0xFF879BCB) }
                     isImageAttachment || isVideoNoteAttachment -> Color.Transparent
+                    appOrangeChocolateTheme.value && message.isMine -> Color(0xFF623315)
+                    appOrangeChocolateTheme.value -> Color(0xFF32190D)
+                    appDarkTheme.value && message.isMine -> Color(0xFF293A55)
+                    appDarkTheme.value -> Color(0xFF1D2939)
                     message.isMine -> Color(0xE9E4EBFF)
                     else -> Color(0xEAFBFCFF)
                 },
                 border = if ((isImageAttachment || isVideoNoteAttachment) && !selected) null else BorderStroke(
                     if (selected) 1.4.dp else 1.dp,
                     when {
-                        selected -> Color(0xFF607BB9)
+                        selected -> when { appOrangeChocolateTheme.value -> Color(0xFFC77A35); appDarkTheme.value -> Color(0xFF738DB9); else -> Color(0xFF607BB9) }
+                        appOrangeChocolateTheme.value && message.isMine -> Color(0xFF9E5727)
+                        appOrangeChocolateTheme.value -> Color(0xFF63371E)
+                        appDarkTheme.value && message.isMine -> Color(0xFF536D99)
+                        appDarkTheme.value -> Color(0xFF35445A)
                         message.isMine -> Color(0xFFBFCBFA).copy(alpha = 0.82f)
                         else -> Color.White.copy(alpha = 0.92f)
                     }
@@ -6565,7 +6807,16 @@ private fun MessageBubble(
                             Modifier.fillMaxWidth()
                                 .then(if (isImageAttachment || isVideoNoteAttachment) Modifier.padding(start = 10.dp, end = 10.dp, top = 8.dp) else Modifier)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (message.isMine) Color(0xFFD9DFFF) else Color(0xFFE0E8F8))
+                                .background(
+                                    when {
+                                        appOrangeChocolateTheme.value && message.isMine -> Color(0xFF75411C)
+                                        appOrangeChocolateTheme.value -> Color(0xFF4B2917)
+                                        appDarkTheme.value && message.isMine -> Color(0xFF3A4D6C)
+                                        appDarkTheme.value -> Color(0xFF2B394D)
+                                        message.isMine -> Color(0xFFD9DFFF)
+                                        else -> Color(0xFFE0E8F8)
+                                    }
+                                )
                                 .clickable(enabled = onReplyPreviewClick != null) {
                                     onReplyPreviewClick?.invoke()
                                 }
@@ -6714,10 +6965,24 @@ private fun MessageBubble(
                                         )
                                     },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (reaction.selectedByMe) Color(0xFFDCE4FF) else Color(0xFFF2F4FA),
+                                    color = when {
+                                        appOrangeChocolateTheme.value && reaction.selectedByMe -> Color(0xFF633516)
+                                        appOrangeChocolateTheme.value -> Color(0xFF3B2114)
+                                        appDarkTheme.value && reaction.selectedByMe -> Color(0xFF34496A)
+                                        appDarkTheme.value -> Color(0xFF273447)
+                                        reaction.selectedByMe -> Color(0xFFDCE4FF)
+                                        else -> Color(0xFFF2F4FA)
+                                    },
                                     border = BorderStroke(
                                         1.dp,
-                                        if (reaction.selectedByMe) Color(0xFF8EA2E8) else Color(0xFFE2E7F1)
+                                        when {
+                                            appOrangeChocolateTheme.value && reaction.selectedByMe -> Color(0xFFB36B2E)
+                                            appOrangeChocolateTheme.value -> Color(0xFF674129)
+                                            appDarkTheme.value && reaction.selectedByMe -> Color(0xFF627CA9)
+                                            appDarkTheme.value -> Color(0xFF3B4A5F)
+                                            reaction.selectedByMe -> Color(0xFF8EA2E8)
+                                            else -> Color(0xFFE2E7F1)
+                                        }
                                     ),
                                     shadowElevation = 0.dp
                                 ) {
@@ -6752,8 +7017,8 @@ private fun MessageBubble(
                     Surface(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                         shape = RoundedCornerShape(24.dp),
-                        color = Color(0xFFE8F3E5),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f)),
+                        color = when { appOrangeChocolateTheme.value -> Color(0xFF3D2414); appDarkTheme.value -> Color(0xFF263B35); else -> Color(0xFFE8F3E5) },
+                        border = BorderStroke(1.dp, when { appOrangeChocolateTheme.value -> Color(0xFF75502D); appDarkTheme.value -> Color(0xFF3C6455); else -> Color.White.copy(alpha = 0.92f) }),
                         shadowElevation = 1.dp
                     ) {
                         Row(
@@ -6777,7 +7042,7 @@ private fun MessageBubble(
                                     Text(emoji, fontSize = 20.sp)
                                 }
                             }
-                            Text("⌄", color = Color(0xFF769173), fontSize = 16.sp)
+                            Text("⌄", color = when { appOrangeChocolateTheme.value -> Color(0xFFFFB15C); appDarkTheme.value -> Color(0xFF9CC8B5); else -> Color(0xFF769173) }, fontSize = 16.sp)
                         }
                     }
                 }
@@ -6924,9 +7189,9 @@ private fun MinimizeCallButton(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        color = Color(0xEFFFFFFF),
+        color = ThemeSurfaceRaised,
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f))
+        border = BorderStroke(1.dp, ThemeBorder)
     ) {
         Text(
             "↓  Свернуть",
@@ -6948,34 +7213,27 @@ private fun ActiveCallMiniBar(
 ) {
     val callType = if (mediaType == "video") "Видеозвонок" else "Аудиозвонок"
     val isConnected = duration != null || status == "Звонок активен"
-    val stateTint = if (isConnected) Color(0xFF279B70) else AccentSlate
+    val stateTint = if (isConnected) InboxOnline else AccentSlate
     val cardShape = RoundedCornerShape(21.dp)
-    val cardBrush = Brush.linearGradient(
-        listOf(
-            Color(0xFFF8FAFF),
-            Color(0xFFECEBFF),
-            Color(0xFFE5F1FF)
-        )
-    )
-    val brandBrush = Brush.linearGradient(
-        listOf(Color(0xFF38A6F6), Color(0xFF725FE6), Color(0xFF9460DC))
-    )
+    val cardColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xF02B160B), Color(0xF03A1D0D), Color(0xF02B160B))
+        appDarkTheme.value -> listOf(Color(0xF2192231), Color(0xF2202B3A), Color(0xF2192231))
+        else -> listOf(Color(0xFFF8FAFF), Color(0xFFECEBFF), Color(0xFFE5F1FF))
+    }
+    val brandColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFC27A), Color(0xFFFF8D2A), Color(0xFFA84512))
+        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+        else -> listOf(Color(0xFF38A6F6), Color(0xFF725FE6), Color(0xFF9460DC))
+    }
+    val cardBrush = Brush.linearGradient(cardColors)
+    val brandBrush = Brush.linearGradient(brandColors)
 
     Surface(
         modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 8.dp),
         color = Color.Transparent,
         shape = cardShape,
-        border = BorderStroke(
-            1.dp,
-            Brush.linearGradient(
-                listOf(
-                    Color(0xFF8EB9F5).copy(alpha = 0.72f),
-                    Color(0xFFB9A8F4).copy(alpha = 0.82f),
-                    Color(0xFF9CCDF3).copy(alpha = 0.72f)
-                )
-            )
-        ),
+        border = BorderStroke(1.dp, ThemeBorder.copy(alpha = 0.92f)),
         shadowElevation = 4.dp
     ) {
         Column(
@@ -7005,7 +7263,7 @@ private fun ActiveCallMiniBar(
                 }
                 Spacer(Modifier.width(7.dp))
                 Text(
-                    "ARTURCHAT",
+                    "A-CHAT",
                     color = AccentSlate,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.ExtraBold,
@@ -7045,14 +7303,7 @@ private fun ActiveCallMiniBar(
                     Box(
                         Modifier.fillMaxSize()
                             .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color(0xFF45A6F3),
-                                        Color(0xFF795FE7),
-                                        Color(0xFFC17DD1),
-                                        Color(0xFF45A6F3)
-                                    )
-                                ),
+                                Brush.sweepGradient(brandColors + brandColors.first()),
                                 CircleShape
                             )
                             .padding(2.dp)
@@ -7066,7 +7317,7 @@ private fun ActiveCallMiniBar(
                     Box(
                         Modifier.align(Alignment.BottomEnd)
                             .size(19.dp)
-                            .background(Color(0xFFF3F5FF), CircleShape)
+                            .background(ThemeSurfaceRaised, CircleShape)
                             .padding(2.dp)
                             .background(brandBrush, CircleShape),
                         contentAlignment = Alignment.Center
@@ -7091,7 +7342,7 @@ private fun ActiveCallMiniBar(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         if (duration != null) "$callType  ·  $duration" else "$callType  ·  $status",
-                        color = if (isConnected) Color(0xFF328E70) else Muted,
+                        color = if (isConnected) InboxOnline else Muted,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -7140,8 +7391,15 @@ private fun CallHistoryBubble(
         "cancelled" -> (if (isOutgoing) "Нет ответа" else "Пропущенный вызов") to true
         else -> "Звонок завершён" to false
     }
-    val accent = if (isMissed) Color(0xFFC65F70) else AccentSlate
-    val cardBackground = if (isMissed) Color(0xFFFFF0F2) else Color(0xFFF0F3FF)
+    val accent = if (isMissed) InboxDanger else AccentSlate
+    val cardBackground = when {
+        appOrangeChocolateTheme.value && isMissed -> Color(0xFF421A13)
+        appOrangeChocolateTheme.value -> Color(0xFF351A0C)
+        appDarkTheme.value && isMissed -> Color(0xFF3A202A)
+        appDarkTheme.value -> Color(0xFF172131)
+        isMissed -> Color(0xFFFFF0F2)
+        else -> Color(0xFFF0F3FF)
+    }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
         horizontalArrangement = if (isOutgoing) Arrangement.End else Arrangement.Start
@@ -7213,13 +7471,34 @@ private fun ActiveAudioCallScreen(
     onMinimize: () -> Unit,
     onEnd: () -> Unit
 ) {
+    val avatarRingColors = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFD08A), Color(0xFFFF9B3D), Color(0xFFC75A19))
+        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+        else -> listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))
+    }
+    val avatarHaloColor = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFF9B3D)
+        appDarkTheme.value -> Color(0xFF8FA4FF)
+        else -> Color(0xFF9EBBFF)
+    }
+    val callErrorBackground = when {
+        appOrangeChocolateTheme.value -> Color(0xE53A1D0D)
+        appDarkTheme.value -> Color(0xE52C202B)
+        else -> Color(0xBFFFF0F2)
+    }
+    val callErrorBorder = when {
+        appOrangeChocolateTheme.value -> Color(0x885E351D)
+        appDarkTheme.value -> Color(0x887B4658)
+        else -> Color(0x44D77782)
+    }
+    val callErrorText = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFB59A)
+        appDarkTheme.value -> Color(0xFFFFC3CE)
+        else -> Color(0xFFA85F6E)
+    }
     Column(
         modifier = Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFFE4DEFF), Color(0xFFE5EDFF), Color(0xFFF4F6FF))
-                )
-            )
+            .arturChatGradientBackground()
             .padding(horizontal = 22.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -7229,7 +7508,7 @@ private fun ActiveAudioCallScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "ARTURCHAT",
+                "A-CHAT",
                 color = AccentSlate,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
@@ -7243,8 +7522,8 @@ private fun ActiveAudioCallScreen(
                 .background(
                     Brush.radialGradient(
                         listOf(
-                            Color(0xFF9EBBFF).copy(alpha = 0.62f),
-                            Color(0xFFC7BFFF).copy(alpha = 0.20f),
+                            avatarHaloColor.copy(alpha = 0.42f),
+                            avatarHaloColor.copy(alpha = 0.16f),
                             Color.Transparent
                         )
                     ),
@@ -7255,9 +7534,7 @@ private fun ActiveAudioCallScreen(
             Box(
                 modifier = Modifier.size(136.dp)
                     .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF39A7FF), Color(0xFF5868E8), Color(0xFF9564E9))
-                        ),
+                        Brush.linearGradient(avatarRingColors),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
@@ -7280,9 +7557,9 @@ private fun ActiveAudioCallScreen(
         )
         Spacer(Modifier.height(12.dp))
         Surface(
-            color = Color(0xDFFFFFFF),
+            color = ThemeSurfaceRaised,
             shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.92f))
+            border = BorderStroke(1.dp, ThemeBorder)
         ) {
             Row(
                 Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
@@ -7290,7 +7567,7 @@ private fun ActiveAudioCallScreen(
             ) {
                 Box(
                     Modifier.size(7.dp).clip(CircleShape)
-                        .background(if (error == null) Color(0xFF39A982) else Color(0xFFD77782))
+                        .background(if (error == null) InboxOnline else InboxDanger)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -7317,13 +7594,13 @@ private fun ActiveAudioCallScreen(
             Spacer(Modifier.height(12.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 190.dp),
-                color = Color(0xBFFFF0F2),
+                color = callErrorBackground,
                 shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0x44D77782))
+                border = BorderStroke(1.dp, callErrorBorder)
             ) {
                 Text(
                     error,
-                    color = Color(0xFFA85F6E),
+                    color = callErrorText,
                     fontSize = 10.sp,
                     lineHeight = 15.sp,
                     maxLines = 12,
@@ -7381,13 +7658,30 @@ private fun ActiveVideoCallScreen(
 ) {
     val remoteRenderer = client.remoteVideoRenderer
     val localRenderer = client.localVideoRenderer
+    val callOverlayColor = ThemeSurfaceRaised.copy(alpha = 0.93f)
+    val callOverlayBorder = ThemeBorder.copy(alpha = 0.90f)
+    val callErrorBackground = when {
+        appOrangeChocolateTheme.value -> Color(0xE53A1D0D)
+        appDarkTheme.value -> Color(0xE52C202B)
+        else -> Color(0xE5FFF0F2)
+    }
+    val callErrorBorder = when {
+        appOrangeChocolateTheme.value -> Color(0x885E351D)
+        appDarkTheme.value -> Color(0x887B4658)
+        else -> Color(0x55D77782)
+    }
+    val callErrorText = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFB59A)
+        appDarkTheme.value -> Color(0xFFFFC3CE)
+        else -> Color(0xFFA85F6E)
+    }
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF111722))) {
+    Box(Modifier.fillMaxSize().arturChatGradientBackground()) {
         if (remoteRenderer != null) {
             AndroidView(factory = { remoteRenderer }, modifier = Modifier.fillMaxSize())
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Подготавливаем видеосвязь…", color = Color.White, fontSize = 14.sp)
+                Text("Подготавливаем видеосвязь…", color = MainText, fontSize = 14.sp)
             }
         }
 
@@ -7413,14 +7707,14 @@ private fun ActiveVideoCallScreen(
             modifier = Modifier.align(Alignment.TopStart)
                 .padding(start = 14.dp, top = 62.dp, end = 126.dp)
                 .widthIn(max = 230.dp),
-            color = Color(0xA91A2432),
+            color = callOverlayColor,
             shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+            border = BorderStroke(1.dp, callOverlayBorder)
         ) {
             Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                 Text(
                     peerName,
-                    color = Color.White,
+                    color = MainText,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -7429,7 +7723,7 @@ private fun ActiveVideoCallScreen(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     status,
-                    color = Color.White.copy(alpha = 0.76f),
+                    color = Muted,
                     fontSize = 10.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -7438,7 +7732,7 @@ private fun ActiveVideoCallScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         duration,
-                        color = Color.White,
+                        color = MainText,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp
@@ -7452,13 +7746,13 @@ private fun ActiveVideoCallScreen(
                 modifier = Modifier.align(Alignment.TopStart)
                     .padding(start = 14.dp, top = 78.dp, end = 126.dp)
                     .widthIn(max = 230.dp),
-                color = Color(0xB34A202B),
+                color = callErrorBackground,
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, Color(0x55FFC3CE))
+                border = BorderStroke(1.dp, callErrorBorder)
             ) {
                 Text(
                     error,
-                    color = Color(0xFFFFDDE2),
+                    color = callErrorText,
                     fontSize = 9.sp,
                     lineHeight = 13.sp,
                     maxLines = 5,
@@ -7468,34 +7762,42 @@ private fun ActiveVideoCallScreen(
             }
         }
 
-        Row(
+        Surface(
             modifier = Modifier.align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
+            color = callOverlayColor,
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, callOverlayBorder),
+            shadowElevation = 8.dp
         ) {
-            CallControlButton(
-                label = if (muted) "Микрофон выкл." else "Микрофон",
-                active = !muted,
-                onClick = onToggleMute
-            ) { tint -> ChatMicrophoneGlyph(tint = tint) }
-            CallControlButton(
-                label = if (cameraEnabled) "Камера" else "Камера выкл.",
-                active = cameraEnabled,
-                onClick = onToggleCamera
-            ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
-            CallControlButton(
-                label = "Сменить",
-                active = false,
-                onClick = onSwitchCamera
-            ) { tint -> CallSwitchGlyph(tint = tint) }
-            CallControlButton(
-                label = "Завершить",
-                destructive = true,
-                onClick = onEnd
-            ) { tint ->
-                Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CallControlButton(
+                    label = if (muted) "Микрофон выкл." else "Микрофон",
+                    active = !muted,
+                    onClick = onToggleMute
+                ) { tint -> ChatMicrophoneGlyph(tint = tint) }
+                CallControlButton(
+                    label = if (cameraEnabled) "Камера" else "Камера выкл.",
+                    active = cameraEnabled,
+                    onClick = onToggleCamera
+                ) { tint -> InboxCameraGlyph(tint = tint, iconSize = 24.dp) }
+                CallControlButton(
+                    label = "Сменить",
+                    active = false,
+                    onClick = onSwitchCamera
+                ) { tint -> CallSwitchGlyph(tint = tint) }
+                CallControlButton(
+                    label = "Завершить",
+                    destructive = true,
+                    onClick = onEnd
+                ) { tint ->
+                    Text("×", color = tint, fontSize = 29.sp, fontWeight = FontWeight.Light)
+                }
             }
         }
     }
@@ -7506,16 +7808,31 @@ private fun CallControlButton(
     label: String,
     active: Boolean = false,
     destructive: Boolean = false,
-    labelColor: Color = Color.White,
+    labelColor: Color = MainText,
     onClick: () -> Unit,
     content: @Composable (Color) -> Unit
 ) {
-    val background = when {
-        destructive -> Brush.linearGradient(listOf(Color(0xFFFF7B91), Color(0xFFD94770)))
-        active -> Brush.linearGradient(listOf(Color(0xFF35AEFF), Color(0xFF586BEA), Color(0xFF9262E8)))
-        else -> Brush.linearGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC)))
+    val buttonColors = when {
+        destructive -> when {
+            appOrangeChocolateTheme.value -> listOf(Color(0xFFE97861), Color(0xFFB94734))
+            appDarkTheme.value -> listOf(Color(0xFFC95E70), Color(0xFF943D55))
+            else -> listOf(Color(0xFFFF7B91), Color(0xFFD94770))
+        }
+        active -> when {
+            appOrangeChocolateTheme.value -> listOf(Color(0xFFFFC27A), Color(0xFFFF8D2A), Color(0xFFA84512))
+            appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+            else -> listOf(Color(0xFF35AEFF), Color(0xFF586BEA), Color(0xFF9262E8))
+        }
+        appOrangeChocolateTheme.value -> listOf(Color(0xFF52301D), Color(0xFF3A1D0D))
+        appDarkTheme.value -> listOf(Color(0xFF303E56), Color(0xFF202B3A))
+        else -> listOf(Color(0xFFFFFFFF), Color(0xFFE9EEFC))
     }
-    val tint = if (active || destructive) Color.White else AccentSlate
+    val background = Brush.linearGradient(buttonColors)
+    val tint = when {
+        active && appOrangeChocolateTheme.value -> Color(0xFF3A1B0A)
+        active || destructive -> Color.White
+        else -> AccentSlate
+    }
 
     Column(
         modifier = Modifier.width(70.dp),
@@ -7527,7 +7844,7 @@ private fun CallControlButton(
                 .background(background)
                 .then(
                     if (active || destructive) Modifier
-                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.98f), CircleShape)
+                    else Modifier.border(1.dp, ThemeBorder.copy(alpha = 0.88f), CircleShape)
                 )
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
@@ -7806,7 +8123,7 @@ private fun CallsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(4.dp))
                 Text("Звонки", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("История аудио- и видеовызовов", color = Muted, fontSize = 11.sp)
@@ -7972,7 +8289,7 @@ private fun CallsScreen(
                                         modifier = Modifier.size(20.dp).clip(CircleShape)
                                             .background(
                                                 Brush.linearGradient(
-                                                    listOf(Color(0xFF3CA8F4), Color(0xFF586BE4), Color(0xFF9364E6))
+                                                    if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB35C), Color(0xFFFF8B2A), Color(0xFFB84C12)) else listOf(Color(0xFF3CA8F4), Color(0xFF586BE4), Color(0xFF9364E6))
                                                 )
                                             ),
                                         contentAlignment = Alignment.Center
@@ -8025,7 +8342,7 @@ private fun CallsScreen(
                         Box(
                             Modifier.fillMaxWidth().height(1.dp).background(
                                 Brush.horizontalGradient(
-                                    listOf(Color.Transparent, Color.White.copy(alpha = 0.68f), Color(0xFFD6DDF0).copy(alpha = 0.52f), Color.Transparent)
+                                    if (appOrangeChocolateTheme.value) listOf(Color.Transparent, Color(0xFFFFB36B).copy(alpha = 0.48f), Color(0xFF8A4C27).copy(alpha = 0.38f), Color.Transparent) else listOf(Color.Transparent, Color.White.copy(alpha = 0.68f), Color(0xFFD6DDF0).copy(alpha = 0.52f), Color.Transparent)
                                 )
                             )
                         )
@@ -8042,12 +8359,12 @@ private fun ContactsScreen(onOpenChat: (ChatSummary) -> Unit) {
         Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("ARTURCHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("A-CHAT", color = AccentSlate, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(Modifier.height(5.dp))
         Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
         Text(
-            "Войдите в аккаунт ArturChat, чтобы отправлять и принимать заявки в друзья.",
+            "Войдите в аккаунт A-Chat, чтобы отправлять и принимать заявки в друзья.",
             color = Muted, fontSize = 12.sp,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
@@ -8115,7 +8432,7 @@ private fun FriendsScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("ARTURCHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("A-CHAT", color = AccentSlate, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
                 Spacer(Modifier.height(4.dp))
                 Text("Друзья", color = MainText, fontSize = 29.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
                 Text("Люди, с которыми вы взаимно подружились", color = Muted, fontSize = 11.sp)
@@ -8125,30 +8442,38 @@ private fun FriendsScreen(
         Box(
             Modifier.fillMaxWidth().height(52.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))))
+                .background(
+                    Brush.horizontalGradient(
+                        if (appOrangeChocolateTheme.value) {
+                            listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                        } else {
+                            listOf(Color(0xFF2CA8FF), Color(0xFF5266E8), Color(0xFF9362E8))
+                        }
+                    )
+                )
                 .clickable(onClick = { showAddFriend = true }),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
-                    color = Color(0x33FFFFFF),
+                    color = if (appOrangeChocolateTheme.value) Color(0x33FFF0D8) else Color(0x33FFFFFF),
                     shape = CircleShape,
                     modifier = Modifier.size(28.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                    border = BorderStroke(1.dp, if (appOrangeChocolateTheme.value) Color(0x88FFE0B8) else Color.White.copy(alpha = 0.42f))
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("+", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium)
+                        Text("+", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Medium)
                     }
                 }
                 Spacer(Modifier.width(10.dp))
-                Text("Добавить друга", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("Добавить друга", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(15.dp))
         Surface(
-            color = Color(0xAFFFFFFF),
+            color = ThemeSurface,
             shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.9f)),
+            border = BorderStroke(1.dp, ThemeBorder),
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -8165,7 +8490,10 @@ private fun FriendsScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .then(
                                 if (selected) Modifier.background(
-                                    Brush.horizontalGradient(listOf(Color(0xFF5B6FE4), Color(0xFF8266E9)))
+                                    Brush.horizontalGradient(
+                                        if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB35B), Color(0xFFFF902F))
+                                        else listOf(Color(0xFF5B6FE4), Color(0xFF8266E9))
+                                    )
                                 ) else Modifier
                             )
                             .clickable(interactionSource = null, indication = null) { selectedSection = section },
@@ -8173,7 +8501,7 @@ private fun FriendsScreen(
                     ) {
                         Text(
                             title,
-                            color = if (selected) Color.White else MainText,
+                            color = if (selected && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (selected) Color.White else MainText,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -8336,9 +8664,9 @@ private fun FriendDirectoryRow(
     onSecondaryAction: (() -> Unit)? = null
 ) {
     Surface(
-        color = Color(0xDFFFFFFF),
+        color = ThemeSurfaceRaised,
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.94f)),
+        border = BorderStroke(1.dp, ThemeBorder),
         shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
     ) {
@@ -8361,13 +8689,13 @@ private fun FriendDirectoryRow(
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Surface(
-                    color = Color(0xFFE9EEFF),
+                    color = if (appOrangeChocolateTheme.value) Color(0xFFFFE1BC) else Color(0xFFE9EEFF),
                     shape = RoundedCornerShape(11.dp),
                     modifier = Modifier.clickable(enabled = actionEnabled, onClick = onAction)
                 ) {
                     Text(
                         actionLabel,
-                        color = AccentSlate,
+                        color = if (appOrangeChocolateTheme.value) Color(0xFF9B4E17) else AccentSlate,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
@@ -8375,13 +8703,13 @@ private fun FriendDirectoryRow(
                 }
                 if (secondaryActionLabel != null && onSecondaryAction != null) {
                     Surface(
-                        color = Color(0xFFFFF0F2),
+                        color = if (appOrangeChocolateTheme.value) Color(0xFF482016) else Color(0xFFFFF0F2),
                         shape = RoundedCornerShape(11.dp),
                         modifier = Modifier.clickable(enabled = actionEnabled, onClick = onSecondaryAction)
                     ) {
                         Text(
                             secondaryActionLabel,
-                            color = Color(0xFFA85F6E),
+                            color = if (appOrangeChocolateTheme.value) Color(0xFFFFA18A) else Color(0xFFA85F6E),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
@@ -8412,7 +8740,7 @@ private fun AddFriendDialog(
         title = { Text("Добавить друга", color = MainText, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Найди человека по уникальному псевдониму ArturChat.", color = Muted, fontSize = 12.sp)
+                Text("Найди человека по уникальному псевдониму в A-Chat.", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = username,
@@ -8683,15 +9011,12 @@ private fun ProfileScreen(
                     letterSpacing = (-0.5).sp
                 )
                 Spacer(Modifier.weight(1f))
-                Surface(
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(15.dp),
-                    border = BorderStroke(0.dp, Color.Transparent),
-                    modifier = Modifier.size(44.dp).clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } }
+                Box(
+                    modifier = Modifier.size(42.dp)
+                        .clickable { scope.launch { profileScrollState.scrollTo(profileScrollState.maxValue) } },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("⚙", color = AccentSlate, fontSize = 22.sp)
-                    }
+                    ProfileMenuGlyph("settings", AccentSlate)
                 }
             }
 
@@ -8719,117 +9044,127 @@ private fun ProfileScreen(
                 }
             } else if (profile != null) {
                 val p = profile!!
-                Surface(
-                    color = Color.Transparent,
-                    shape = RoundedCornerShape(27.dp),
-                    border = BorderStroke(0.dp, Color.Transparent),
-                    shadowElevation = 3.dp,
-                    modifier = Modifier.fillMaxWidth()
+                Column(
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 10.dp)
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 17.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier.size(88.dp)
-                                    .background(
-                                        Brush.sweepGradient(
-                                            listOf(
-                                                Color(0xFF5DAAF1),
-                                                Color(0xFF8269E8),
-                                                Color(0xFFCE79B6),
-                                                Color(0xFF5DAAF1)
-                                            )
-                                        ),
-                                        CircleShape
-                                    )
-                                    .padding(3.dp)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Avatar(
-                                    displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
-                                        .trim().take(1).uppercase(),
-                                    1,
-                                    Modifier.fillMaxSize(),
-                                    imageUrl = p.avatarUrl,
-                                    imageCacheKey = userId,
-                                    onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
-                                )
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    displayName.ifBlank { "Ваше имя" },
-                                    color = MainText,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    "@${username.ifBlank { "username" }}",
-                                    color = Muted,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        Modifier.size(8.dp)
-                                            .background(Color(0xFF31BD72), CircleShape)
+                                Box(
+                                    Modifier.size(78.dp)
+                                        .background(
+                                            Brush.sweepGradient(
+                                                if (appOrangeChocolateTheme.value) {
+                                                    listOf(
+                                                        Color(0xFFFFD08A),
+                                                        Color(0xFFFF9A3D),
+                                                        Color(0xFFC75A19),
+                                                        Color(0xFFFFD08A)
+                                                    )
+                                                } else {
+                                                    listOf(
+                                                        Color(0xFF45A9F5),
+                                                        Color(0xFF7168E8),
+                                                        Color(0xFFB56FD4),
+                                                        Color(0xFF45A9F5)
+                                                    )
+                                                }
+                                            ),
+                                            CircleShape
+                                        )
+                                        .padding(3.dp)
+                                ) {
+                                    Avatar(
+                                        displayName.ifBlank { username }.ifBlank { userEmail ?: "A" }
+                                            .trim().take(1).uppercase(),
+                                        1,
+                                        Modifier.fillMaxSize(),
+                                        imageUrl = p.avatarUrl,
+                                        imageCacheKey = userId,
+                                        onClick = { if (!p.avatarUrl.isNullOrBlank()) showAvatarPreview = true }
                                     )
-                                    Spacer(Modifier.width(7.dp))
-                                    Text("В сети", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                 }
-                                if (statusText.isNotBlank()) {
-                                    Spacer(Modifier.height(5.dp))
+                                Spacer(Modifier.width(14.dp))
+                                Column(Modifier.weight(1f)) {
                                     Text(
-                                        statusText,
-                                        color = Color(0xFF6678B2),
-                                        fontSize = 10.sp,
+                                        displayName.ifBlank { "Ваше имя" },
+                                        color = MainText,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "@${username.ifBlank { "username" }}",
+                                        color = Muted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(7.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            Modifier.size(7.dp)
+                                                .background(Color(0xFF31BD72), CircleShape)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(
+                                            "В сети",
+                                            color = if (appOrangeChocolateTheme.value) Color(0xFFD8B89F) else Color(0xFF4E607D),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    if (statusText.isNotBlank()) {
+                                        Spacer(Modifier.height(5.dp))
+                                        Text(
+                                            statusText,
+                                            color = if (appOrangeChocolateTheme.value) Color(0xFFFFB15C) else Color(0xFF6678A8),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier.size(39.dp)
+                                        .clickable { startProfileEditor(0) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    ProfileMenuGlyph("edit", AccentSlate)
                                 }
                             }
-                            Spacer(Modifier.width(7.dp))
-                            Surface(
-                                color = Color(0xFFEDEBFF),
-                                shape = RoundedCornerShape(17.dp),
-                                modifier = Modifier.size(43.dp).clickable { startProfileEditor(0) }
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("✎", color = AccentSlate, fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
 
-                        Spacer(Modifier.height(17.dp))
-                        Box(
-                            Modifier.fillMaxWidth().height(1.dp)
-                                .background(Color(0xFFE5E9F4))
-                        )
-                        Spacer(Modifier.height(14.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
-                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
-                            ProfileStat(
-                                "истории",
-                                storyCount?.toString() ?: "—",
-                                Modifier.weight(1f),
-                                onOpenStories,
-                                enabled = (storyCount ?: 0) > 0
+                            Spacer(Modifier.height(17.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(1.dp)
+                                    .background(if (appOrangeChocolateTheme.value) Color(0xFF89532F) else Color.White.copy(alpha = 0.78f))
                             )
-                            Box(Modifier.width(1.dp).height(39.dp).background(Color(0xFFDCE2F0)))
-                            ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
+                            Spacer(Modifier.height(13.dp))
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ProfileStat("друзья", friendCount?.toString() ?: "—", Modifier.weight(1f), onOpenFriends)
+                                Box(Modifier.width(1.dp).height(38.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0x6695A5C6)))
+                                ProfileStat(
+                                    "истории",
+                                    storyCount?.toString() ?: "—",
+                                    Modifier.weight(1f),
+                                    onOpenStories,
+                                    enabled = (storyCount ?: 0) > 0
+                                )
+                                Box(Modifier.width(1.dp).height(38.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0x6695A5C6)))
+                                ProfileStat("группы", groupCount?.toString() ?: "—", Modifier.weight(1f), onOpenGroups)
+                            }
                         }
-                    }
-                }
             } else {
                 Surface(
                     color = Color.Transparent,
@@ -8839,7 +9174,7 @@ private fun ProfileScreen(
                 ) {
                     Column(Modifier.padding(18.dp)) {
                         Text(
-                            errorMessage ?: "Личный профиль доступен после входа в аккаунт ArturChat.",
+                            errorMessage ?: "Личный профиль доступен после входа в аккаунт A-Chat.",
                             color = Muted,
                             fontSize = 12.sp
                         )
@@ -8864,8 +9199,8 @@ private fun ProfileScreen(
                         iconKind = "person",
                         title = "Личные данные",
                         subtitle = "Имя, фото и описание",
-                        iconBackground = Color(0xFFE2F0FF),
-                        iconTint = Color(0xFF4B78D6),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE5C7) else Color(0xFFE2F0FF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4B78D6),
                         showDivider = true,
                         onClick = { startProfileEditor(0) }
                     )
@@ -8873,8 +9208,8 @@ private fun ProfileScreen(
                         iconKind = "shield",
                         title = "Приватность",
                         subtitle = "Кто видит вашу активность",
-                        iconBackground = Color(0xFFECE8FF),
-                        iconTint = Color(0xFF735BDA),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFF1DFC9) else Color(0xFFECE8FF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF8D5728) else Color(0xFF735BDA),
                         onClick = { showPrivacyInfo = true }
                     )
                 }
@@ -8894,17 +9229,17 @@ private fun ProfileScreen(
                         iconKind = "bell",
                         title = "Уведомления",
                         subtitle = "Звуки и сообщения",
-                        iconBackground = Color(0xFFF7E4F8),
-                        iconTint = Color(0xFF9A61C8),
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE0B8) else Color(0xFFF7E4F8),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFFAE5B1C) else Color(0xFF9A61C8),
                         showDivider = true,
                         onClick = { openNotificationSettings() }
                     )
                     ProfileMenuRow(
-                        iconKind = "palette",
+                        iconKind = "appearance",
                         title = "Оформление",
-                        subtitle = "Тема и внешний вид",
-                        iconBackground = Color(0xFFE4EDFF),
-                        iconTint = Color(0xFF4F70CC),
+                        subtitle = when { appOrangeChocolateTheme.value -> "Orange & Chocolate"; appDarkTheme.value -> "Чёрная тема"; else -> "Светлая тема · по умолчанию" },
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE9D2) else Color(0xFFE4EDFF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4F70CC),
                         showDivider = true,
                         onClick = { showAppearanceInfo = true }
                     )
@@ -8930,8 +9265,8 @@ private fun ProfileScreen(
                     iconKind = "support",
                     title = "Помощь и поддержка",
                     subtitle = null,
-                    iconBackground = Color(0xFFE2F0FF),
-                    iconTint = Color(0xFF4B78D6),
+                    iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE5C7) else Color(0xFFE2F0FF),
+                    iconTint = if (appOrangeChocolateTheme.value) Color(0xFF9A4F17) else Color(0xFF4B78D6),
                     onClick = {
                         runCatching {
                             context.startActivity(
@@ -9022,7 +9357,7 @@ private fun ProfileScreen(
                     ProfileReadOnlyRow(
                         title = "Электронная почта",
                         value = userEmail.orEmpty(),
-                        note = "Используется для входа в ArturChat"
+                        note = "Используется для входа в A-Chat"
                     )
                 }
                 1 -> {
@@ -9111,7 +9446,11 @@ private fun ProfileScreen(
                                 Modifier.fillMaxWidth()
                                     .background(
                                         Brush.horizontalGradient(
-                                            listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                            if (appOrangeChocolateTheme.value) {
+                                                listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                            } else {
+                                                listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                            }
                                         )
                                     )
                                     .clickable(enabled = !isSaving) { avatarPicker.launch("image/*") }
@@ -9119,11 +9458,11 @@ private fun ProfileScreen(
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("＋", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                                Text("＋", color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     if (isSaving) "Обновляем фото…" else "Выбрать фотографию",
-                                    color = Color.White,
+                                    color = if (appOrangeChocolateTheme.value) Color(0xFF2B1509) else Color.White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -9162,10 +9501,17 @@ private fun ProfileScreen(
                         .background(
                             if (canSave) {
                                 Brush.horizontalGradient(
-                                    listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                    if (appOrangeChocolateTheme.value) {
+                                        listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                                    } else {
+                                        listOf(Color(0xFF26A9F5), Color(0xFF5364E8), Color(0xFF9160EA))
+                                    }
                                 )
                             } else {
-                                Brush.horizontalGradient(listOf(Color(0xFFD7DEED), Color(0xFFC8D2E7)))
+                                Brush.horizontalGradient(
+                                    if (appOrangeChocolateTheme.value) listOf(Color(0xFF5A3923), Color(0xFF402516))
+                                    else listOf(Color(0xFFD7DEED), Color(0xFFC8D2E7))
+                                )
                             }
                         )
                         .clickable(enabled = canSave && repository != null && userId != null) {
@@ -9212,7 +9558,7 @@ private fun ProfileScreen(
                     if (isSaving) {
                         androidx.compose.material3.CircularProgressIndicator(
                             Modifier.size(19.dp),
-                            color = if (canSave) Color.White else Muted,
+                            color = if (canSave && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (canSave) Color.White else Muted,
                             strokeWidth = 2.dp
                         )
                         Spacer(Modifier.width(9.dp))
@@ -9225,14 +9571,19 @@ private fun ProfileScreen(
                             hasChanges && displayName.isBlank() -> "Укажите имя"
                             else -> "Все изменения сохранены"
                         },
-                        color = if (canSave) Color.White else Color(0xFF73809A),
+                        color = when {
+                            canSave && appOrangeChocolateTheme.value -> Color(0xFF2B1509)
+                            canSave -> Color.White
+                            appOrangeChocolateTheme.value -> Color(0xFFC9A990)
+                            else -> Color(0xFF73809A)
+                        },
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
             Text(
-                "Изменения профиля синхронизируются с вашим аккаунтом ArturChat.",
+                "Изменения профиля синхронизируются с вашим аккаунтом A-Chat.",
                 color = Muted,
                 fontSize = 10.sp,
                 lineHeight = 14.sp,
@@ -9259,10 +9610,63 @@ private fun ProfileScreen(
     if (showAppearanceInfo) {
         AlertDialog(
             onDismissRequest = { showAppearanceInfo = false },
-            title = { Text("Оформление") },
-            text = { Text("Сейчас в ArturChat используется фирменная светлая тема. Переключение тем добавим отдельно, чтобы настройка действительно меняла весь интерфейс.") },
+            containerColor = Panel,
+            title = { Text("Оформление", color = MainText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Выбери тему приложения. Настройка сохранится на этом устройстве.",
+                        color = Muted,
+                        fontSize = 12.sp
+                    )
+                    ThemeOptionRow(
+                        title = "Светлая",
+                        subtitle = "Фирменные пастельные цвета",
+                        selected = !appDarkTheme.value && !appOrangeChocolateTheme.value,
+                        onClick = {
+                            appDarkTheme.value = false
+                            appOrangeChocolateTheme.value = false
+                            context.getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+                                .edit()
+                                .putBoolean(ARTURCHAT_THEME_DARK_KEY, false)
+                                .putBoolean(ARTURCHAT_THEME_ORANGE_KEY, false)
+                                .apply()
+                        }
+                    )
+                    ThemeOptionRow(
+                        title = "Чёрная",
+                        subtitle = "Графитовый фон и холодные акценты",
+                        selected = appDarkTheme.value,
+                        onClick = {
+                            appDarkTheme.value = true
+                            appOrangeChocolateTheme.value = false
+                            context.getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+                                .edit()
+                                .putBoolean(ARTURCHAT_THEME_DARK_KEY, true)
+                                .putBoolean(ARTURCHAT_THEME_ORANGE_KEY, false)
+                                .apply()
+                        }
+                    )
+                    ThemeOptionRow(
+                        title = "Orange & Chocolate",
+                        subtitle = "Шоколадный фон и янтарные акценты",
+                        selected = appOrangeChocolateTheme.value,
+                        onClick = {
+                            appDarkTheme.value = false
+                            appOrangeChocolateTheme.value = true
+                            context.getSharedPreferences(ARTURCHAT_THEME_PREFERENCES, 0)
+                                .edit()
+                                .putBoolean(ARTURCHAT_THEME_DARK_KEY, false)
+                                .putBoolean(ARTURCHAT_THEME_ORANGE_KEY, true)
+                                .apply()
+                        }
+                    )
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { showAppearanceInfo = false }) { Text("Хорошо") }
+                TextButton(onClick = { showAppearanceInfo = false }) {
+                    Text("Готово", color = AccentSlate, fontWeight = FontWeight.SemiBold)
+                }
             }
         )
     }
@@ -9383,7 +9787,7 @@ private fun ProfileMenuRow(
         if (showDivider) {
             Box(
                 Modifier.fillMaxWidth().padding(start = 71.dp, end = 15.dp)
-                    .height(1.dp).background(Color(0xFFE4E8F1))
+                    .height(1.dp).background(if (appOrangeChocolateTheme.value) Color(0xFF704426) else Color(0xFFE4E8F1))
             )
         }
     }
@@ -9434,14 +9838,48 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
                 drawArc(tint, 200f, 140f, false, Offset(w * 0.40f, h * 0.78f), androidx.compose.ui.geometry.Size(w * 0.20f, h * 0.18f), style = line)
                 drawLine(tint, Offset(w * 0.42f, h * 0.94f), Offset(w * 0.58f, h * 0.94f), line.width, cap = StrokeCap.Round)
             }
-            "palette" -> {
-                drawCircle(tint, radius = w * 0.37f, center = Offset(w * 0.48f, h * 0.51f), style = line)
-                listOf(
-                    Offset(w * 0.36f, h * 0.31f),
-                    Offset(w * 0.59f, h * 0.32f),
-                    Offset(w * 0.68f, h * 0.52f),
-                    Offset(w * 0.43f, h * 0.68f)
-                ).forEach { point -> drawCircle(tint, radius = w * 0.045f, center = point) }
+            "appearance" -> {
+                val center = Offset(w * 0.5f, h * 0.5f)
+                val radius = w * 0.35f
+                val lightDarkSplit = Path().apply {
+                    moveTo(w * 0.5f, h * 0.15f)
+                    cubicTo(w * 0.31f, h * 0.15f, w * 0.15f, h * 0.31f, w * 0.15f, h * 0.5f)
+                    cubicTo(w * 0.15f, h * 0.69f, w * 0.31f, h * 0.85f, w * 0.5f, h * 0.85f)
+                    close()
+                }
+                drawPath(lightDarkSplit, tint)
+                drawCircle(tint, radius = radius, center = center, style = line)
+                drawLine(tint, Offset(w * 0.5f, h * 0.15f), Offset(w * 0.5f, h * 0.85f), line.width, cap = StrokeCap.Round)
+            }
+            "settings" -> {
+                val center = Offset(w * 0.5f, h * 0.5f)
+                val radii = floatArrayOf(0.33f, 0.33f, 0.42f, 0.42f, 0.42f, 0.33f, 0.33f, 0.28f)
+                val gear = Path().apply {
+                    repeat(48) { index ->
+                        val angle = Math.toRadians((index * 7.5f - 90f).toDouble())
+                        val radius = w * radii[index % radii.size]
+                        val point = Offset(
+                            center.x + kotlin.math.cos(angle).toFloat() * radius,
+                            center.y + kotlin.math.sin(angle).toFloat() * radius
+                        )
+                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                    }
+                    close()
+                }
+                drawPath(gear, tint, style = line)
+                drawCircle(tint, radius = w * 0.115f, center = center, style = line)
+            }
+            "edit" -> {
+                val pencil = Path().apply {
+                    moveTo(w * 0.24f, h * 0.73f)
+                    lineTo(w * 0.67f, h * 0.30f)
+                    lineTo(w * 0.79f, h * 0.42f)
+                    lineTo(w * 0.36f, h * 0.85f)
+                    lineTo(w * 0.20f, h * 0.89f)
+                    close()
+                }
+                drawPath(pencil, tint, style = line)
+                drawLine(tint, Offset(w * 0.60f, h * 0.36f), Offset(w * 0.72f, h * 0.48f), line.width, cap = StrokeCap.Round)
             }
             "device" -> {
                 drawRoundRect(
@@ -9465,6 +9903,41 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
 
 
 @Composable
+private fun ThemeOptionRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        color = if (selected) PanelLight else ThemeSurface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, if (selected) AccentSlate.copy(alpha = 0.55f) else ThemeBorder)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.RadioButton(
+                selected = selected,
+                onClick = onClick,
+                colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                    selectedColor = AccentSlate,
+                    unselectedColor = Muted
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = MainText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(2.dp))
+                Text(subtitle, color = Muted, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProfileEditorTab(
     title: String,
     number: String,
@@ -9475,10 +9948,10 @@ private fun ProfileEditorTab(
     Surface(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(15.dp),
-        color = if (selected) Color.Transparent else Color.White.copy(alpha = 0.55f),
+        color = if (selected) Color.Transparent else ThemeSurface,
         border = BorderStroke(
             1.dp,
-            if (selected) Color.White.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.76f)
+            if (selected) AccentSlate.copy(alpha = 0.72f) else ThemeBorder
         ),
         shadowElevation = if (selected) 3.dp else 0.dp
     ) {
@@ -9487,7 +9960,8 @@ private fun ProfileEditorTab(
                 .then(
                     if (selected) Modifier.background(
                         Brush.horizontalGradient(
-                            listOf(Color(0xFF28A8F3), Color(0xFF5364E8), Color(0xFF9160EA))
+                            if (appOrangeChocolateTheme.value) listOf(Color(0xFFFFB45C), Color(0xFFFF922F), Color(0xFFC85A16))
+                            else listOf(Color(0xFF28A8F3), Color(0xFF5364E8), Color(0xFF9160EA))
                         )
                     ) else Modifier
                 )
@@ -9496,7 +9970,7 @@ private fun ProfileEditorTab(
         ) {
             Text(
                 number,
-                color = if (selected) Color.White.copy(alpha = 0.82f) else AccentSlate.copy(alpha = 0.72f),
+                color = if (selected && appOrangeChocolateTheme.value) Color(0xFF4A2811) else if (selected) Color.White.copy(alpha = 0.82f) else AccentSlate.copy(alpha = 0.72f),
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp
@@ -9504,7 +9978,7 @@ private fun ProfileEditorTab(
             Spacer(Modifier.height(3.dp))
             Text(
                 title,
-                color = if (selected) Color.White else MainText,
+                color = if (selected && appOrangeChocolateTheme.value) Color(0xFF2B1509) else if (selected) Color.White else MainText,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
@@ -9520,9 +9994,9 @@ private fun ProfileReadOnlyRow(
     note: String
 ) {
     Surface(
-        color = Color.White.copy(alpha = 0.58f),
+        color = ThemeSurface,
         shape = RoundedCornerShape(17.dp),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.84f)),
+        border = BorderStroke(1.dp, ThemeBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(14.dp)) {
@@ -9541,7 +10015,9 @@ private fun ProfileFeedbackMessage(
     isSuccess: Boolean
 ) {
     Surface(
-        color = if (isSuccess) Color(0xFFEAF7F1).copy(alpha = 0.94f) else Color(0xFFFFF0F1).copy(alpha = 0.94f),
+        color = if (appOrangeChocolateTheme.value) {
+            if (isSuccess) Color(0xFF1D3B2C) else Color(0xFF482016)
+        } else if (isSuccess) Color(0xFFEAF7F1).copy(alpha = 0.94f) else Color(0xFFFFF0F1).copy(alpha = 0.94f),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
             1.dp,
@@ -9601,7 +10077,7 @@ private fun ProfileInputField(
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(
                 1.2.dp,
-                if (isInvalid) Color(0xFFE2BFC1) else Color.White.copy(alpha = 0.96f)
+                if (isInvalid) Color(0xFFE2BFC1) else ThemeBorder
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -9609,11 +10085,12 @@ private fun ProfileInputField(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.linearGradient(
-                            listOf(
+                            when { appOrangeChocolateTheme.value -> listOf(Color(0xFF4A2511), Color(0xFF35180B), Color(0xFF4A2511)); appDarkTheme.value -> listOf(Color(0xFF202B3A), Color(0xFF1A2432), Color(0xFF202B3A)); else -> listOf(
                                 Color.White.copy(alpha = 0.62f),
                                 Color(0xFFE8EDFF).copy(alpha = 0.54f),
                                 Color.White.copy(alpha = 0.70f)
                             )
+                        }
                         )
                     )
                     .padding(
@@ -9635,7 +10112,7 @@ private fun ProfileInputField(
                     if (value.isEmpty()) {
                         Text(
                             placeholder,
-                            color = Color(0xFF7E8BAA).copy(alpha = 0.86f),
+                            color = (if (appOrangeChocolateTheme.value) Color(0xFFC9A990) else Color(0xFF7E8BAA)).copy(alpha = 0.86f),
                             fontSize = 14.sp,
                             lineHeight = 20.sp
                         )
@@ -9755,9 +10232,9 @@ private fun UserProfileScreen(
                             .background(
                                 Brush.sweepGradient(
                                     listOf(
-                                        Color(0xFF5DAAF1),
-                                        Color(0xFF8269E8),
-                                        Color(0xFFCE79B6),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFFFC27A) else Color(0xFF5DAAF1),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFFF8B2B) else Color(0xFF8269E8),
+                                        if (appOrangeChocolateTheme.value) Color(0xFFB84C12) else Color(0xFFCE79B6),
                                         Color(0xFF5DAAF1)
                                     )
                                 ),
@@ -10009,7 +10486,11 @@ private fun ChatChromeActionButton(
     content: @Composable () -> Unit
 ) {
     val gradient = Brush.linearGradient(
-        listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+        if (appOrangeChocolateTheme.value) {
+            listOf(Color(0xFFFFB45C), Color(0xFFFF8F2D), Color(0xFFC85A16))
+        } else {
+            listOf(Color(0xFF28A9F5), Color(0xFF5266E8), Color(0xFF9462E8))
+        }
     )
     Box(
         modifier = modifier.size(size)
@@ -10022,7 +10503,7 @@ private fun ChatChromeActionButton(
                         )
                     )
                     transparent -> Modifier
-                    else -> Modifier.background(Color.White.copy(alpha = 0.30f))
+                    else -> Modifier.background(ThemeSurface.copy(alpha = if (isDarkAppearance) 0.46f else 0.30f))
                 }
             )
             .clickable(enabled = enabled, onClick = onClick),
@@ -10044,11 +10525,19 @@ private fun InboxHeaderActionButton(
             .size(46.dp)
             .background(
                 Brush.linearGradient(
-                    listOf(
-                        Color(0xFF9EADFF).copy(alpha = 0.82f),
-                        Color(0xFFB7D9FF).copy(alpha = 0.96f),
-                        Color(0xFFC7B5FF).copy(alpha = 0.88f)
-                    )
+                    if (appOrangeChocolateTheme.value) {
+                        listOf(
+                            Color(0xFFFFC47B).copy(alpha = 0.92f),
+                            Color(0xFFFF9234).copy(alpha = 0.98f),
+                            Color(0xFFB9561D).copy(alpha = 0.92f)
+                        )
+                    } else {
+                        listOf(
+                            Color(0xFF9EADFF).copy(alpha = 0.82f),
+                            Color(0xFFB7D9FF).copy(alpha = 0.96f),
+                            Color(0xFFC7B5FF).copy(alpha = 0.88f)
+                        )
+                    }
                 ),
                 CircleShape
             ),
@@ -10056,9 +10545,9 @@ private fun InboxHeaderActionButton(
     ) {
         Surface(
             modifier = Modifier.size(42.dp).clickable(onClick = onClick),
-            color = Color(0xF7FFFFFF),
+            color = if (appOrangeChocolateTheme.value) Color(0xF32D170C) else Color(0xF7FFFFFF),
             shape = CircleShape,
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.98f)),
+            border = BorderStroke(1.dp, if (appOrangeChocolateTheme.value) Color(0xFF704329) else Color.White.copy(alpha = 0.98f)),
             shadowElevation = 2.dp
         ) {
             Box(
@@ -10066,7 +10555,7 @@ private fun InboxHeaderActionButton(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.White, Color(0xFFF0F3FF))
+                            if (appOrangeChocolateTheme.value) listOf(Color(0xFF3B1E10), Color(0xFF2B1409)) else listOf(Color.White, Color(0xFFF0F3FF))
                         )
                     ),
                 contentAlignment = Alignment.Center
@@ -10538,7 +11027,11 @@ private fun BottomNavigation(
                 .clip(RoundedCornerShape(28.dp))
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                        when {
+                            appOrangeChocolateTheme.value -> listOf(Color(0xF2381A0A), Color(0xF12A1207), Color(0xF2381A0A))
+                            appDarkTheme.value -> listOf(Color(0xF21B2534), Color(0xED141D2A), Color(0xF21B2534))
+                            else -> listOf(Color(0xEFFFFFFF), Color(0xD8E8EEFC), Color(0xDDE3EAF8))
+                        }
                     )
                 )
                 .padding(top = 8.dp, bottom = 8.dp),

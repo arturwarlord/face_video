@@ -1,4 +1,4 @@
-name: ArturChat 0.8.4 signed installable APK
+name: A-Chat 0.8.4 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
@@ -77,10 +77,10 @@ jobs:
           from pathlib import Path
           parts = sorted(Path("app/src/main/launcher-icon").glob("*.b64"))
           image = base64.b64decode("".join("".join(p.read_text().split()) for p in parts), validate=True)
-          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid ArturChat launcher image"
+          assert len(image) > 1024 and image[:4] == b"RIFF" and image[8:12] == b"WEBP", "Invalid A-Chat launcher image"
           assert int.from_bytes(image[4:8], "little") + 8 == len(image), "Truncated WebP image"
           assert image[12:16] in (b"VP8 ", b"VP8L", b"VP8X"), "Unsupported WebP image chunk"
-          print(f"Validated ArturChat icon: {len(image)} bytes")
+          print(f"Validated A-Chat icon: {len(image)} bytes")
           PY
 
       - name: Set up Gradle
@@ -133,16 +133,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p installable
-          cp app/build/outputs/apk/release/app-release.apk installable/ArturChat-0.8.4.apk
+          cp app/build/outputs/apk/release/app-release.apk installable/A-Chat-0.8.4.apk
           cd installable
-          sha256sum ArturChat-0.8.4.apk > ArturChat-0.8.4.apk.sha256
+          sha256sum A-Chat-0.8.4.apk > A-Chat-0.8.4.apk.sha256
 
       - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: arturchat-0.8.4-installable
+          name: a-chat-0.8.4-installable
           path: |
-            installable/ArturChat-0.8.4.apk
-            installable/ArturChat-0.8.4.apk.sha256
+            installable/A-Chat-0.8.4.apk
+            installable/A-Chat-0.8.4.apk.sha256
           if-no-files-found: error
           retention-days: 14

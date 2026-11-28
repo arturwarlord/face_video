@@ -1,6 +1,6 @@
-# ArturChat push notifications
+# A-Chat push notifications
 
-ArturChat uses Firebase Cloud Messaging (FCM) for remote message and incoming-call notifications. The Supabase push Edge Function is active, and database triggers already forward new messages and calls to it. Voice calls themselves continue to use WebRTC; FCM carries notification metadata only.
+A-Chat uses Firebase Cloud Messaging (FCM) for remote message and incoming-call notifications. The Supabase push Edge Function is active, and database triggers already forward new messages and calls to it. Voice calls themselves continue to use WebRTC; FCM carries notification metadata only.
 
 ## Current diagnosis
 
@@ -10,7 +10,7 @@ The workflow now accepts either raw `google-services.json` contents or Base64, v
 
 ## 1. Configure the Android Firebase app
 
-1. Open Firebase Console and select the Firebase project used by ArturChat.
+1. Open Firebase Console and select the Firebase project used by A-Chat.
 2. Add an Android app with package name **`com.facevideo.app`** (or open the existing app).
 3. Download its `google-services.json`.
 4. On Windows, open PowerShell in the folder containing that file and copy a Base64 version:
@@ -33,10 +33,10 @@ The Edge Function also needs the Firebase service-account secret `FCM_SERVICE_AC
 
 ## 3. Build and register the devices
 
-1. After replacing the GitHub secret, open **Actions → ArturChat 0.7.55 signed installable APK** and run the workflow, or push the next code change to `main`.
+1. After replacing the GitHub secret, open **Actions → A-Chat 0.7.55 signed installable APK** and run the workflow, or push the next code change to `main`.
 2. Download the artifact only after all steps finish successfully. The Firebase validation step must say that the Android configuration was validated.
-3. Install the signed APK over the existing ArturChat installation on each phone.
-4. Open ArturChat with an internet connection, sign in, and allow Android notifications.
+3. Install the signed APK over the existing A-Chat installation on each phone.
+4. Open A-Chat with an internet connection, sign in, and allow Android notifications.
 5. Verify the registered device count in Supabase SQL Editor without displaying token values:
 
    ```sql
@@ -46,7 +46,7 @@ The Edge Function also needs the Firebase service-account secret `FCM_SERVICE_AC
    from public.face_video_push_tokens;
    ```
 
-Each phone should register at least one token. Once a token is registered, future notifications can arrive without opening ArturChat each time.
+Each phone should register at least one token. Once a token is registered, future notifications can arrive without opening A-Chat each time.
 
 ## 4. Test delivery
 
@@ -59,8 +59,8 @@ The Edge Function's response should report a positive `sent` count. A response o
 ## Troubleshooting
 
 - **The signed build fails at Firebase validation:** replace `FIREBASE_GOOGLE_SERVICES_BASE64` with the raw contents of the correct `google-services.json` or its Base64 encoding. The file must contain package `com.facevideo.app`.
-- **The token count is still zero:** install the validated build, open ArturChat online, sign in, and check that Firebase token registration is not reporting an error.
+- **The token count is still zero:** install the validated build, open A-Chat online, sign in, and check that Firebase token registration is not reporting an error.
 - **Tokens exist but pushes are not sent:** inspect Supabase Edge Function logs for `send-arturchat-push` and verify the `FCM_SERVICE_ACCOUNT_JSON` secret.
-- **The push is sent but no banner appears:** check Android notification permission, Do Not Disturb, and ArturChat's Messages and Calls notification-channel settings.
-- **The phone does not receive background pushes:** Android Force stop blocks background delivery until the app is opened again. On Xiaomi/MIUI, also allow ArturChat autostart and unrestricted background activity.
+- **The push is sent but no banner appears:** check Android notification permission, Do Not Disturb, and A-Chat's Messages and Calls notification-channel settings.
+- **The phone does not receive background pushes:** Android Force stop blocks background delivery until the app is opened again. On Xiaomi/MIUI, also allow A-Chat autostart and unrestricted background activity.
 

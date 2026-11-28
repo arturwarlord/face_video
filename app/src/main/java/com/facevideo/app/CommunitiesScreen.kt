@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,14 +65,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val CommunityAccent = Color(0xFF5267DB)
-private val CommunityAccentDark = Color(0xFF4053C7)
-private val CommunityText = Color(0xFF202936)
-private val CommunityMuted = Color(0xFF788493)
-private val CommunitySurface = Color(0xEFFFFFFF)
-private val CommunitySoft = Color(0xFFE9EDFF)
-private val CommunityBorder = Color(0xFFE2E7F0)
-private val CommunityDanger = Color(0xFFB65E6C)
+// Theme-aware community palette. Orange & Chocolate uses warm surfaces and amber actions.
+private val communityOrangeChocolate = mutableStateOf(false)
+private val CommunityAccent: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFFF9A3D) else Color(0xFF5267DB)
+private val CommunityAccentDark: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFFFBD78) else Color(0xFF4053C7)
+private val CommunityText: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFFFF0E3) else Color(0xFF202936)
+private val CommunityMuted: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFC9A990) else Color(0xFF788493)
+private val CommunitySurface: Color
+    get() = if (communityOrangeChocolate.value) Color(0xE62B160B) else Color(0xEFFFFFFF)
+private val CommunitySoft: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFF422414) else Color(0xFFE9EDFF)
+private val CommunityBorder: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFF704426) else Color(0xFFE2E7F0)
+private val CommunityDanger: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFFF8878) else Color(0xFFB65E6C)
+private val CommunitySectionSurface: Color
+    get() = if (communityOrangeChocolate.value) Color(0xDD2A1509) else Color(0xAFFFFFFF)
+private val CommunityTabSelectedSurface: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFFFF9D3F) else Color.White
+private val CommunityOnAccent: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFF2B1509) else Color.White
+private val CommunitySelectedText: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFF2B1509) else CommunityAccentDark
+private val CommunityDialogSurface: Color
+    get() = if (communityOrangeChocolate.value) Color(0xFF2A160B) else Color(0xFFF7F8FF)
 
 private enum class CommunitySection(val title: String) {
     GROUPS("Группы"),
@@ -88,8 +109,12 @@ private enum class ChannelDirectoryFilter(val title: String) {
 internal fun GroupsScreen(
     repository: SupabaseChatRepository,
     userId: String,
+    isOrangeChocolateTheme: Boolean,
     onOpenGroup: (FaceVideoChatSummary) -> Unit
 ) {
+    SideEffect {
+        communityOrangeChocolate.value = isOrangeChocolateTheme
+    }
     var section by remember { mutableStateOf(CommunitySection.GROUPS) }
     var groupChats by remember(userId) { mutableStateOf<List<FaceVideoChatSummary>>(emptyList()) }
     var channels by remember(userId) { mutableStateOf<List<FaceVideoChannelEntry>>(emptyList()) }
@@ -184,7 +209,7 @@ internal fun GroupsScreen(
                             .clickable { showCreateMenu = true }
                             .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Text("+ Создать", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("+ Создать", color = CommunityOnAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                     DropdownMenu(
                         expanded = showCreateMenu,
@@ -212,7 +237,7 @@ internal fun GroupsScreen(
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xAFFFFFFF))
+                    .background(CommunitySectionSurface)
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -229,7 +254,7 @@ internal fun GroupsScreen(
                         val count = if (item == CommunitySection.GROUPS) groupChats.size else channels.size
                         Text(
                             "${item.title} · $count",
-                            color = if (selected) Color.White else CommunityText,
+                            color = if (selected) CommunityOnAccent else CommunityText,
                             fontSize = 12.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                         )
@@ -280,7 +305,7 @@ internal fun GroupsScreen(
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xAFFFFFFF))
+                        .background(CommunitySectionSurface)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -289,14 +314,14 @@ internal fun GroupsScreen(
                         Box(
                             Modifier.weight(1f)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) Color.White else Color.Transparent)
+                                .background(if (selected) CommunityTabSelectedSurface else Color.Transparent)
                                 .clickable { channelFilter = filter }
                                 .padding(vertical = 9.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 filter.title,
-                                color = if (selected) CommunityAccentDark else CommunityMuted,
+                                color = if (selected) CommunitySelectedText else CommunityMuted,
                                 fontSize = 11.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -426,7 +451,7 @@ private fun CommunityGroupRow(
                 onClick = { showAvatarPreview = true }
             )
         } else {
-            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp))
+            ArturChatTypeAvatar(ArturChatIconType.GROUP, Modifier.size(48.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -486,7 +511,7 @@ private fun CommunityChannelRow(
                 onClick = { showAvatarPreview = true }
             )
         } else {
-            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp))
+            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(48.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -539,7 +564,7 @@ private fun CommunityInitial(
     Box(
         Modifier.size(48.dp)
             .clip(CircleShape)
-            .background(Color(0xFFE9EDFF)),
+            .background(CommunitySoft),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -612,7 +637,7 @@ private fun CreateCommunityGroupDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        containerColor = Color(0xFFF7F8FF),
+        containerColor = CommunityDialogSurface,
         title = { Text("Создать группу", color = CommunityText, fontWeight = FontWeight.Bold) },
         text = {
             Column(
@@ -699,7 +724,7 @@ private fun CreateCommunityChannelDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        containerColor = Color(0xFFF7F8FF),
+        containerColor = CommunityDialogSurface,
         title = { Text("Создать канал", color = CommunityText, fontWeight = FontWeight.Bold) },
         text = {
             Column {
@@ -940,7 +965,8 @@ private fun ChannelDetailsScreen(
                             ArturChatIconType.CHANNEL,
                             Modifier.fillMaxSize().then(
                                 if (isOwner) Modifier.clickable(enabled = !isBusy) { avatarPicker.launch("image/*") } else Modifier
-                            )
+                            ),
+                            isOrangeChocolateTheme = communityOrangeChocolate.value
                         )
                     }
                     if (isOwner) {
@@ -952,7 +978,7 @@ private fun ChannelDetailsScreen(
                                 .clickable(enabled = !isBusy) { avatarPicker.launch("image/*") },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("✎", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("✎", color = CommunityOnAccent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1176,7 +1202,7 @@ private fun ChannelDetailsScreen(
     if (showDeleteChannelConfirmation) {
         AlertDialog(
             onDismissRequest = { if (!isBusy) showDeleteChannelConfirmation = false },
-            containerColor = Color.White,
+            containerColor = CommunityDialogSurface,
             title = { Text("Удалить канал?", color = CommunityText, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
@@ -1263,7 +1289,7 @@ private fun ChannelDetailsScreen(
         val post = deletingPost!!
         AlertDialog(
             onDismissRequest = { if (!isBusy) deletingPost = null },
-            containerColor = Color.White,
+            containerColor = CommunityDialogSurface,
             title = { Text("Удалить публикацию?", color = CommunityText, fontWeight = FontWeight.Bold) },
             text = { Text("Эта запись исчезнет из канала у всех подписчиков.", color = CommunityMuted, fontSize = 12.sp) },
             confirmButton = {
@@ -1304,7 +1330,7 @@ private fun EditCommunityChannelDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        containerColor = Color.White,
+        containerColor = CommunityDialogSurface,
         title = { Text("Настройки канала", color = CommunityText, fontWeight = FontWeight.Bold) },
         text = {
             Column {
@@ -1350,7 +1376,7 @@ private fun EditChannelPostDialog(
     var body by remember(post.id) { mutableStateOf(post.body) }
     AlertDialog(
         onDismissRequest = { if (!isBusy) onDismiss() },
-        containerColor = Color.White,
+        containerColor = CommunityDialogSurface,
         title = { Text("Редактировать публикацию", color = CommunityText, fontWeight = FontWeight.Bold) },
         text = {
             OutlinedTextField(
@@ -1383,7 +1409,7 @@ private fun ChannelSubscribersDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = CommunityDialogSurface,
         title = {
             Column {
                 Text("Подписчики", color = CommunityText, fontWeight = FontWeight.Bold)
@@ -1442,7 +1468,7 @@ private fun ChannelPostCard(
             .padding(15.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(30.dp))
+            ArturChatTypeAvatar(ArturChatIconType.CHANNEL, Modifier.size(30.dp), isOrangeChocolateTheme = communityOrangeChocolate.value)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Публикация канала", color = CommunityText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)

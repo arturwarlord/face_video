@@ -93,7 +93,7 @@ class CallForegroundService : Service() {
                     "Активный звонок",
                     NotificationManager.IMPORTANCE_LOW
                 ).apply {
-                    description = "Показывает, что звонок ArturChat продолжается в фоне"
+                    description = "Показывает, что звонок A-Chat продолжается в фоне"
                     setSound(null, null)
                     enableVibration(false)
                     setShowBadge(false)

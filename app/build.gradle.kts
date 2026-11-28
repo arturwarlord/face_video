@@ -12,8 +12,8 @@ plugins {
 val supabaseUrl = providers.gradleProperty("SUPABASE_URL").orElse("").get()
 val supabasePublishableKey = providers.gradleProperty("SUPABASE_PUBLISHABLE_KEY").orElse("").get()
 val firebaseConfigExists = file("google-services.json").exists()
-val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.8.5").get()
-val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("8005" ).get().toInt()
+val appVersionName = providers.gradleProperty("APP_VERSION_NAME").orElse("0.9.8").get()
+val appVersionCode = providers.gradleProperty("APP_VERSION_CODE").orElse("9008" ).get().toInt()
 
 fun String.asBuildConfigString(): String =
     "\""+ replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -98,7 +98,7 @@ val generateLauncherIconResources = tasks.register("generateLauncherIconResource
                 String(imageBytes, 8, 4, Charsets.US_ASCII) == "WEBP" &&
                 String(imageBytes, 12, 4, Charsets.US_ASCII) in setOf("VP8 ", "VP8L", "VP8X") &&
                 imageBytes.size == (ByteBuffer.wrap(imageBytes, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int + 8)
-        ) { "ArturChat launcher artwork is not a complete WebP image." }
+        ) { "A-Chat launcher artwork is not a complete WebP image." }
 
         val mipmapDirectory = generatedLauncherIconResources.get().dir("mipmap-nodpi").asFile
         mipmapDirectory.mkdirs()

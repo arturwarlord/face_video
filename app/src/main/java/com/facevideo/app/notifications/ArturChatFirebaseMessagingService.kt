@@ -25,7 +25,7 @@ class ArturChatFirebaseMessagingService : FirebaseMessagingService() {
             ?: if (type == "call") "Входящий звонок" else "Новое сообщение"
         val body = message.notification?.body
             ?: data["body"]
-            ?: if (type == "call") "Тебе звонят в ArturChat" else "Открой ArturChat, чтобы прочитать сообщение"
+            ?: if (type == "call") "Тебе звонят в A-Chat" else "Открой A-Chat, чтобы прочитать сообщение"
 
         AppNotificationManager(this).showRemoteNotification(
             notificationId = notificationId,

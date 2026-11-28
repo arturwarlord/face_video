@@ -235,8 +235,8 @@ Deno.serve(async (request: Request) => {
       type: "call",
       title: (caller?.display_name?.trim() || caller?.username || "Собеседник") + " звонит вам",
       body: row.media_type === "video"
-        ? "Входящий видеозвонок в ArturChat"
-        : "Входящий аудиозвонок в ArturChat",
+        ? "Входящий видеозвонок в A-Chat"
+        : "Входящий аудиозвонок в A-Chat",
       entityId: callId,
       mediaType: row.media_type === "video" ? "video" : "audio",
     };
