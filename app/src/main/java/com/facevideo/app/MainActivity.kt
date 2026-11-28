@@ -176,6 +176,7 @@ import com.facevideo.app.data.FaceVideoCall
 import com.facevideo.app.data.SupabaseCallRepository
 import com.facevideo.app.data.DemoData
 import com.facevideo.app.data.SupabaseClientProvider
+import io.github.jan.supabase.auth.auth
 import com.facevideo.app.data.SupabaseChatRepository
 import com.facevideo.app.data.ArturChatImageCache
 import com.facevideo.app.data.ArturChatLocalCache
@@ -8924,6 +8925,11 @@ private fun ProfileScreen(
     var showPrivacyInfo by remember { mutableStateOf(false) }
     var showAppearanceInfo by remember { mutableStateOf(false) }
     var showDevicesInfo by remember { mutableStateOf(false) }
+    var showEmailChangeDialog by remember(userId) { mutableStateOf(false) }
+    var emailDraft by remember(userId) { mutableStateOf("") }
+    var emailDialogError by remember(userId) { mutableStateOf<String?>(null) }
+    var isChangingEmail by remember(userId) { mutableStateOf(false) }
+    var emailChangeFeedback by remember(userId) { mutableStateOf<String?>(null) }
     val cachedOwnStats = remember(cache, userId) { userId?.let { cache.readProfileStats(it, it) } }
     var friendCount by remember(userId, cache) { mutableStateOf(cachedOwnStats?.friendCount) }
     var storyCount by remember(userId, cache) { mutableStateOf(cachedOwnStats?.storyCount) }
@@ -8978,6 +8984,47 @@ private fun ProfileScreen(
     } ?: false
     val validUsername = username.matches(Regex("^[a-z0-9_]{3,24}$"))
     val canSave = repository != null && userId != null && !isSaving && hasChanges && validUsername && displayName.trim().isNotEmpty()
+
+    fun submitEmailChange() {
+        val cleanEmail = emailDraft.trim()
+        emailDialogError = when {
+            cleanEmail.isBlank() -> "Введите новый адрес электронной почты."
+            cleanEmail.length > 254 || !android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches() ->
+                "Проверьте формат электронной почты."
+            cleanEmail.equals(userEmail?.trim(), ignoreCase = true) ->
+                "Это уже текущий адрес электронной почты."
+            else -> null
+        }
+        if (emailDialogError != null) return
+
+        val supabase = SupabaseClientProvider.client
+        if (supabase == null) {
+            emailDialogError = "Не удалось подключиться к сервису аккаунта. Попробуйте позже."
+            return
+        }
+
+        scope.launch {
+            isChangingEmail = true
+            emailDialogError = null
+            try {
+                // Keep the current local session until Supabase confirms the address change.
+                supabase.auth.updateUser(updateCurrentUser = false) {
+                    email = cleanEmail
+                }
+                emailChangeFeedback =
+                    "Запрос отправлен для $cleanEmail. Откройте письмо от Supabase и завершите подтверждение. " +
+                    "В зависимости от настроек защиты письма могут прийти на новый и текущий адрес. " +
+                    "Новая почта вступит в силу после подтверждения."
+                emailDraft = ""
+                showEmailChangeDialog = false
+            } catch (error: Exception) {
+                emailDialogError = error.message?.takeIf { it.isNotBlank() }
+                    ?: "Не удалось отправить запрос на смену почты."
+            } finally {
+                isChangingEmail = false
+            }
+        }
+    }
 
     fun resetDraft() {
         username = profile?.username.orEmpty()
@@ -9272,6 +9319,20 @@ private fun ProfileScreen(
                         onClick = { startProfileEditor(0) }
                     )
                     ProfileMenuRow(
+                        iconKind = "mail",
+                        title = "Электронная почта",
+                        subtitle = userEmail?.takeIf { it.isNotBlank() } ?: "Не указана",
+                        iconBackground = if (appOrangeChocolateTheme.value) Color(0xFFFFE0B8) else Color(0xFFE5ECFF),
+                        iconTint = if (appOrangeChocolateTheme.value) Color(0xFFAE5B1C) else Color(0xFF5369C9),
+                        showDivider = true,
+                        onClick = {
+                            emailDraft = ""
+                            emailDialogError = null
+                            emailChangeFeedback = null
+                            showEmailChangeDialog = true
+                        }
+                    )
+                    ProfileMenuRow(
                         iconKind = "shield",
                         title = "Приватность",
                         subtitle = "Кто видит вашу активность",
@@ -9280,6 +9341,11 @@ private fun ProfileScreen(
                         onClick = { showPrivacyInfo = true }
                     )
                 }
+            }
+
+            if (!emailChangeFeedback.isNullOrBlank()) {
+                Spacer(Modifier.height(10.dp))
+                ProfileFeedbackMessage(emailChangeFeedback.orEmpty(), isSuccess = true)
             }
 
             Spacer(Modifier.height(22.dp))
@@ -9761,8 +9827,9 @@ private fun ProfileScreen(
     if (showDiscardChanges) {
         AlertDialog(
             onDismissRequest = { showDiscardChanges = false },
-            title = { Text("Отменить изменения?") },
-            text = { Text("Несохранённые данные будут сброшены.") },
+            containerColor = Panel,
+            title = { Text("Отменить изменения?", color = MainText) },
+            text = { Text("Несохранённые данные будут сброшены.", color = Muted) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -9776,7 +9843,94 @@ private fun ProfileScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDiscardChanges = false }) {
-                    Text("Продолжить")
+                    Text("Продолжить", color = AccentSlate)
+                }
+            }
+        )
+    }
+
+    if (showEmailChangeDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isChangingEmail) {
+                    showEmailChangeDialog = false
+                    emailDialogError = null
+                }
+            },
+            containerColor = Panel,
+            title = {
+                Text("Сменить электронную почту", color = MainText, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Text(
+                        "Текущий адрес: ${userEmail?.takeIf { it.isNotBlank() } ?: "не указан"}",
+                        color = Muted,
+                        fontSize = 11.sp
+                    )
+                    OutlinedTextField(
+                        value = emailDraft,
+                        onValueChange = {
+                            emailDraft = it.take(254)
+                            emailDialogError = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isChangingEmail,
+                        singleLine = true,
+                        label = { Text("Новая почта") },
+                        placeholder = { Text("name@example.com") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Done
+                        ),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MainText,
+                            unfocusedTextColor = MainText,
+                            focusedBorderColor = AccentSlate,
+                            unfocusedBorderColor = ThemeBorder,
+                            focusedLabelColor = AccentSlate,
+                            unfocusedLabelColor = Muted,
+                            cursorColor = AccentSlate,
+                            focusedPlaceholderColor = Muted,
+                            unfocusedPlaceholderColor = Muted
+                        )
+                    )
+                    Text(
+                        "Мы отправим письмо для подтверждения. В зависимости от настроек безопасности Supabase подтверждение может потребоваться также на текущем адресе.",
+                        color = Muted,
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp
+                    )
+                    if (emailDialogError != null) {
+                        Text(
+                            emailDialogError.orEmpty(),
+                            color = Color(0xFFD06A78),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { submitEmailChange() },
+                    enabled = !isChangingEmail
+                ) {
+                    Text(
+                        if (isChangingEmail) "Отправляем…" else "Отправить подтверждение",
+                        color = AccentSlate
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEmailChangeDialog = false
+                        emailDialogError = null
+                    },
+                    enabled = !isChangingEmail
+                ) {
+                    Text("Отмена", color = Muted)
                 }
             }
         )
@@ -9867,6 +10021,25 @@ private fun ProfileMenuGlyph(kind: String, tint: Color) {
         val h = size.height
         val line = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round)
         when (kind) {
+            "mail" -> {
+                val left = w * 0.10f
+                val top = h * 0.20f
+                val right = w * 0.90f
+                val bottom = h * 0.80f
+                drawRoundRect(
+                    tint,
+                    topLeft = Offset(left, top),
+                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.09f),
+                    style = line
+                )
+                val flap = Path().apply {
+                    moveTo(left + w * 0.03f, top + h * 0.05f)
+                    lineTo(w * 0.5f, h * 0.56f)
+                    lineTo(right - w * 0.03f, top + h * 0.05f)
+                }
+                drawPath(flap, tint, style = line)
+            }
             "person" -> {
                 drawCircle(tint, radius = w * 0.17f, center = Offset(w * 0.5f, h * 0.29f), style = line)
                 val shoulders = Path().apply {

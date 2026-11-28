@@ -1,4 +1,4 @@
-name: A-Chat 0.8.4 signed installable APK
+name: A-Chat 0.9.16 signed installable APK
 
 # Build a signed test APK for installation over the current app. Never publish a GitHub Release.
 on:
@@ -107,16 +107,16 @@ jobs:
           gradle --no-daemon testDebugUnitTest
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.4"
-          -PAPP_VERSION_CODE="8004"
+          -PAPP_VERSION_NAME="0.9.16"
+          -PAPP_VERSION_CODE="9016"
 
       - name: Build signed installable APK
         run: >-
           gradle --no-daemon assembleRelease
           -PSUPABASE_URL="$SUPABASE_URL"
           -PSUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
-          -PAPP_VERSION_NAME="0.8.4"
-          -PAPP_VERSION_CODE="8004"
+          -PAPP_VERSION_NAME="0.9.16"
+          -PAPP_VERSION_CODE="9016"
 
       - name: Verify package, version and APK signature
         shell: bash
@@ -126,23 +126,23 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
-          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='8004' versionName='0.8.4'"
+          echo "$BADGING" | grep -F "package: name='com.facevideo.app' versionCode='9016' versionName='0.9.16'"
 
       - name: Prepare APK and checksum
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p installable
-          cp app/build/outputs/apk/release/app-release.apk installable/A-Chat-0.8.4.apk
+          cp app/build/outputs/apk/release/app-release.apk installable/A-Chat-0.9.16.apk
           cd installable
-          sha256sum A-Chat-0.8.4.apk > A-Chat-0.8.4.apk.sha256
+          sha256sum A-Chat-0.9.16.apk > A-Chat-0.9.16.apk.sha256
 
       - name: Upload signed installable APK (no GitHub Release)
         uses: actions/upload-artifact@v4
         with:
-          name: a-chat-0.8.4-installable
+          name: a-chat-0.9.16-installable
           path: |
-            installable/A-Chat-0.8.4.apk
-            installable/A-Chat-0.8.4.apk.sha256
+            installable/A-Chat-0.9.16.apk
+            installable/A-Chat-0.9.16.apk.sha256
           if-no-files-found: error
           retention-days: 14
