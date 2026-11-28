@@ -2399,7 +2399,15 @@ private fun StoryImage(
                     modifier = Modifier.fillMaxSize().blur(34.dp).alpha(0.54f),
                     contentScale = ContentScale.Crop
                 )
-                Box(Modifier.fillMaxSize().background(Color(0x66101928)))
+                Box(
+                    Modifier.fillMaxSize().background(
+                        when {
+                            appOrangeChocolateTheme.value -> Color(0x66371A0A)
+                            appDarkTheme.value -> Color(0x66090D14)
+                            else -> Color(0x66405070)
+                        }
+                    )
+                )
             }
             Image(
                 bitmap = loaded.asImageBitmap(),
@@ -2546,14 +2554,30 @@ private fun StoryViewerScreen(
 
     val ownerName = current?.let { it.displayName.ifBlank { it.username } } ?: "История"
     val ownerInitial = ownerName.trim().take(1).uppercase().ifBlank { "?" }
+    val storyAccent = when {
+        appOrangeChocolateTheme.value -> Color(0xFFFFA347)
+        appDarkTheme.value -> Color(0xFFA7B6FF)
+        else -> Color(0xFFBFD0FF)
+    }
+    val storyTopGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xF0180903), Color(0xB01A0A04), Color.Transparent)
+        appDarkTheme.value -> listOf(Color(0xF0090D14), Color(0xB0090D14), Color.Transparent)
+        else -> listOf(Color(0xDB26334D), Color(0x9926334D), Color.Transparent)
+    }
+    val storyBottomGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color.Transparent, Color(0xAA1A0A04), Color(0xF0180903))
+        appDarkTheme.value -> listOf(Color.Transparent, Color(0xAA090D14), Color(0xF0090D14))
+        else -> listOf(Color.Transparent, Color(0x9926334D), Color(0xDB26334D))
+    }
+    val storyScreenGradient = when {
+        appOrangeChocolateTheme.value -> listOf(Color(0xFF160802), Color(0xFF281307), Color(0xFF160802))
+        appDarkTheme.value -> listOf(Color(0xFF090D14), Color(0xFF151E2B), Color(0xFF090D14))
+        else -> listOf(Color(0xFF253047), Color(0xFF354766), Color(0xFF253047))
+    }
 
     Box(
         Modifier.fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF111B2A), Color(0xFF202E42), Color(0xFF111A29))
-                )
-            )
+            .background(Brush.verticalGradient(storyScreenGradient))
     ) {
         // One decoded story image renders both the fitted foreground and the blurred ambient backdrop.
         if (current != null) {
@@ -2581,7 +2605,7 @@ private fun StoryViewerScreen(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color(0xE8101928), Color(0xAA101928), Color.Transparent)
+                            storyTopGradient
                         )
                     )
                     .padding(start = 13.dp, end = 13.dp, top = 10.dp, bottom = 18.dp)
@@ -2634,7 +2658,11 @@ private fun StoryViewerScreen(
                         Modifier.size(40.dp)
                             .background(
                                 Brush.linearGradient(
-                                    listOf(Color(0xFF39B4FF), Color(0xFF626FEF), Color(0xFFB276F0))
+                                    when {
+                                        appOrangeChocolateTheme.value -> listOf(Color(0xFFFFD08A), Color(0xFFFF9B3D), Color(0xFFC75A19))
+                                        appDarkTheme.value -> listOf(Color(0xFF7188D8), Color(0xFFA7B6FF), Color(0xFF5267A8))
+                                        else -> listOf(Color(0xFF8EA4F0), Color(0xFFB8C7FF), Color(0xFF7C8FE0))
+                                    }
                                 ),
                                 CircleShape
                             )
@@ -2672,8 +2700,8 @@ private fun StoryViewerScreen(
                                 onClick = { showStoryMoreMenu = true },
                                 enabled = !deleting,
                                 shape = CircleShape,
-                                color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)),
+                                color = Color.Transparent,
+                                border = null,
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
@@ -2777,67 +2805,85 @@ private fun StoryViewerScreen(
                 Modifier.fillMaxWidth()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0x99101928), Color(0xE8101928))
+                            storyBottomGradient
                         )
                     )
                     .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 12.dp)
             ) {
                 if (current?.caption?.isNotBlank() == true) {
-                    Surface(
-                        color = Color.White.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            current.caption,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
-                        )
-                    }
+                    Text(
+                        current.caption,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp)
+                    )
                     Spacer(Modifier.height(12.dp))
                 }
 
                 if (current != null) {
                     if (canReact) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color.White.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(26.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.16f))
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 3.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            STORY_REACTION_OPTIONS.forEach { reaction ->
+                                val selected = reactionSummary.currentUserReaction == reaction
+                                Box(
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                        .clip(CircleShape)
+                                        .then(
+                                            if (selected) {
+                                                Modifier.background(storyAccent.copy(alpha = 0.20f))
+                                                    .border(1.dp, storyAccent.copy(alpha = 0.82f), CircleShape)
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .clickable(
+                                            enabled = !isLoadingReactions && !isSavingReaction,
+                                            interactionSource = null,
+                                            indication = null
+                                        ) { onStoryReactionTapped(reaction) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    StoryReactionGlyph(
+                                        reaction = reaction,
+                                        tint = if (selected) storyAccent else Color.White.copy(alpha = 0.94f),
+                                        modifier = Modifier.size(if (selected) 24.dp else 22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else if (canDelete) {
+                        val ownerReactionCounts = STORY_REACTION_OPTIONS.mapNotNull { reaction ->
+                            val count = reactionSummary.counts[reaction] ?: 0
+                            if (count > 0) reaction to count else null
+                        }
+                        if (ownerReactionCounts.isNotEmpty()) {
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = 7.dp),
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                STORY_REACTION_OPTIONS.forEach { emoji ->
-                                    val count = reactionSummary.counts[emoji] ?: 0
-                                    val selected = reactionSummary.currentUserReaction == emoji
-                                    Surface(
-                                        onClick = { onStoryReactionTapped(emoji) },
-                                        enabled = !isLoadingReactions && !isSavingReaction,
-                                        shape = CircleShape,
-                                        color = if (selected) Color.White.copy(alpha = 0.24f) else Color.Transparent,
-                                        border = if (selected) BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)) else null,
-                                        modifier = Modifier.weight(1f).height(42.dp)
+                                ownerReactionCounts.forEach { (reaction, count) ->
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 9.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(emoji, fontSize = if (selected) 21.sp else 19.sp, lineHeight = 22.sp)
-                                            if (count > 0) {
-                                                Text(
-                                                    count.toString(),
-                                                    color = Color.White.copy(alpha = 0.92f),
-                                                    fontSize = 8.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                        }
+                                        StoryReactionGlyph(
+                                            reaction = reaction,
+                                            tint = storyAccent,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Text(
+                                            count.toString(),
+                                            color = Color.White.copy(alpha = 0.96f),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                 }
                             }
