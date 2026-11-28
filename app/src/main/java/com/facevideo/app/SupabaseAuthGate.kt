@@ -180,7 +180,7 @@ private fun currentAuthPalette(): AuthPalette = when {
         errorText = Color(0xFFAD4C5B),
         securityText = Color(0xFF52618B)
     )
-)
+}
 
 @Composable
 fun SupabaseAuthGate(
