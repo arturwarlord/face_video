@@ -20,18 +20,29 @@ class ArturChatFirebaseMessagingService : FirebaseMessagingService() {
             ?: data["call_id"]
             ?: message.messageId
             ?: System.currentTimeMillis().toString()
+        val releaseVersion = data["release_version"]
         val title = message.notification?.title
             ?: data["title"]
-            ?: if (type == "call") "Входящий звонок" else "Новое сообщение"
+            ?: when (type) {
+                "call" -> "Входящий звонок"
+                "release" -> "Вышла новая версия A-Chat"
+                else -> "Новое сообщение"
+            }
         val body = message.notification?.body
             ?: data["body"]
-            ?: if (type == "call") "Тебе звонят в A-Chat" else "Открой A-Chat, чтобы прочитать сообщение"
+            ?: when (type) {
+                "call" -> "Тебе звонят в A-Chat"
+                "release" -> "Версия ${releaseVersion.orEmpty()} уже доступна. Нажми, чтобы посмотреть обновление."
+                else -> "Открой A-Chat, чтобы прочитать сообщение"
+            }
 
         AppNotificationManager(this).showRemoteNotification(
             notificationId = notificationId,
             title = title,
             body = body,
-            type = type
+            type = type,
+            releaseVersion = releaseVersion,
+            releaseUrl = data["release_url"]
         )
     }
 

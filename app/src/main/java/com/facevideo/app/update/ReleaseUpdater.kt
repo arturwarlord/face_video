@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -27,6 +28,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.facevideo.app.BuildConfig
+import com.facevideo.app.appDarkTheme
+import com.facevideo.app.appOrangeChocolateTheme
+import com.facevideo.app.releaseUpdateCheckSignal
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -256,6 +261,11 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
     LaunchedEffect(Unit) {
         availableRelease = runCatching { ReleaseUpdater.findUpdate() }.getOrNull()
     }
+    LaunchedEffect(releaseUpdateCheckSignal.value) {
+        if (releaseUpdateCheckSignal.value > 0) {
+            availableRelease = runCatching { ReleaseUpdater.findUpdate() }.getOrNull()
+        }
+    }
 
     content()
 
@@ -281,19 +291,75 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                 .toList()
                 .ifEmpty { listOf("Новые функции и улучшения") }
         }
+        val isOrangeTheme = appOrangeChocolateTheme.value
+        val isDarkTheme = appDarkTheme.value
+        val dialogBackground = when {
+            isOrangeTheme -> Color(0xFF2B160B)
+            isDarkTheme -> Color(0xFF192231)
+            else -> Color(0xFFFBFCFF)
+        }
+        val titleColor = when {
+            isOrangeTheme -> Color(0xFFFFF1E6)
+            isDarkTheme -> Color(0xFFF1F4FB)
+            else -> Color(0xFF253047)
+        }
+        val bodyColor = when {
+            isOrangeTheme -> Color(0xFFE8C9AD)
+            isDarkTheme -> Color(0xFFC3CCDA)
+            else -> Color(0xFF485464)
+        }
+        val mutedColor = when {
+            isOrangeTheme -> Color(0xFFC7A58C)
+            isDarkTheme -> Color(0xFF9AA8BC)
+            else -> Color(0xFF788493)
+        }
+        val actionColor = when {
+            isOrangeTheme -> Color(0xFFFF9B3D)
+            isDarkTheme -> Color(0xFF91A4FF)
+            else -> Color(0xFF5266D8)
+        }
+        val errorColor = when {
+            isOrangeTheme -> Color(0xFFFFA08A)
+            isDarkTheme -> Color(0xFFFFA7B1)
+            else -> Color(0xFFBE5E67)
+        }
         AlertDialog(
             onDismissRequest = { if (!isDownloading) availableRelease = null },
+            shape = RoundedCornerShape(28.dp),
+            containerColor = dialogBackground,
+            titleContentColor = titleColor,
+            textContentColor = bodyColor,
+            tonalElevation = 12.dp,
             title = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Доступно обновление", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("Версия ${release.versionName}", color = Color(0xFF858397), fontSize = 12.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Доступно обновление",
+                        color = titleColor,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    Text(
+                        "Версия ${release.versionName}",
+                        color = mutedColor,
+                        fontSize = 12.sp
+                    )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Что добавлено:", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = Color(0xFF858397))
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(
+                        "Что добавлено:",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        color = mutedColor
+                    )
                     updateHighlights.forEach { item ->
-                        Text("• $item", fontSize = 12.sp, color = Color(0xFF343246))
+                        Text(
+                            "• $item",
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = bodyColor
+                        )
                     }
                     TextButton(
                         onClick = {
@@ -307,18 +373,21 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                         },
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                     ) {
-                        Text("Наш сайт ↗", fontSize = 12.sp)
+                        Text("Наш сайт ↗", fontSize = 12.sp, color = actionColor)
                     }
-                    Text("Разработчик: Artur Ai", color = Color(0xFF858397), fontSize = 10.sp)
-                    Text("Бета-тест: Rasul S, Radmir A", color = Color(0xFF858397), fontSize = 10.sp)
+                    Text("Разработчик: Artur Ai", color = mutedColor, fontSize = 10.sp)
+                    Text("Бета-тест: Rasul S, Radmir A", color = mutedColor, fontSize = 10.sp)
 
                     if (isDownloading) {
                         Spacer(Modifier.height(4.dp))
-                        CircularProgressIndicator(progress = { progress / 100f })
-                        Text("Загрузка: $progress%", fontSize = 11.sp)
+                        CircularProgressIndicator(
+                            progress = { progress / 100f },
+                            color = actionColor
+                        )
+                        Text("Загрузка: $progress%", fontSize = 11.sp, color = bodyColor)
                     }
                     if (errorMessage != null) {
-                        Text(errorMessage.orEmpty(), fontSize = 11.sp, color = Color(0xFFC97888))
+                        Text(errorMessage.orEmpty(), fontSize = 11.sp, color = errorColor)
                     }
                 }
             },
@@ -351,7 +420,8 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                 ) {
                     Text(
                         if (isDownloading) "Загрузка..." else "Обновить",
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        color = actionColor
                     )
                 }
             },
@@ -359,7 +429,7 @@ fun ArturChatUpdateHost(content: @Composable () -> Unit) {
                 TextButton(
                     enabled = !isDownloading,
                     onClick = { availableRelease = null }
-                ) { Text("Позже", fontSize = 12.sp) }
+                ) { Text("Позже", fontSize = 12.sp, color = mutedColor) }
             }
         )
     }

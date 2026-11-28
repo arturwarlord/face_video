@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 # Release branches may receive several small commits in quick succession.
 # Keep only the newest build for a given ref to avoid publishing the same tag concurrently.
@@ -240,3 +241,26 @@ jobs:
             release/A-Chat.apk.sha256
             release/ArturChat.apk
             release/ArturChat.apk.sha256
+
+      - name: Notify A-Chat devices about the new release
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/publish-release-v'))
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_URL:-}"
+          OIDC_RESPONSE="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=a-chat-release")"
+          OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$OIDC_RESPONSE")"
+          RELEASE_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${RELEASE_TAG}"
+          RESPONSE="$(curl --fail --silent --show-error --retry 2 \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"kind\":\"release\",\"version\":\"${RELEASE_VERSION}\",\"release_url\":\"${RELEASE_URL}\"}" \
+            "${SUPABASE_URL}/functions/v1/send-arturchat-push")"
+          echo "$RESPONSE"

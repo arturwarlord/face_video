@@ -25,6 +25,11 @@ internal object CallNotificationIntents {
     const val ACTION_ANSWER = "answer"
     const val ACTION_DECLINE = "decline"
 }
+internal object ReleaseNotificationIntents {
+    const val EXTRA_RELEASE_VERSION = "com.facevideo.app.EXTRA_RELEASE_NOTIFICATION_VERSION"
+    const val EXTRA_RELEASE_URL = "com.facevideo.app.EXTRA_RELEASE_NOTIFICATION_URL"
+}
+
 
 /**
  * Displays local Realtime notifications and remote FCM notifications.
@@ -50,6 +55,11 @@ class AppNotificationManager(context: Context) {
                         description = "Входящие звонки A-Chat"
                         enableVibration(true)
                         setShowBadge(true)
+                    },
+                    NotificationChannel(RELEASE_CHANNEL_ID, "Обновления A-Chat", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "Уведомления о новых версиях A-Chat"
+                        enableVibration(true)
+                        setShowBadge(false)
                     }
                 )
             )
@@ -60,7 +70,9 @@ class AppNotificationManager(context: Context) {
         notificationId: String,
         title: String,
         body: String,
-        type: String
+        type: String,
+        releaseVersion: String? = null,
+        releaseUrl: String? = null
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -68,9 +80,18 @@ class AppNotificationManager(context: Context) {
         ) return
 
         val isCall = type == "call"
-        val channelId = if (isCall) CALL_CHANNEL_ID else MESSAGE_CHANNEL_ID
+        val isRelease = type == "release"
+        val channelId = when {
+            isCall -> CALL_CHANNEL_ID
+            isRelease -> RELEASE_CHANNEL_ID
+            else -> MESSAGE_CHANNEL_ID
+        }
         val intent = Intent(appContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (isRelease && !releaseVersion.isNullOrBlank()) {
+                putExtra(ReleaseNotificationIntents.EXTRA_RELEASE_VERSION, releaseVersion)
+                putExtra(ReleaseNotificationIntents.EXTRA_RELEASE_URL, releaseUrl)
+            }
         }
         val pendingIntent = PendingIntent.getActivity(
             appContext,
@@ -78,24 +99,38 @@ class AppNotificationManager(context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        if (!isCall) incrementUnreadMessageCount(notificationId)
+        if (!isCall && !isRelease) incrementUnreadMessageCount(notificationId)
+        val appearance = appContext.getSharedPreferences("arturchat_appearance", Context.MODE_PRIVATE)
+        val notificationAccent = when {
+            appearance.getBoolean("orange_chocolate_theme_enabled", false) -> 0xFFFF9B3D.toInt()
+            appearance.getBoolean("black_theme_enabled", false) -> 0xFF91A4FF.toInt()
+            else -> 0xFF5266D8.toInt()
+        }
 
         val builder = Notification.Builder(appContext, channelId)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(notificationAccent)
             .setContentTitle(title)
             .setContentText(body.take(140))
             .setStyle(Notification.BigTextStyle().bigText(body.take(1000)))
             .setContentIntent(pendingIntent)
             .setAutoCancel(!isCall)
             .setOngoing(isCall)
-            .setCategory(if (isCall) Notification.CATEGORY_CALL else Notification.CATEGORY_MESSAGE)
+            .setCategory(
+                when {
+                    isCall -> Notification.CATEGORY_CALL
+                    isRelease -> Notification.CATEGORY_EVENT
+                    else -> Notification.CATEGORY_MESSAGE
+                }
+            )
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setDefaults(Notification.DEFAULT_SOUND or Notification.DEFAULT_VIBRATE)
 
-        if (!isCall) {
+        if (!isCall && !isRelease) {
             builder.setGroup(MESSAGE_NOTIFICATION_GROUP)
                 .setNumber(1)
         }
+        if (isRelease) builder.setOnlyAlertOnce(true)
 
         if (isCall && notificationId.isNotBlank()) {
             val answerIntent = callActionPendingIntent(notificationId, CallNotificationIntents.ACTION_ANSWER)
@@ -359,6 +394,7 @@ class AppNotificationManager(context: Context) {
     private companion object {
         const val MESSAGE_CHANNEL_ID = "arturchat_messages"
         const val CALL_CHANNEL_ID = "arturchat_calls"
+        const val RELEASE_CHANNEL_ID = "arturchat_releases_v1"
         const val MESSAGE_NOTIFICATION_GROUP = "com.facevideo.app.MESSAGE_NOTIFICATIONS"
         const val UNREAD_BADGE_NOTIFICATION_ID = 0x0A7C0
         const val BADGE_PREFERENCES = "arturchat_notification_badge"

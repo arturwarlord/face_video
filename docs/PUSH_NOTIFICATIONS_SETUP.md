@@ -64,3 +64,10 @@ The Edge Function's response should report a positive `sent` count. A response o
 - **The push is sent but no banner appears:** check Android notification permission, Do Not Disturb, and A-Chat's Messages and Calls notification-channel settings.
 - **The phone does not receive background pushes:** Android Force stop blocks background delivery until the app is opened again. On Xiaomi/MIUI, also allow A-Chat autostart and unrestricted background activity.
 
+## Уведомления о новых версиях A-Chat
+
+После успешной публикации релиза workflow отправляет отдельный FCM data-push на зарегистрированные устройства из face_video_push_tokens. Для этого используется короткоживущий GitHub Actions OIDC-токен с проверкой репозитория и workflow внутри Edge Function send-arturchat-push; новый постоянный Actions secret не нужен.
+
+На Android такие уведомления показываются в отдельном канале «Обновления A-Chat» и не изменяют счётчик непрочитанных сообщений. Нажатие на уведомление открывает приложение и повторно проверяет последнюю опубликованную версию.
+
+Уведомление доставляется устройствам, на которых FCM-токен был зарегистрирован после входа в A-Chat и для которых разрешены системные уведомления Android.

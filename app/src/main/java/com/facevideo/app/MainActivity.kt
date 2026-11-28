@@ -205,6 +205,7 @@ import kotlinx.coroutines.flow.StateFlow
 import com.facevideo.app.notifications.AppNotificationManager
 import com.facevideo.app.notifications.CallForegroundService
 import com.facevideo.app.notifications.CallNotificationIntents
+import com.facevideo.app.notifications.ReleaseNotificationIntents
 import com.facevideo.app.notifications.PushTokenRegistrar
 import com.facevideo.app.model.ChatMessage
 import com.facevideo.app.model.ChatSummary
@@ -243,6 +244,8 @@ private const val ARTURCHAT_THEME_DARK_KEY = "black_theme_enabled"
 private const val ARTURCHAT_THEME_ORANGE_KEY = "orange_chocolate_theme_enabled"
 internal val appDarkTheme = mutableStateOf(false)
 internal val appOrangeChocolateTheme = mutableStateOf(false)
+internal val releaseUpdateCheckSignal = mutableStateOf(0)
+
 private val isDarkAppearance: Boolean
     get() = appDarkTheme.value || appOrangeChocolateTheme.value
 
@@ -677,6 +680,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun captureCallNotificationAction(intent: Intent?) {
+        val releaseVersion = intent?.getStringExtra(ReleaseNotificationIntents.EXTRA_RELEASE_VERSION)
+        if (!releaseVersion.isNullOrBlank() && Regex("^[0-9]+\\.[0-9]+\\.[0-9]+$").matches(releaseVersion)) {
+            releaseUpdateCheckSignal.value += 1
+        }
         val callId = intent?.getStringExtra(CallNotificationIntents.EXTRA_CALL_ID)
             ?: return
         val action = intent.getStringExtra(CallNotificationIntents.EXTRA_CALL_ACTION)
